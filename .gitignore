@@ -216,3 +216,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.opencode/
+.claude/
+.gemini/
+
+
+# --- agent-meta managed (do not edit) ---
+.claude/agent-memory-local/
+.claude/pending-tasks.md
+.claude/settings.local.json
+.gemini/pending-tasks.md
+.gemini/settings.local.json
+.mcp.json
+.meta-config/env.ps1
+.meta-config/env.sh
+.meta-config/env.unset.ps1
+.meta-config/env.unset.sh
+.opencode/pending-tasks.md
+.opencode/settings.local.json
+AGENTS.personal.md
+CLAUDE.personal.md
+sync.log
+# --- end agent-meta managed ---
