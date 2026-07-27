@@ -205,6 +205,7 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+.local
 
 # PyPI configuration file
 .pypirc
@@ -216,7 +217,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
+opencode.json
 .opencode/
 .claude/
 .gemini/
@@ -239,3 +240,5 @@ AGENTS.personal.md
 CLAUDE.personal.md
 sync.log
 # --- end agent-meta managed ---
+.meta-config/secrets.local.yaml
+git rm --cached opencode.json
