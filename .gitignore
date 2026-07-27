@@ -234,6 +234,8 @@ opencode.json
 .meta-config/env.sh
 .meta-config/env.unset.ps1
 .meta-config/env.unset.sh
+.meta-config/secrets.local.yaml
+.opencode/mcp.local.json
 .opencode/pending-tasks.md
 .opencode/settings.local.json
 AGENTS.personal.md

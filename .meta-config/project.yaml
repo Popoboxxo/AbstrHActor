@@ -147,8 +147,7 @@ variables:
     ConfigFlow with unique IDs, and 100% test coverage for config flow.
 
     '
-  MCP_SERVERS:
-  - reqogniloom
+
   EXTERNAL_SKILLS:
   - requirements-architect
   - test-engineer
@@ -228,3 +227,5 @@ rules-preset: ''
 speech-mode: ''
 tier-preset: Normal
 se-focus: false
+mcp-servers:
+  - reqogniloom
