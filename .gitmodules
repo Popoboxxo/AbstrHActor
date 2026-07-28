@@ -1,0 +1,6 @@
+[submodule ".agent-meta"]
+	path = .agent-meta
+	url = https://github.com/Popoboxxo/agent-meta
+[submodule "external/ReqogniLoom"]
+	path = external/ReqogniLoom
+	url = https://github.com/Popoboxxo/ReqogniLoom

@@ -243,4 +243,5 @@ CLAUDE.personal.md
 sync.log
 # --- end agent-meta managed ---
 .meta-config/secrets.local.yaml
-git rm --cached opencode.json
+# opencode.json is intentionally tracked — stray command below is removed
+# (was: git rm --cached opencode.json)

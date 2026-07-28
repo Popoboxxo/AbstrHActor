@@ -3,7 +3,7 @@
 > Projektbeschreibung für Claude-Agenten. Diese Datei ist die **einzige Quelle**
 > für projektspezifischen Kontext — Agenten lesen sie, statt eigenen Kontext zu haben.
 >
-> Generiert von agent-meta v0.89.0 — `2026-07-27`
+> Generiert von agent-meta v0.90.1 — `2026-07-28`
 >
 > **Längenempfehlung:** 200–500 Zeilen optimal. Über 500 Zeilen → Detailwissen in
 > `docs/ARCHITECTURE.md`, `docs/API.md` o.ä. auslagern und manuell verlinken.
@@ -21,17 +21,6 @@
 Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird von `agent-meta` nicht überschrieben!
 
 ---
-
-## Agenten-Konfiguration
-
-<!-- agent-meta:managed-begin -->
-<!-- Dieser Block wird von sync.py bei jedem sync automatisch aktualisiert. -->
-<!-- Manuelle Änderungen hier werden überschrieben. -->
-
-> **AI ROUTING:** Claude -> CLAUDE.md | Gemini, Opencode -> AGENTS.md
-
-Generiert von agent-meta v0.89.0 — `2026-07-27`
-DoD-Preset: **standard** | REQ-Traceability: false | Tests: true | Codebase-Overview: false | Security-Audit: false
 
 ## Projekt
 
@@ -162,7 +151,17 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 
 
-> **Einstiegspunkt:** Starte mit dem `orchestrator`-Agenten für alle Entwicklungsaufgaben — Ausnahmen siehe Abschnitt »Orchestrator — Universal Router«.
+## Agenten-Konfiguration
+
+<!-- agent-meta:managed-begin -->
+<!-- Dieser Block wird von sync.py bei jedem sync automatisch aktualisiert. -->
+<!-- Manuelle Änderungen hier werden überschrieben. -->
+
+> **AI ROUTING:** Claude -> CLAUDE.md | Gemini, Opencode -> AGENTS.md
+
+Generiert von agent-meta v0.90.1 — `2026-07-28`
+DoD-Preset: **rapid-prototyping** | REQ-Traceability: false | Tests: false | Codebase-Overview: false | Security-Audit: false
+> **Einstiegspunkt:** Du bist im `main-chat` Modus. Du agierst direkt als Router und Worker (siehe `use-orchestrator.md`).
 
 ## Knowledge Engine
 

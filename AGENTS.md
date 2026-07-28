@@ -1,16 +1,5 @@
 # AbstrHActor
 
-The user runs a mixed Home Assistant environment with Zigbee (Z2M), Tasmota, Shelly, Zendure, and custom serial sensors. Current abstraction uses YAML template sensors — this integration will replace those with a proper Python custom_component, adding type safety, testability, and HA-native entity management.
-
-
-<!-- agent-meta:managed-begin -->
-> **ROUTING:**
-
- Opencode->AGENTS.md |
-
-> **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.89.0` | DoD: `standard` | REQ-Trace: `false`
-
 ## Projekt
 
 **Name:** AbstrHActor
@@ -139,6 +128,15 @@ Kategorien für `docs/REQUIREMENTS.md`:
 - Core features: device discovery, sensor polling, config flow - Bridge implementations: serial, MQTT, HTTP - Sensor types: temperature, humidity, pressure, power, water - Non-functional: async performance, memory safety, HA core compliance
 
 
+
+<!-- agent-meta:managed-begin -->
+> **ROUTING:**
+
+ Opencode->AGENTS.md |
+
+> **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
+`agent-meta v0.90.1` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+
 ## Agent Directory
 > ⚠️ **ACHTUNG:** Agenten (Prompts) liegen in `.gemini/agents bzw. .opencode/agents`.
 
@@ -171,13 +169,35 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 | `intern-developer` | [EASTER EGG / GAG] Der übereifrige Praktikant |
 
+| `junior-developer` | Triviale Code-Änderungen (≤2 Dateien, kein Architektur-Impact) |
+
+| `knowledge-curator` | Strategische Knowledge-Engine-Steuerung: Schema-Evolution, Wiki-Strukturierun... |
+
+| `knowledge-gardener` | Kleinteilige Wiki-Pflege: Links reparieren, Tags harmonisieren, Frontmatter e... |
+
+| `knowledge-indexer` | Pflegt index.md (Content-Katalog, OKF §6) und log.md (Chronologisches Event-L... |
+
+| `knowledge-ingestor` | Sources einlesen, Key Information extrahieren, Wiki-Seiten erstellen/ aktuali... |
+
+| `knowledge-linter` | Wiki-Gesundheitscheck: Widersprüche, Orphans, veraltete Claims, kaputte Links... |
+
+| `knowledge-migrator` | Vorhandene Projektinhalte aufräumen und OKF-konform ins Knowledge Wiki migrieren |
+
+| `knowledge-querier` | Fragen gegen das Knowledge Wiki beantworten |
+
 | `log-analyzer` | System- und Applikations-Logs analysieren: Frequency-Clustering, Severity-Kla... |
 
 | `meta-feedback` | Verbesserungsvorschläge für agent-meta als GitHub Issues einreichen |
 
 | `orchestrator` | Einstiegspunkt für alle Entwicklungsaufgaben |
 
+| `release` | Versioning, Changelog, Build-Artifact, GitHub Release erstellen |
+
 | `requirements` | Anforderungen aufnehmen, REQ-IDs vergeben, REQUIREMENTS.md pflegen |
+
+| `senior-developer` | Komplexe Features, Architektur-Entscheidungen, schwierige Bugs, Cross-Cutting... |
+
+| `technical-writer` | Externe entwickler- und nutzergerichtete Doku: API-Referenzen, Getting-Starte... |
 
 | `tester` | TDD, Test-Suite ausführen, Testabdeckung sichern |
 
@@ -241,7 +261,7 @@ Format: `<type>: <beschreibung>` (Bsp: `feat: ...`)
 
 Pflicht: Code komplett, Konventionen & Conv. Commits eingehalten, keine Regressions.
 
-Tests: Test vorhanden & grün
+
 
 
 
@@ -342,6 +362,27 @@ Anti-Recursion: Worker dürfen nicht an `orchestrator` zurück delegieren.
 <!-- agent-meta:managed-end -->
 
 
+
+
+
+
+
+
+
+
+
+
+
+## MCP-Server
+
+Folgende MCP-Server sind aktiv (`opencode.json` + `.opencode/mcp.local.json`):
+
+| Server | Typ | Zweck |
+|--------|-----|-------|
+| `reqogniloom` | remote (SSE) | Requirements, Architektur, Tests, Traceability |
+
+**ReqogniLoom:** Siehe `.opencode/instructions/reqogniloom-mcp.md` für Tool-Referenz und Usage-Hints (Allowed/Blocked Tools, Anwendungsfälle).
+
 ## Eigene Notizen
 
 Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird von `agent-meta` nicht überschrieben!
@@ -363,17 +404,25 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `e2e-tester.md` → registriere als `e2e-tester`
    - `explorer.md` → registriere als `explorer`
    - `git.md` → registriere als `git`
-   - `home-organization-specialist.md` → registriere als `home-organization-specialist`
    - `ideation.md` → registriere als `ideation`
    - `intern-developer.md` → registriere als `intern-developer`
    - `junior-developer.md` → registriere als `junior-developer`
+   - `knowledge-curator.md` → registriere als `knowledge-curator`
+   - `knowledge-gardener.md` → registriere als `knowledge-gardener`
+   - `knowledge-indexer.md` → registriere als `knowledge-indexer`
+   - `knowledge-ingestor.md` → registriere als `knowledge-ingestor`
+   - `knowledge-linter.md` → registriere als `knowledge-linter`
+   - `knowledge-migrator.md` → registriere als `knowledge-migrator`
+   - `knowledge-querier.md` → registriere als `knowledge-querier`
    - `log-analyzer.md` → registriere als `log-analyzer`
    - `meta-feedback.md` → registriere als `meta-feedback`
-   - `opengrid-designer.md` → registriere als `opengrid-designer`
    - `orchestrator.md` → registriere als `orchestrator`
    - `quality-auditor.md` → registriere als `quality-auditor`
+   - `release.md` → registriere als `release`
    - `requirements-architect.md` → registriere als `requirements-architect`
    - `risk-analyst.md` → registriere als `risk-analyst`
+   - `senior-developer.md` → registriere als `senior-developer`
+   - `technical-writer.md` → registriere als `technical-writer`
    - `test-engineer.md` → registriere als `test-engineer`
    - `ui-ux-designer.md` → registriere als `ui-ux-designer`
 
@@ -388,17 +437,25 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="e2e-tester", ...)
    define_subagent(name="explorer", ...)
    define_subagent(name="git", ...)
-   define_subagent(name="home-organization-specialist", ...)
    define_subagent(name="ideation", ...)
    define_subagent(name="intern-developer", ...)
    define_subagent(name="junior-developer", ...)
+   define_subagent(name="knowledge-curator", ...)
+   define_subagent(name="knowledge-gardener", ...)
+   define_subagent(name="knowledge-indexer", ...)
+   define_subagent(name="knowledge-ingestor", ...)
+   define_subagent(name="knowledge-linter", ...)
+   define_subagent(name="knowledge-migrator", ...)
+   define_subagent(name="knowledge-querier", ...)
    define_subagent(name="log-analyzer", ...)
    define_subagent(name="meta-feedback", ...)
-   define_subagent(name="opengrid-designer", ...)
    define_subagent(name="orchestrator", ...)
    define_subagent(name="quality-auditor", ...)
+   define_subagent(name="release", ...)
    define_subagent(name="requirements-architect", ...)
    define_subagent(name="risk-analyst", ...)
+   define_subagent(name="senior-developer", ...)
+   define_subagent(name="technical-writer", ...)
    define_subagent(name="test-engineer", ...)
    define_subagent(name="ui-ux-designer", ...)
    ```

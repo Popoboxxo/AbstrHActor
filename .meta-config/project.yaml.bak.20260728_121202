@@ -226,9 +226,6 @@ variables:
   HACS_CATEGORY: integration
 orchestrator:
   enabled: true
-  provider-overrides:
-    Claude:
-      mode: main-chat
 knowledge-engine:
   okf:
     enforce-frontmatter: true
@@ -282,22 +279,24 @@ quality-pipelines:
     refactor:
       enabled: false
 mcp-servers:
-- reqogniloom
+- a2a-handoff
+- home-assistant
+- influxdb
 external-skills:
   reqogniloom-change-manager:
-    enabled: true
+    enabled: false
   reqogniloom-quality-auditor:
-    enabled: true
+    enabled: false
   reqogniloom-requirements-architect:
-    enabled: true
+    enabled: false
   reqogniloom-risk-analyst:
-    enabled: true
+    enabled: false
   reqogniloom-test-engineer:
-    enabled: true
+    enabled: false
   home-organization:
-    enabled: false
+    enabled: true
   opengrid-openscad:
-    enabled: false
+    enabled: true
 skills-registry: {}
 mcp-registry: {}
-speech-mode: caveman
+speech-mode: childish
