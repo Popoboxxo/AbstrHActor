@@ -1,4 +1,4 @@
-agent-meta-version: 0.90.1
+agent-meta-version: 0.91.3
 ai-providers:
 - Claude
 - Gemini

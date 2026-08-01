@@ -1,0 +1,72 @@
+{
+  ".meta-config/context-hashes.json": {
+    "mtime": 1785432801.1832855,
+    "ast_hash": "782e2fe1244a05cefa7440ae0bb28724",
+    "semantic_hash": "782e2fe1244a05cefa7440ae0bb28724"
+  },
+  ".meta-viz/sync-status.json": {
+    "mtime": 1785432801.233588,
+    "ast_hash": "293b52971cdf684bf098682cd20aa9db",
+    "semantic_hash": "293b52971cdf684bf098682cd20aa9db"
+  },
+  ".tokensave/branch-meta.json": {
+    "mtime": 1785432859.6001055,
+    "ast_hash": "f567b84e65c87372fd601a04fb31feae",
+    "semantic_hash": "f567b84e65c87372fd601a04fb31feae"
+  },
+  ".tokensave/config.json": {
+    "mtime": 1785432859.3956542,
+    "ast_hash": "c67ee612a0e1aff328e088006dbe8cab",
+    "semantic_hash": "c67ee612a0e1aff328e088006dbe8cab"
+  },
+  ".meta-config/project.yaml": {
+    "mtime": 1785432801.1837955,
+    "ast_hash": "20b9a260543b3dd862e606a915b972bd",
+    "semantic_hash": "20b9a260543b3dd862e606a915b972bd"
+  },
+  ".serena/memories/memory_maintenance.md": {
+    "mtime": 1785432801.2414856,
+    "ast_hash": "17877e37a829c58bb20c04228b985ab8",
+    "semantic_hash": "17877e37a829c58bb20c04228b985ab8"
+  },
+  ".serena/project.yml": {
+    "mtime": 1785181200.0475378,
+    "ast_hash": "d382a3de8ab3955ae3c5e0af6ceed9ac",
+    "semantic_hash": "d382a3de8ab3955ae3c5e0af6ceed9ac"
+  },
+  "AGENTS.md": {
+    "mtime": 1785432801.249069,
+    "ast_hash": "0851d8d97d6cabdf7af49a01f2059640",
+    "semantic_hash": "0851d8d97d6cabdf7af49a01f2059640"
+  },
+  "CLAUDE.md": {
+    "mtime": 1785432801.2560003,
+    "ast_hash": "f8dcd0a262d1cea10fde5807824c1ce0",
+    "semantic_hash": "f8dcd0a262d1cea10fde5807824c1ce0"
+  },
+  "LASTENHEFT_ABSTRAKTIONS_INTEGRATION.md": {
+    "mtime": 1785336219.7620103,
+    "ast_hash": "79f0c7c5af4ebacd18971ab9530ce0c5",
+    "semantic_hash": "79f0c7c5af4ebacd18971ab9530ce0c5"
+  },
+  "README.md": {
+    "mtime": 1785181200.0495625,
+    "ast_hash": "291a396179eee16fe71706671c5c92f5",
+    "semantic_hash": "291a396179eee16fe71706671c5c92f5"
+  },
+  "knowledge/schema.md": {
+    "mtime": 1785181200.0500693,
+    "ast_hash": "b33d533599fd3c5c87279f323fcf8c6c",
+    "semantic_hash": "b33d533599fd3c5c87279f323fcf8c6c"
+  },
+  "knowledge/wiki/index.md": {
+    "mtime": 1785181200.0517447,
+    "ast_hash": "2f91ba2e1f4403725c06b8f82f73fb70",
+    "semantic_hash": "2f91ba2e1f4403725c06b8f82f73fb70"
+  },
+  "knowledge/wiki/log.md": {
+    "mtime": 1785181200.0517447,
+    "ast_hash": "9b4e2f95d0c90fdc40eae54e22062424",
+    "semantic_hash": "9b4e2f95d0c90fdc40eae54e22062424"
+  }
+}

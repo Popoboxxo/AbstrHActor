@@ -1,0 +1,10 @@
+{
+  "services": {
+    "export_data": {
+      "icon": "mdi:database-export"
+    },
+    "import_data": {
+      "icon": "mdi:database-import"
+    }
+  }
+}

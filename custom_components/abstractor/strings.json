@@ -1,0 +1,14 @@
+{
+  "title": "Abstractor",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Abstract Device",
+        "description": "Choose the type of abstract device you want to create.",
+        "data": {
+          "device_type": "Device Type"
+        }
+      }
+    }
+  }
+}

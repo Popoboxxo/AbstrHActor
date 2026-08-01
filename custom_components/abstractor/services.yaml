@@ -1,0 +1,6 @@
+export_data:
+  name: Export Abstractor Data
+  description: Exports the current state and mapping of all abstract sensors to a backup file.
+import_data:
+  name: Import Abstractor Data
+  description: Imports the state and mapping of all abstract sensors from a backup file.
