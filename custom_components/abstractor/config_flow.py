@@ -10,7 +10,16 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from .const import CONF_DEVICE_TYPE, CONF_SOURCE_ENTITY_ID, DOMAIN, SENSOR_TYPES
+from .const import (
+    CONF_DEVICE_TYPE,
+    CONF_FALLBACK_ZERO,
+    CONF_INVERT,
+    CONF_SOURCE_ENTITY_ID,
+    CONF_SOURCE_ENTITY_IDS,
+    CONF_SPIKE_FILTER,
+    DOMAIN,
+    SENSOR_TYPES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +33,24 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial step."""
         if user_input is not None:
-            unique_id = f"abstractor_{user_input[CONF_SOURCE_ENTITY_ID]}"
+            sources = user_input.get(CONF_SOURCE_ENTITY_IDS) or [
+                user_input.get(CONF_SOURCE_ENTITY_ID)
+            ]
+            sources = [source for source in sources if source]
+            if not sources:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=self._user_schema(),
+                    errors={"base": "source_required"},
+                )
+            if len(sources) > 1:
+                user_input[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
+            else:
+                user_input.pop(CONF_SOURCE_ENTITY_IDS, None)
+            unique_id = (
+                f"abstractor_{user_input[CONF_DEVICE_TYPE]}_"
+                f"{'_'.join(sorted(sources))}"
+            )
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
@@ -32,7 +58,15 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title=f"Abstract {user_input[CONF_DEVICE_TYPE]}", data=user_input
             )
 
-        data_schema = vol.Schema(
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self._user_schema(),
+        )
+
+    @staticmethod
+    def _user_schema() -> vol.Schema:
+        """Build the onboarding schema."""
+        return vol.Schema(
             {
                 vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
                     selector.SelectSelectorConfig(
@@ -40,14 +74,13 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Required(CONF_SOURCE_ENTITY_ID): selector.EntitySelector(),
+                vol.Optional(CONF_SOURCE_ENTITY_ID): selector.EntitySelector(),
+                vol.Optional(CONF_SOURCE_ENTITY_IDS): selector.EntitySelector(
+                    selector.EntitySelectorConfig(multiple=True)
+                ),
             }
         )
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=data_schema,
-        )
 
     @staticmethod
     @callback
@@ -74,17 +107,26 @@ class AbstractorOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Required(
+                        CONF_SOURCE_ENTITY_IDS,
+                        default=self.config_entry.data.get(
+                            CONF_SOURCE_ENTITY_IDS,
+                            [self.config_entry.data.get(CONF_SOURCE_ENTITY_ID)],
+                        ),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(multiple=True)
+                    ),
                     vol.Optional(
-                        "spike_filter", 
-                        default=self.config_entry.options.get("spike_filter", False)
+                        CONF_SPIKE_FILTER,
+                        default=self.config_entry.options.get(CONF_SPIKE_FILTER, False)
                     ): bool,
                     vol.Optional(
-                        "invert", 
-                        default=self.config_entry.options.get("invert", False)
+                        CONF_INVERT,
+                        default=self.config_entry.options.get(CONF_INVERT, False)
                     ): bool,
                     vol.Optional(
-                        "fallback_zero", 
-                        default=self.config_entry.options.get("fallback_zero", False)
+                        CONF_FALLBACK_ZERO,
+                        default=self.config_entry.options.get(CONF_FALLBACK_ZERO, False)
                     ): bool,
                 }
             ),
