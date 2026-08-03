@@ -223,6 +223,8 @@ opencode.json
 .gemini/
 
 
+graphify-out/
+
 # --- agent-meta managed (do not edit) ---
 .claude/agent-memory-local/
 .claude/pending-tasks.md

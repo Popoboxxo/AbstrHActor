@@ -1,0 +1,400 @@
+{
+  "models": [
+    {
+      "id": "claude-fable-5",
+      "name": "Claude Fable 5",
+      "provider": "anthropic",
+      "input_cost_api": 10.0,
+      "output_cost_api": 50.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-5",
+      "name": "Claude Opus 5",
+      "provider": "anthropic",
+      "input_cost_api": 5.0,
+      "output_cost_api": 25.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "provider": "anthropic",
+      "input_cost_api": 3.0,
+      "output_cost_api": 15.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "name": "Claude Haiku 4.5",
+      "provider": "anthropic",
+      "input_cost_api": 1.0,
+      "output_cost_api": 5.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "name": "(alias) Claude Haiku 4.5",
+      "provider": "anthropic",
+      "input_cost_api": 1.0,
+      "output_cost_api": 5.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-8",
+      "name": "Claude Opus 4.8",
+      "provider": "anthropic",
+      "input_cost_api": 5.0,
+      "output_cost_api": 25.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-7",
+      "name": "Claude Opus 4.7",
+      "provider": "anthropic",
+      "input_cost_api": 5.0,
+      "output_cost_api": 25.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-6",
+      "name": "Claude Opus 4.6",
+      "provider": "anthropic",
+      "input_cost_api": 5.0,
+      "output_cost_api": 25.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "provider": "anthropic",
+      "input_cost_api": 3.0,
+      "output_cost_api": 15.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-sonnet-4-5-20250929",
+      "name": "Claude Sonnet 4.5",
+      "provider": "anthropic",
+      "input_cost_api": 3.0,
+      "output_cost_api": 15.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "name": "(alias) Claude Sonnet 4.5",
+      "provider": "anthropic",
+      "input_cost_api": 3.0,
+      "output_cost_api": 15.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-5-20251101",
+      "name": "Claude Opus 4.5",
+      "provider": "anthropic",
+      "input_cost_api": 5.0,
+      "output_cost_api": 25.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-5",
+      "name": "(alias) Claude Opus 4.5",
+      "provider": "anthropic",
+      "input_cost_api": 5.0,
+      "output_cost_api": 25.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-1-20250805",
+      "name": "Claude Opus 4.1 (deprecated, retires 2026-08-05)",
+      "provider": "anthropic",
+      "input_cost_api": 15.0,
+      "output_cost_api": 75.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "claude-opus-4-1",
+      "name": "(alias) Claude Opus 4.1 (deprecated, retires 2026-08-05)",
+      "provider": "anthropic",
+      "input_cost_api": 15.0,
+      "output_cost_api": 75.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "anthropic/claude-opus-5-fast",
+      "name": "Claude Opus 5 (Fast)",
+      "provider": "anthropic",
+      "input_cost_api": 10.0,
+      "output_cost_api": 50.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "anthropic/claude-opus-4.8-fast",
+      "name": "Anthropic: Claude Opus 4.8 (Fast)",
+      "provider": "anthropic",
+      "input_cost_api": 10.0,
+      "output_cost_api": 50.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "anthropic/claude-opus-4.7-fast",
+      "name": "Anthropic: Claude Opus 4.7 (Fast)",
+      "provider": "anthropic",
+      "input_cost_api": 30.0,
+      "output_cost_api": 150.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "anthropic/claude-opus-4",
+      "name": "Anthropic: Claude Opus 4",
+      "provider": "anthropic",
+      "input_cost_api": 15.0,
+      "output_cost_api": 75.0,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4",
+      "name": "Anthropic: Claude Sonnet 4",
+      "provider": "anthropic",
+      "input_cost_api": 3.0,
+      "output_cost_api": 15.0,
+      "context_length": 1000000,
+      "tier": "Standard"
+    },
+    {
+      "id": "anthropic/claude-3-haiku",
+      "name": "Anthropic: Claude 3 Haiku",
+      "provider": "anthropic",
+      "input_cost_api": 0.25,
+      "output_cost_api": 1.25,
+      "context_length": 200000,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/minimax-m3",
+      "name": "Minimax M3",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/minimax-m2.7",
+      "name": "Minimax M2.7",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/minimax-m2.5",
+      "name": "Minimax M2.5",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/kimi-k3",
+      "name": "Kimi K3",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/kimi-k2.6",
+      "name": "Kimi K2.6",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/kimi-k2.5",
+      "name": "Kimi K2.5",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/glm-5.2",
+      "name": "Glm 5.2",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/glm-5.1",
+      "name": "Glm 5.1",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/glm-5",
+      "name": "Glm 5",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/deepseek-v4-pro",
+      "name": "Deepseek V4 Pro",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/deepseek-v4-flash",
+      "name": "Deepseek V4 Flash",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/qwen3.7-max",
+      "name": "Qwen3.7 Max",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/qwen3.7-plus",
+      "name": "Qwen3.7 Plus",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/qwen3.6-plus",
+      "name": "Qwen3.6 Plus",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/qwen3.5-plus",
+      "name": "Qwen3.5 Plus",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/mimo-v2-pro",
+      "name": "Mimo V2 Pro",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/mimo-v2-omni",
+      "name": "Mimo V2 Omni",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/mimo-v2.5-pro",
+      "name": "Mimo V2.5 Pro",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/mimo-v2.5",
+      "name": "Mimo V2.5",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/hy3",
+      "name": "Hy3",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/hy3-preview",
+      "name": "Hy3 Preview",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    },
+    {
+      "id": "opencode-go/grok-4.5",
+      "name": "Grok 4.5",
+      "provider": "opencode-go",
+      "input_cost_api": 0.0,
+      "output_cost_api": 0.0,
+      "context_length": null,
+      "tier": "Standard"
+    }
+  ]
+}

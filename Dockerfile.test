@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# Abstractor — Test image (Dockerfile.test)
+#
+# Reproducible, disposable container for running the Abstractor unit-test
+# suite and static checks. No running Home Assistant instance is required:
+# `pytest-homeassistant-custom-component` provides the `hass` /
+# `enable_custom_integrations` fixtures fully in-process.
+#
+# Build:  docker compose -f docker-compose.test.yml build
+# Run:    docker compose -f docker-compose.test.yml run --rm test
+# Lint:   docker compose -f docker-compose.test.yml --profile lint run --rm lint
+#
+# Version pins can be overridden at build time, e.g.:
+#   docker compose build --build-arg HOMEASSISTANT_VERSION=2025.4.1
+# =============================================================================
+
+FROM python:3.12-slim
+
+# -----------------------------------------------------------------------------
+# Build-time overrides
+# -----------------------------------------------------------------------------
+# Home Assistant is the heavyweight dependency (async loop, entities, etc.).
+# Pin it for reproducibility; bump deliberately.
+ARG HOMEASSISTANT_VERSION=2025.1.4
+# UID used for the non-root test user (defaults to 1000, matches most UIDs).
+ARG TEST_UID=1000
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /workspace
+
+# -----------------------------------------------------------------------------
+# System packages
+#   build-essential: covers any sdist fallback builds (e.g. ciso8601,
+#   orjson) if a wheel is missing for the platform.
+# -----------------------------------------------------------------------------
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# -----------------------------------------------------------------------------
+# Python test dependencies (installed before the source COPY for layer cache).
+#   - homeassistant                       : core HA runtime (fixtures need it)
+#   - pytest-homeassistant-custom-component : `hass`, `enable_custom_integrations`
+#   - pytest-cov / pytest-asyncio         : coverage + asyncio support
+#   - ruff / mypy                         : static checks (lint profile)
+# -----------------------------------------------------------------------------
+RUN pip install --no-cache-dir \
+        "homeassistant==${HOMEASSISTANT_VERSION}" \
+        "pytest-homeassistant-custom-component" \
+        "pytest-cov" \
+        "pytest-asyncio" \
+        "ruff" \
+        "mypy"
+
+# -----------------------------------------------------------------------------
+# Project sources (frequently changed -> copied last)
+# -----------------------------------------------------------------------------
+COPY custom_components/ custom_components/
+COPY tests/ tests/
+# Library files must not be executable (Windows/Docker copies set +x by default)
+RUN find custom_components tests -name '*.py' -exec chmod -x {} \;
+
+# Container entrypoint (dispatch: pytest / lint / shell)
+COPY scripts/entrypoint.sh /usr/local/bin/abstractor-entrypoint
+RUN chmod +x /usr/local/bin/abstractor-entrypoint
+
+# -----------------------------------------------------------------------------
+# Non-root test user
+# -----------------------------------------------------------------------------
+RUN useradd --create-home --shell /bin/bash --uid "${TEST_UID}" testuser \
+    && chown -R testuser:testuser /workspace
+
+USER testuser
+
+# Default command: pytest tests/ -v (args are appended by the entrypoint).
+ENTRYPOINT ["/usr/local/bin/abstractor-entrypoint"]
+CMD ["tests/", "-v"]

@@ -135,7 +135,214 @@ Kategorien für `docs/REQUIREMENTS.md`:
  Opencode->AGENTS.md |
 
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.90.1` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v0.91.3` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+
+
+## Regeln
+
+# A2A Anti-Re-Delegation Gates
+
+1. Limit depth to 10, no self-handoff.
+2. Short payload: `payload.t` max 300 Zeichen.
+3. No Re-Delegation (payload starts with "Du bist...").
+4. Singleton Orchestrator: NUR der `main_chat` darf den `orchestrator` spawnen.
+5. Execution-Trace-Isolation: Worker-Output muss strukturiert sein (STATUS, RESULT, ARTIFACTS). Keine rohen Logs propagieren.
+
+
+
+# Branch-Guard
+
+Verwende Feature-Branches (`feat/`, `fix/`, `chore/`). Keine Code-Änderungen direkt auf `main` oder `master`.
+
+
+
+# Commit-Konventionen
+
+Verwende Conventional Commits (feat, fix, chore).
+Beschreibungssprache: `English`
+Max 72 Zeichen in erster Zeile. Imperativ.
+Format: `<type>: <beschreibung>` (Bsp: `feat: ...`)
+
+
+
+# Definition of Done (DoD)
+
+Pflicht: Code komplett, Konventionen & Conv. Commits eingehalten, keine Regressions.
+
+
+
+# GitHub Issue Lifecycle
+
+Issues referenzieren und am Ende mit passendem Keyword (`Fixes #123`, `Closes #123`) im PR oder Commit schließen. Kommentiere das Issue nach Fertigstellung.
+
+
+
+# Sprachregeln
+
+| Kontext | Sprache |
+|---|---|
+| User-Kommunikation | **English** |
+| User-Input | **English** |
+| Externe Doku | **English** |
+| Interne Doku | **English** |
+| Code/Commits | **English** |
+
+
+
+# Lifecycle-Tasks
+
+Beim Start prüfen: existiert `.opencode/pending-tasks.md`?
+Falls ja und enthält `- [ ]`: User fragen ob delegiert werden soll.
+Nach Erledigung: löschen. Datei nicht committen.
+
+
+
+# No Worktree Isolation
+
+**Anti-Pattern:** Niemals das Argument `isolation: "worktree"` beim Spawnen von Subagenten verwenden.
+**Grund:** Agenten schreiben dann ihren Output in den internen Ordner `.claude/worktrees/agent-<id>/` anstatt in das eigentliche Projektverzeichnis. Das führt zu fehlgeleiteten Dateien und Datenverlust in der eigentlichen Codebase.
+
+Alle Agenten müssen direkt im Projektverzeichnis arbeiten (Isolation deaktivieren oder weglassen). Der `.claude/` Ordner (sowie `.gemini/`, `.continue/`, `.mammouth/` etc.) ist strikt als Infrastruktur-Ordner zu betrachten und darf nicht für Arbeitskopien missbraucht werden.
+
+
+
+# Python Conventions
+
+PEP8 einhalten. Type Hints (typing) verwenden. Docstrings für Klassen/Methoden schreiben.
+
+
+
+# Session-Abschluss
+
+Delegate Session-Zusammenfassung an `documenter` am Ende großer Features, um CODEBASE_OVERVIEW.md aktuell zu halten.
+
+
+
+# Submodule-Schutzkonzept
+
+Regeln für den Umgang mit allen Git-Submodulen (`.agent-meta/`, `external/*/`, und alle weiteren in `.gitmodules`):
+
+- **Keine direkten Änderungen in Submodul-Verzeichnissen:** Dateien in `.agent-meta/`, `external/*/` und allen anderen Submodul-Pfaden dürfen in Konsumenten-Repositories niemals direkt editiert oder committet werden. Submodule sind separate Repositories mit eigenem Lifecycle (Build, Push, Deploy, Version-Tags). Änderungen MÜSSEN im Submodul-Repo selbst durchgeführt, committet und gepusht werden — danach aktualisiert das Parent-Repo die Pinned-Commit-Referenz.
+- **Keine Mutation von `.gitmodules` / Git Staging:** `.gitmodules` darf nicht automatisch modifiziert werden und Submodule dürfen nicht automatisch via `git add` gestaged werden.
+- **Kein Source-Code-Scaffolding in Konsumenten-Projekten:** In Konsumenten-Projekten wird kein Anwendungscode generiert/gerüstet; verwaltet werden ausschließlich `.meta-config/project.yaml` und die Managed Blocks.
+- **Framework-Änderungen nur im agent-meta Repo:** Änderungen am agent-meta Framework müssen auf Feature-Branches im agent-meta Repository selbst durchgeführt werden.
+
+
+
+# CRITICAL GATE
+MAIN CHAT darf nicht selbst editieren. ALLES -> `orchestrator`. Keine Ausnahmen.
+
+## Git Delegation
+Git Mutationen (commit, push, add etc) -> `git` Agent. Read-only (status, log) im Main Chat ok.
+
+Native Extensions (Skills/Hooks) erlaubt, ignorieren nicht Branch-Guard/DoD.
+
+Anti-Recursion: Worker dürfen nicht an `orchestrator` zurück delegieren.
+
+
+
+# MCP: reqogniloom
+
+> ReqogniLoom requirements-engineering platform — requirements, architecture, tests, traceability and AI-assisted derivation
+
+---
+
+## Erlaubte Tools
+
+- `requirement.get`
+- `requirement.query`
+- `requirement.create`
+- `requirement.update`
+- `requirement.decompose`
+- `requirement.validate`
+- `requirement.derive`
+- `requirement.check_consistency`
+- `needs.read`
+- `needs.create`
+- `needs.update`
+- `needs.get_traces`
+- `needs.derive_requirements`
+- `architecture.get`
+- `architecture.query`
+- `architecture.create`
+- `architecture.update`
+- `architecture.link`
+- `architecture.decompose`
+- `architecture.decompose_commit`
+- `test.get`
+- `test.query`
+- `test.create`
+- `test.update`
+- `test.link`
+- `test.run_create`
+- `test.run_get`
+- `test.run_report_results`
+- `test.derive_from_requirement`
+- `traceability.query`
+- `traceability.suggest_links`
+- `artifact.search`
+- `artifact.get_tree`
+- `workspace.get_context`
+- `adr.read`
+- `adr.create`
+- `adr.update`
+- `adr.delete`
+- `risk.read`
+- `risk.create`
+- `risk.update`
+- `risk.delete`
+- `issue.read`
+- `issue.create`
+- `issue.update`
+- `issue.delete`
+- `glossary.read`
+- `glossary.create`
+- `glossary.update`
+- `glossary.delete`
+- `prompt_template.get`
+- `ai_derivation.derive_requirements_from_need`
+- `ai_derivation.suggest_architecture_for_requirement`
+- `ai_derivation.decompose_requirement_next_level`
+
+## Verbotene Tools (ABSOLUT — keine Ausnahmen)
+
+- `workspace.close`
+- `workspace.reactivate`
+- `workspace.delete`
+- `permissions.set_rule`
+- `permissions.list`
+- `permissions.revoke`
+- `permissions.check`
+- `admin.backup_create`
+- `admin.backup_list`
+- `admin.restore`
+- `audit.query`
+- `audit.ai_review`
+- `events.dlq_list`
+- `events.dlq_replay`
+- `user.create`
+- `user.assign_role`
+- `user.list`
+- `user.deactivate`
+
+## Agent-Hinweise
+
+ReqogniLoom ist die Single-Source-of-Truth für Requirements, Architektur und Test-Traceability. Verwende es immer, wenn du Features validieren oder Architekturentscheidungen nachvollziehen musst.
+requirement.query/get: Wann nutzen? Zu Beginn jeder Aufgabe, um Anforderungen und deren Kontext zu verstehen. requirement.create/update/decompose/derive: Wann nutzen? Während der Planungsphase, um große Features in überprüfbare Requirements zu zerlegen. architecture.*, test.*: Wann nutzen? Beim Systemdesign (Architecture) und TDD-Prozess (Tests) zur Verknüpfung mit Code. traceability.query/suggest_links: Wann nutzen? Beim Code-Review oder Validator-Gate, um die REQ-Abdeckung zu validieren. artifact.search/get_tree: Wann nutzen? Für tiefgreifende Recherchen über den gesamten Artefakt-Baum. ai_derivation.*: Wann nutzen? Wenn du komplexe, abstrakte Requirements systematisch in technische Sub-Tasks aufschlüsseln musst.
+Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive Namespaces (admin.*, user.*, etc.) sind aus Sicherheitsgründen hart blockiert.
+
+## Verbindungstyp
+
+- Typ: `sse`
+- URL: `{{MCP_REQOGNILOOM_URL}}/mcp/sse/` — Wert aus `secrets.local.yaml`
+
+---
+
+*Generiert von agent-meta aus `config/mcp-registry.yaml` — nicht manuell bearbeiten.*
+
+
+
+
 
 ## Agent Directory
 > ⚠️ **ACHTUNG:** Agenten (Prompts) liegen in `.gemini/agents bzw. .opencode/agents`.
@@ -143,13 +350,27 @@ Kategorien für `docs/REQUIREMENTS.md`:
 | Agent | Core Capabilities |
 |-------|-------------------|
 
+| `accessibility-specialist` | WCAG 2.1/2.2 Compliance-Audit, ARIA-Checks, Keyboard-Navigation, Screenreader... |
+
 | `agent-meta-manager` | agent-meta verwalten: Upgrade, Sync, Feedback, projektspezifische Agenten anl... |
+
+| `api-specialist` | OpenAPI/Contract-First API Design, Schnittstellen-Spezifikationen. |
 
 | `bug-feature-analyzer` | Issue-Triage: Eingehende Bug-Meldungen und Feature-Requests analysieren und k... |
 
+| `claude-expert` | Absoluter Analyse-Experte für die Plattform Claude Code: Funktionsweise, Konf... |
+
 | `code-reviewer` | Clean Code Gatekeeper: Blast-Radius-Analyse, SOLID/DRY Prüfung, Code-Qualität... |
 
+| `data-engineer` | ETL/ELT-Pipelines, Schema-Migration (Datenebene), Data-Quality-Checks, Lineag... |
+
+| `database-engineer` | Relationales Schema-Design, Datenbank-Migrationen, Query-Optimierung und Inde... |
+
+| `dependency-auditor` | Supply-Chain-Hygiene: SBOM-Analyse, Lizenz-Kompatibilität, Version-Drift und ... |
+
 | `developer` | Feature-Implementierung und Bugfixes |
+
+| `devops-engineer` | CI/CD, Infrastructure as Code, Kubernetes, Observability. |
 
 | `docker` | Dev-Stack verwalten, Test-Stack starten, Binary-Management, Dockerfiles erste... |
 
@@ -191,6 +412,8 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 | `orchestrator` | Einstiegspunkt für alle Entwicklungsaufgaben |
 
+| `performance-optimizer` | Big-O Bottleneck-Identifikation und datengetriebene Performance-Optimierung. |
+
 | `release` | Versioning, Changelog, Build-Artifact, GitHub Release erstellen |
 
 | `requirements` | Anforderungen aufnehmen, REQ-IDs vergeben, REQUIREMENTS.md pflegen |
@@ -202,6 +425,8 @@ Kategorien für `docs/REQUIREMENTS.md`:
 | `tester` | TDD, Test-Suite ausführen, Testabdeckung sichern |
 
 | `ui-ux-designer` | UI-Spezifikationen, Mockups und Design-Systeme erstellen. |
+
+| `validator` | Code gegen REQs prüfen, DoD-Checkliste, Traceability-Audit |
 
 
 ## Knowledge Engine
@@ -227,161 +452,77 @@ Die Knowledge Engine ist aktiviert. Domäne: **internal-docs**.
 - **Migration:** `knowledge-migrator` räumt vorhandene Inhalte auf und migriert ins OKF-Format
 - **Gardening:** `knowledge-gardener` pflegt Links, Tags, Typos, Timestamps
 
-
-## Regeln
-
-# A2A Anti-Re-Delegation Gates
-
-1. Limit depth to 10, no self-handoff.
-2. Short payload: `payload.t` max 300 Zeichen.
-3. No Re-Delegation (payload starts with "Du bist...").
-4. Singleton Orchestrator: NUR der `main_chat` darf den `orchestrator` spawnen.
-5. Execution-Trace-Isolation: Worker-Output muss strukturiert sein (STATUS, RESULT, ARTIFACTS). Keine rohen Logs propagieren.
-
-
-
-# Branch-Guard
-
-Verwende Feature-Branches (`feat/`, `fix/`, `chore/`). Keine Code-Änderungen direkt auf `main` oder `master`.
-
-
-
-# Commit-Konventionen
-
-Verwende Conventional Commits (feat, fix, chore).
-Beschreibungssprache: `English`
-Max 72 Zeichen in erster Zeile. Imperativ.
-
-Format: `<type>: <beschreibung>` (Bsp: `feat: ...`)
-
-
-
-
-# Definition of Done (DoD)
-
-Pflicht: Code komplett, Konventionen & Conv. Commits eingehalten, keine Regressions.
-
-
-
-
-
-
-
-# GitHub Issue Lifecycle
-
-Issues referenzieren und am Ende mit passendem Keyword (`Fixes #123`, `Closes #123`) im PR oder Commit schließen. Kommentiere das Issue nach Fertigstellung.
-
-
-
-# Sprachregeln
-
-| Kontext | Sprache |
-|---|---|
-| User-Kommunikation | **English** |
-| User-Input | **English** |
-| Externe Doku | **English** |
-| Interne Doku | **English** |
-| Code/Commits | **English** |
-
-
-
-# Lifecycle-Tasks
-
-Beim Start prüfen: existiert `.opencode/pending-tasks.md`?
-Falls ja und enthält `- [ ]`: User fragen ob delegiert werden soll.
-Nach Erledigung: löschen. Datei nicht committen.
-
-
-
-# No Worktree Isolation
-
-**Anti-Pattern:** Niemals das Argument `isolation: "worktree"` beim Spawnen von Subagenten verwenden.
-**Grund:** Agenten schreiben dann ihren Output in den internen Ordner `.claude/worktrees/agent-<id>/` anstatt in das eigentliche Projektverzeichnis. Das führt zu fehlgeleiteten Dateien und Datenverlust in der eigentlichen Codebase.
-
-Alle Agenten müssen direkt im Projektverzeichnis arbeiten (Isolation deaktivieren oder weglassen). Der `.claude/` Ordner (sowie `.gemini/`, `.continue/`, `.mammouth/` etc.) ist strikt als Infrastruktur-Ordner zu betrachten und darf nicht für Arbeitskopien missbraucht werden.
-
-
-
-# Provider-Agnostic Policy
-
-Generische Templates in `1-generic/` müssen provider-agnostisch sein. Keine spezifischen Prompts für Claude, Gemini etc., außer als Fallback/Feature-Flag.
-
-
-
-# Python Conventions
-
-PEP8 einhalten. Type Hints (typing) verwenden. Docstrings für Klassen/Methoden schreiben.
-
-
-
-# Session-Abschluss
-
-Delegate Session-Zusammenfassung an `documenter` am Ende großer Features, um CODEBASE_OVERVIEW.md aktuell zu halten.
-
-
-
-# Submodule-Schutzkonzept
-
-Regeln für den Umgang mit dem `.agent-meta`-Submodul und `.gitmodules`:
-
-- **Keine direkten Änderungen in `.agent-meta/`:** Dateien in `.agent-meta/` dürfen in Konsumenten-Repositories niemals direkt editiert oder committet werden.
-- **Keine Mutation von `.gitmodules` / Git Staging:** `.gitmodules` darf nicht automatisch modifiziert werden und Submodule dürfen nicht automatisch via `git add` gestaged werden.
-- **Kein Source-Code-Scaffolding in Konsumenten-Projekten:** In Konsumenten-Projekten wird kein Anwendungscode generiert/gerüstet; verwaltet werden ausschließlich `.meta-config/project.yaml` und die Managed Blocks.
-- **Framework-Änderungen nur im agent-meta Repo:** Änderungen am agent-meta Framework müssen auf Feature-Branches im agent-meta Repository selbst durchgeführt werden.
-
-
-
-
-# CRITICAL GATE
-MAIN CHAT darf nicht selbst editieren. ALLES -> `orchestrator`. Keine Ausnahmen.
-
-
-
-
-## Git Delegation
-Git Mutationen (commit, push, add etc) -> `git` Agent. Read-only (status, log) im Main Chat ok.
-
-
-
-Native Extensions (Skills/Hooks) erlaubt, ignorieren nicht Branch-Guard/DoD.
-
-
-
-
-
-Anti-Recursion: Worker dürfen nicht an `orchestrator` zurück delegieren.
-
-
-## Anti-Patterns
-- **Worktree Isolation:** Niemals `isolation: "worktree"` bei Subagenten verwenden (schreibt in interne Infrastruktur-Ordner, führt zu Datenverlust).
-
-
-
-
-
 <!-- agent-meta:managed-end -->
 
 
 
 
 
+## Eigene Notizen
+
+Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird von `agent-meta` nicht überschrieben!
+
+<!-- agent-meta:managed-begin -->` and `<!-- agent-meta:managed-end -->` is generated — never edited by hand. Project-specific tweaks belong in `.meta-config/project.yaml` or in the manual notes section below.
+
+### Active agents and why
+
+The `roles:` list in `.meta-config/project.yaml` enables the core agents. The most relevant for this integration:
+
+| Agent | Why it is active here |
+|---|---|
+| `orchestrator` | Single entry point for all dev tasks (singleton — spawned by `main_chat` only) |
+| `agent-meta-manager` | Upgrade/sync/feedback lifecycle of this framework itself |
+| `developer` | Feature implementation of the custom_component |
+| `senior-developer` | Architecture decisions (Bridge/Strategy/Repository patterns, config flow) |
+| `tester` | TDD and the mandatory 100 % config-flow test coverage |
+| `validator` | DoD + REQ traceability gate before merge |
+| `code-reviewer` | Clean-code / blast-radius gate |
+| `git` | All commit/branch/tag operations (main chat stays read-only) |
+| `release` | Semantic versioning, changelog, GitHub/HACS release |
+| `documenter` | CODEBASE_OVERVIEW + docs maintenance |
+| `explorer` | Read-only codebase research and impact mapping |
+| `meta-feedback` | Channels agent-meta improvements back upstream |
+
+External ReqogniLoom agents (`change-manager`, `requirements-architect`, `risk-analyst`, `quality-auditor`, `test-engineer`) are enabled via `external-skills:` and materialized into all three platform agent directories — they back the requirements/traceability workflow through the ReqogniLoom MCP server.
+
+### Orchestrator delegation for this domain
+
+Typical flow for an Abstractor task:
+
+1. `main_chat` → `orchestrator` (the only allowed spawner, A2A gate #4)
+2. `orchestrator` decomposes: research (`explorer`) → requirements (`requirements-architect`) → implementation (`developer`/`senior-developer`) → tests (`tester`) → review (`code-reviewer`) → validation (`validator`) → commit (`git`)
+3. Workers return structured output (STATUS/RESULT/ARTIFACTS); no re-delegation back to `orchestrator` (A2A gate #5)
+4. HA-specific context comes from the managed rules (MCP `GetLiveContext`, entity CSV, notifications) — strictly read-only; device control stays in HA
+
+### Pipeline preferences
+
+- **standard-feature:** feature branch `feat/` → TDD → developer+tester → validator → PR (used for new sensor types, bridge backends, config-flow steps)
+- **quick-fix:** `junior-developer` for ≤ 2-file fixes without architecture impact; branch `fix/` → `git` commit
+- **docs-update:** `documenter`/`technical-writer` for docs, diagrams, README — no code path
+- Preset: DoD `rapid-prototyping`, tier `Normal`; quality pipelines (`se-cascade`, `bugfix`, `refactor`, `concept-development`) are overridden off
+
+### How agent-meta sync works in this repo
+
+- Framework lives in the git submodule `.agent-meta` (pinned to v0.91.3), wired via `.gitmodules`
+- Single source of truth: `.meta-config/project.yaml` (version, roles, variables, external skills, MCP)
+- `py .agent-meta/scripts/sync.py --config .meta-config/project.yaml` regenerates:
+  - the managed blocks in `AGENTS.md` / `CLAUDE.md`
+  - `.claude/`, `.gemini/`, `.opencode/` agent prompts, rules, commands, skills
+  - opencode.json permission isolation (`.claude/**`, `**/CLAUDE.md`, `.gemini/**` denied)
+- `update-meta` re-syncs at the current version; `upgrade-meta` bumps the submodule to a new tag
+- Submodule protection: never edit `.agent-meta/` directly in this repo; framework changes go to the `agent-meta` repository
+- After any sync: check `sync.log` for `[WARN]`, then run `consistency-check.py --changed` to catch frontmatter/placeholder drift
+
+### Known agent-meta health items (as of 2026-08-02)
+
+- `.claude/agents/` is missing `orchestrator.md` (41 files vs. 42 in `.gemini`/`.opencode`) — re-sync to restore
+- `claude-expert` is listed in `roles:` and the directory table but has no agent file in any platform — stale role reference
+- Directory table omits the 5 ReqogniLoom external agents although they are materialized — table vs. bootstrap inconsistency
+- 4 HA platform-config placeholders (`notify_group`, `notify_admin_group`, `influxdb_bucket`, `influxdb_org`) are empty — not needed for this repo, but they produce sync warnings
+- `external/ReqogniLoom` checkout pin `a05f6d56` failed in the last sync (fix: `git checkout a05f6d56` inside the submodule)
 
 
 
-
-
-
-
-
-## MCP-Server
-
-Folgende MCP-Server sind aktiv (`opencode.json` + `.opencode/mcp.local.json`):
-
-| Server | Typ | Zweck |
-|--------|-----|-------|
-| `reqogniloom` | remote (SSE) | Requirements, Architektur, Tests, Traceability |
-
-**ReqogniLoom:** Siehe `.opencode/instructions/reqogniloom-mcp.md` für Tool-Referenz und Usage-Hints (Allowed/Blocked Tools, Anwendungsfälle).
 
 ## Eigene Notizen
 
@@ -395,14 +536,23 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
 **Führe folgende Schritte zu Beginn JEDER Session aus:**
 
 1. Lies alle Agenten-Dateien aus `.gemini/agents/`:
+   - `accessibility-specialist.md` → registriere als `accessibility-specialist`
    - `agent-meta-manager.md` → registriere als `agent-meta-manager`
+   - `api-specialist.md` → registriere als `api-specialist`
+   - `bug-feature-analyzer.md` → registriere als `bug-feature-analyzer`
    - `change-manager.md` → registriere als `change-manager`
    - `code-reviewer.md` → registriere als `code-reviewer`
+   - `data-engineer.md` → registriere als `data-engineer`
+   - `database-engineer.md` → registriere als `database-engineer`
+   - `dependency-auditor.md` → registriere als `dependency-auditor`
    - `developer.md` → registriere als `developer`
+   - `devops-engineer.md` → registriere als `devops-engineer`
    - `docker.md` → registriere als `docker`
    - `documenter.md` → registriere als `documenter`
    - `e2e-tester.md` → registriere als `e2e-tester`
    - `explorer.md` → registriere als `explorer`
+   - `feature.md` → registriere als `feature`
+   - `feedback.md` → registriere als `feedback`
    - `git.md` → registriere als `git`
    - `ideation.md` → registriere als `ideation`
    - `intern-developer.md` → registriere als `intern-developer`
@@ -417,6 +567,7 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `log-analyzer.md` → registriere als `log-analyzer`
    - `meta-feedback.md` → registriere als `meta-feedback`
    - `orchestrator.md` → registriere als `orchestrator`
+   - `performance-optimizer.md` → registriere als `performance-optimizer`
    - `quality-auditor.md` → registriere als `quality-auditor`
    - `release.md` → registriere als `release`
    - `requirements-architect.md` → registriere als `requirements-architect`
@@ -424,18 +575,29 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `senior-developer.md` → registriere als `senior-developer`
    - `technical-writer.md` → registriere als `technical-writer`
    - `test-engineer.md` → registriere als `test-engineer`
+   - `tester.md` → registriere als `tester`
    - `ui-ux-designer.md` → registriere als `ui-ux-designer`
+   - `validator.md` → registriere als `validator`
 
 2. Registriere jeden Agenten via define_subagent API-Call:
    ```
+   define_subagent(name="accessibility-specialist", ...)
    define_subagent(name="agent-meta-manager", ...)
+   define_subagent(name="api-specialist", ...)
+   define_subagent(name="bug-feature-analyzer", ...)
    define_subagent(name="change-manager", ...)
    define_subagent(name="code-reviewer", ...)
+   define_subagent(name="data-engineer", ...)
+   define_subagent(name="database-engineer", ...)
+   define_subagent(name="dependency-auditor", ...)
    define_subagent(name="developer", ...)
+   define_subagent(name="devops-engineer", ...)
    define_subagent(name="docker", ...)
    define_subagent(name="documenter", ...)
    define_subagent(name="e2e-tester", ...)
    define_subagent(name="explorer", ...)
+   define_subagent(name="feature", ...)
+   define_subagent(name="feedback", ...)
    define_subagent(name="git", ...)
    define_subagent(name="ideation", ...)
    define_subagent(name="intern-developer", ...)
@@ -450,6 +612,7 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="log-analyzer", ...)
    define_subagent(name="meta-feedback", ...)
    define_subagent(name="orchestrator", ...)
+   define_subagent(name="performance-optimizer", ...)
    define_subagent(name="quality-auditor", ...)
    define_subagent(name="release", ...)
    define_subagent(name="requirements-architect", ...)
@@ -457,7 +620,9 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="senior-developer", ...)
    define_subagent(name="technical-writer", ...)
    define_subagent(name="test-engineer", ...)
+   define_subagent(name="tester", ...)
    define_subagent(name="ui-ux-designer", ...)
+   define_subagent(name="validator", ...)
    ```
 
 3. Erst danach: Bearbeite User-Anfragen (Delegation an Orchestrator etc.)
@@ -509,3 +674,16 @@ rtk pip list            rtk pnpm install        rtk npm run <script>
 - For debugging, use raw command without rtk prefix
 - `rtk proxy <cmd>` runs command without filtering but tracks usage
 <!-- /headroom:rtk-instructions -->
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

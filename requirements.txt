@@ -1,0 +1,4 @@
+# Abstractor — production dependencies (installed by Home Assistant core, listed for dev reference)
+# No PyPI dependencies required — manifest.json requirements: []
+homeassistant>=2025.1
+voluptuous>=0.15.2

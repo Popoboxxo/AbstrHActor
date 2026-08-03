@@ -1,0 +1,57 @@
+# =============================================================================
+# Abstractor — build context exclusions for Dockerfile.test
+# Keeps the image build context small and free of secrets/caches.
+# =============================================================================
+
+# --- VCS / repo metadata -----------------------------------------------------
+.git
+.gitmodules
+.agent-meta
+.claude
+.gemini
+.opencode
+.meta-config
+.meta-viz
+.serena
+.tokensave
+.local
+
+# --- Generated / heavy directories ------------------------------------------
+graphify-out
+knowledge
+external
+docs
+test-results
+dist
+build
+
+# --- Python caches / artifacts ----------------------------------------------
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+.coverage.*
+htmlcov
+
+# --- Logs / temp -------------------------------------------------------------
+*.log
+*.tmp
+*.bak
+sync.log
+
+# --- Env / secrets -----------------------------------------------------------
+.env
+.env.*
+secrets*.yaml
+secrets*.yml
+
+# --- IDE / OS -----------------------------------------------------------------
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

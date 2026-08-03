@@ -1,4 +1,4 @@
-agent-meta-version: 0.91.3
+agent-meta-version: 0.91.4
 ai-providers:
 - Claude
 - Gemini
@@ -29,6 +29,19 @@ roles:
 - release
 - senior-developer
 - technical-writer
+- accessibility-specialist
+- api-specialist
+- bug-feature-analyzer
+- claude-expert
+- data-engineer
+- database-engineer
+- dependency-auditor
+- devops-engineer
+- feedback
+- feature
+- performance-optimizer
+- tester
+- validator
 dod-preset: rapid-prototyping
 project:
   name: AbstrHActor
@@ -190,12 +203,6 @@ variables:
     ConfigFlow with unique IDs, and 100% test coverage for config flow.
 
     '
-  EXTERNAL_SKILLS:
-  - requirements-architect
-  - test-engineer
-  - change-manager
-  - quality-auditor
-  - risk-analyst
   PROJECT_CONTEXT: 'The user runs a mixed Home Assistant environment with Zigbee (Z2M),
     Tasmota, Shelly, Zendure, and custom serial sensors. Current abstraction uses
     YAML template sensors — this integration will replace those with a proper Python
@@ -301,3 +308,17 @@ external-skills:
 skills-registry: {}
 mcp-registry: {}
 speech-mode: caveman
+platforms: []
+provider-options:
+  Claude: {}
+  Continue: {}
+  Copilot: {}
+  Gemini: {}
+  Mammouth: {}
+  Opencode: {}
+model-overrides:
+  Opencode:
+    senior-developer: opencode-go/gpt-5.6-luna
+max-parallel-agents: 2
+debug-mode: false
+allow-committed-secrets: false

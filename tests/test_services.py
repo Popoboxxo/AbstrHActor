@@ -9,8 +9,13 @@ from custom_components.abstractor.const import DOMAIN
 
 def _hass(store: Mock) -> SimpleNamespace:
     """Build the minimal hass surface used by service handlers."""
-    entry = Mock()
-    entry.as_dict.return_value = {"entry_id": "entry-1"}
+    entry = SimpleNamespace(
+        data={"device_type": "power", "source_entity_id": "sensor.test_source"},
+        options={},
+        title="Abstract power",
+        unique_id="abstractor_power_sensor.test_source",
+        version=1,
+    )
     coordinator = SimpleNamespace(entries={"entry-1": entry}, data={"entry-1": 4.0})
     return SimpleNamespace(
         data={DOMAIN: {"storage": store, "coordinator": coordinator}},

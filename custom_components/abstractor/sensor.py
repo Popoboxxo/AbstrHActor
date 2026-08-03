@@ -32,7 +32,7 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     coordinator: AbstractorDataUpdateCoordinator = hass.data[DOMAIN]["coordinator"]
 
-    device_type = entry.data.get(CONF_DEVICE_TYPE)
+    device_type = entry.data.get(CONF_DEVICE_TYPE, "")
     config = {**entry.data, **entry.options}
     source_entity_ids = config.get(CONF_SOURCE_ENTITY_IDS) or [
         config.get(CONF_SOURCE_ENTITY_ID)
