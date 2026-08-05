@@ -236,6 +236,9 @@ orchestrator:
   provider-overrides:
     Claude:
       mode: main-chat
+  handoff:
+    protocol: none
+    token-budget: {}
 knowledge-engine:
   okf:
     enforce-frontmatter: true
