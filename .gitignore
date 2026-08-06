@@ -258,8 +258,11 @@ AGENTS.md.sync-backup-*
 sync.log
 
 # Home Assistant demo instance runtime state (docker/docker-compose.demo.yml)
-# Contains generated auth tokens/secrets — never commit.
-docker/ha_config/
+# Contains generated auth tokens/secrets — never commit. The seed
+# configuration.yaml is tracked on purpose so the demo instance is
+# reproducible after a wipe (see docker/README.md).
+docker/ha_config/*
+!docker/ha_config/configuration.yaml
 
 # pytest/coverage output
 test-results/
