@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    CONFIG_ENTRY_VERSION,
     DOMAIN,
     SERVICE_EXPORT_DATA,
     SERVICE_IMPORT_DATA,
@@ -91,9 +92,40 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate old entry."""
-    _LOGGER.debug("Migrating from version %s", config_entry.version)
-    return config_entry.version <= 1
+    """Migrate an old config entry to CONFIG_ENTRY_VERSION (REQ-NFA-004).
+
+    Each migration step below transforms exactly one version to the next and
+    calls hass.config_entries.async_update_entry with the new data/version.
+    A future breaking change adds one more `if config_entry.version == N`
+    block instead of touching the ones before it.
+    """
+    _LOGGER.debug(
+        "Migrating Abstractor entry %s from version %s to %s",
+        config_entry.entry_id,
+        config_entry.version,
+        CONFIG_ENTRY_VERSION,
+    )
+
+    if config_entry.version > CONFIG_ENTRY_VERSION:
+        # Entry was created by a newer version of the integration; refuse to
+        # guess how to downgrade it instead of silently corrupting it.
+        _LOGGER.error(
+            "Abstractor entry %s has version %s, newer than supported %s",
+            config_entry.entry_id,
+            config_entry.version,
+            CONFIG_ENTRY_VERSION,
+        )
+        return False
+
+    # No migration steps exist yet (still on the original version 1 schema).
+    # Placeholder for the first real step:
+    # if config_entry.version == 1:
+    #     new_data = {**config_entry.data, ...}
+    #     hass.config_entries.async_update_entry(
+    #         config_entry, data=new_data, version=2
+    #     )
+
+    return True
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Apply options without requiring a restart."""

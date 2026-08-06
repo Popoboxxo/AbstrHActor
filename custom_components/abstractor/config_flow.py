@@ -12,11 +12,17 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_FALLBACK_CONDITION_ENTITY_ID,
+    CONF_FALLBACK_CONDITION_STATE,
+    CONF_FALLBACK_SOURCE_ENTITY_ID,
     CONF_FALLBACK_ZERO,
     CONF_INVERT,
+    CONF_LEGACY_UNIQUE_ID,
+    CONF_NET_SUBTRACT_ENTITY_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_SPIKE_FILTER,
+    CONFIG_ENTRY_VERSION,
     DOMAIN,
     SENSOR_TYPES,
 )
@@ -26,7 +32,7 @@ _LOGGER = logging.getLogger(__name__)
 class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Abstractor."""
 
-    VERSION = 1
+    VERSION = CONFIG_ENTRY_VERSION
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -47,10 +53,20 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
             else:
                 user_input.pop(CONF_SOURCE_ENTITY_IDS, None)
-            unique_id = (
-                f"abstractor_{user_input[CONF_DEVICE_TYPE]}_"
-                f"{'_'.join(sorted(sources))}"
-            )
+
+            legacy_unique_id = user_input.get(CONF_LEGACY_UNIQUE_ID) or None
+            if legacy_unique_id:
+                # Migrating an existing YAML template sensor (REQ-CORE-003):
+                # reuse its unique_id verbatim so recorder / long-term
+                # statistics keep counting instead of starting a new series.
+                user_input[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
+                unique_id = legacy_unique_id
+            else:
+                user_input.pop(CONF_LEGACY_UNIQUE_ID, None)
+                unique_id = (
+                    f"abstractor_{user_input[CONF_DEVICE_TYPE]}_"
+                    f"{'_'.join(sorted(sources))}"
+                )
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
@@ -78,6 +94,7 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_SOURCE_ENTITY_IDS): selector.EntitySelector(
                     selector.EntitySelectorConfig(multiple=True)
                 ),
+                vol.Optional(CONF_LEGACY_UNIQUE_ID): selector.TextSelector(),
             }
         )
 
@@ -128,6 +145,38 @@ class AbstractorOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_FALLBACK_ZERO,
                         default=self.config_entry.options.get(CONF_FALLBACK_ZERO, False)
                     ): bool,
+                    vol.Optional(
+                        CONF_NET_SUBTRACT_ENTITY_ID,
+                        description={
+                            "suggested_value": self.config_entry.options.get(
+                                CONF_NET_SUBTRACT_ENTITY_ID
+                            )
+                        },
+                    ): selector.EntitySelector(),
+                    vol.Optional(
+                        CONF_FALLBACK_SOURCE_ENTITY_ID,
+                        description={
+                            "suggested_value": self.config_entry.options.get(
+                                CONF_FALLBACK_SOURCE_ENTITY_ID
+                            )
+                        },
+                    ): selector.EntitySelector(),
+                    vol.Optional(
+                        CONF_FALLBACK_CONDITION_ENTITY_ID,
+                        description={
+                            "suggested_value": self.config_entry.options.get(
+                                CONF_FALLBACK_CONDITION_ENTITY_ID
+                            )
+                        },
+                    ): selector.EntitySelector(),
+                    vol.Optional(
+                        CONF_FALLBACK_CONDITION_STATE,
+                        description={
+                            "suggested_value": self.config_entry.options.get(
+                                CONF_FALLBACK_CONDITION_STATE
+                            )
+                        },
+                    ): selector.TextSelector(),
                 }
             ),
         )

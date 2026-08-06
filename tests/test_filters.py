@@ -54,3 +54,44 @@ def test_filter_exposes_diagnostic_event() -> None:
     pipeline.process("10")
     assert pipeline.process("0") == 10.0
     assert pipeline.last_event == "spike rejected"
+
+
+def test_net_subtract_computes_charge_minus_discharge() -> None:
+    """REQ-CORE-005: net flow subtracts a second source from the aggregate."""
+    pipeline = AbstractorFilterPipeline({"device_type": "power"})
+
+    result = pipeline.process_sources(["10"], net_subtract_raw="3")
+
+    assert result == 7.0
+
+
+def test_net_subtract_ignores_unavailable_subtrahend() -> None:
+    """An unavailable subtract source must not corrupt the primary value."""
+    pipeline = AbstractorFilterPipeline({"device_type": "power"})
+
+    result = pipeline.process_sources(["10"], net_subtract_raw="unavailable")
+
+    assert result == 10.0
+
+
+def test_fallback_source_used_when_primary_unavailable_and_condition_met() -> None:
+    """REQ-COMP-004: conditional fallback to an alternate hardware source."""
+    pipeline = AbstractorFilterPipeline({"device_type": "energy"})
+
+    result = pipeline.process_sources(
+        ["unavailable"], fallback_raw="99", fallback_condition_met=True
+    )
+
+    assert result == 99.0
+    assert pipeline.last_event == "fallback source used"
+
+
+def test_fallback_source_ignored_when_condition_not_met() -> None:
+    """The fallback must stay inactive until its condition is satisfied."""
+    pipeline = AbstractorFilterPipeline({"device_type": "energy"})
+
+    result = pipeline.process_sources(
+        ["unavailable"], fallback_raw="99", fallback_condition_met=False
+    )
+
+    assert result is None

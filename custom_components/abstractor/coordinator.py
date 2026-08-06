@@ -9,7 +9,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import CONF_SOURCE_ENTITY_ID, CONF_SOURCE_ENTITY_IDS, DOMAIN
+from .const import (
+    CONF_FALLBACK_CONDITION_ENTITY_ID,
+    CONF_FALLBACK_CONDITION_STATE,
+    CONF_FALLBACK_SOURCE_ENTITY_ID,
+    CONF_NET_SUBTRACT_ENTITY_ID,
+    CONF_SOURCE_ENTITY_ID,
+    CONF_SOURCE_ENTITY_IDS,
+    DOMAIN,
+)
 from .filters import AbstractorFilterPipeline
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,13 +70,44 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
 
             pipeline = self.pipelines.get(entry_id)
             if pipeline:
-                val = pipeline.process_sources(raw_states)
+                net_subtract_raw = self._read_state(config.get(CONF_NET_SUBTRACT_ENTITY_ID))
+                fallback_raw = self._read_state(config.get(CONF_FALLBACK_SOURCE_ENTITY_ID))
+                fallback_condition_met = self._fallback_condition_met(config)
+                val = pipeline.process_sources(
+                    raw_states,
+                    net_subtract_raw=net_subtract_raw,
+                    fallback_raw=fallback_raw,
+                    fallback_condition_met=fallback_condition_met,
+                )
                 data[entry_id] = val
                 await self._async_notify_debug(entry_id, pipeline.last_event)
 
                 if self.influx_exporter and val is not None:
                     await self.influx_exporter.async_push(source_ids[0], val)
         return data
+
+    def _read_state(self, entity_id: str | None) -> str | None:
+        """Read a raw HA state string for an optional entity_id."""
+        if not entity_id:
+            return None
+        state_obj = self.hass.states.get(entity_id)
+        return state_obj.state if state_obj else None
+
+    def _fallback_condition_met(self, config: dict[str, Any]) -> bool:
+        """Evaluate the REQ-COMP-004 fallback condition.
+
+        No fallback source configured -> never eligible. A fallback source
+        without a condition entity is always eligible when the primary is
+        unavailable. With a condition entity, the fallback is only eligible
+        while that entity's state matches the configured expected state.
+        """
+        if not config.get(CONF_FALLBACK_SOURCE_ENTITY_ID):
+            return False
+        condition_entity_id = config.get(CONF_FALLBACK_CONDITION_ENTITY_ID)
+        if not condition_entity_id:
+            return True
+        expected_state = config.get(CONF_FALLBACK_CONDITION_STATE)
+        return self._read_state(condition_entity_id) == expected_state
 
     async def _async_notify_debug(self, entry_id: str, event: str | None) -> None:
         """Send deduplicated debug events through the existing HA notify group."""
