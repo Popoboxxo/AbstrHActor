@@ -1,0 +1,29 @@
+# =============================================================================
+# Abstractor — Home Assistant demo instance (docker/docker-compose.demo.yml)
+#
+# A REAL, clickable Home Assistant instance with the Abstractor custom
+# component mounted live and HA's built-in "demo" platform enabled, so
+# there are ready-made power/energy-ish source entities to abstract.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.demo.yml up -d
+#   open http://localhost:8123   (finish onboarding, any user/pass you like)
+#   Settings -> Devices & Services -> Add Integration -> "Abstractor"
+#
+#   docker compose -f docker/docker-compose.demo.yml down
+# =============================================================================
+
+name: abstractor-demo
+
+services:
+  homeassistant:
+    container_name: abstractor-demo-ha
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./ha_config:/config
+      - ../custom_components/abstractor:/config/custom_components/abstractor:ro
+    environment:
+      - TZ=Europe/Berlin
+    ports:
+      - "8123:8123"
+    restart: unless-stopped

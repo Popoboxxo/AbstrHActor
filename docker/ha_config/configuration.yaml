@@ -1,0 +1,4 @@
+# Abstractor demo instance — minimal config with HA's built-in demo platform
+# enabled so there are ready-made source entities to point Abstractor at.
+default_config:
+demo:
