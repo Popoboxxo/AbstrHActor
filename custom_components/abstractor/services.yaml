@@ -4,3 +4,10 @@ export_data:
 import_data:
   name: Import Abstractor Data
   description: Imports the state and mapping of all abstract sensors from a backup file.
+  fields:
+    data:
+      name: Snapshot
+      description: Snapshot object previously produced by the export operation.
+      required: true
+      selector:
+        object:

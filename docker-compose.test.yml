@@ -1,0 +1,53 @@
+# =============================================================================
+# Abstractor — Test stack (docker-compose.test.yml)
+#
+# Standalone from the HA dev stack: unit tests only, NO running Home Assistant
+# instance is required. Everything happens inside a disposable container.
+#
+# Usage:
+#   # pytest (default: tests/ + coverage) — reports land in ./test-results
+#   docker compose -f docker-compose.test.yml run --rm test
+#
+#   # pass extra pytest args on the CLI
+#   docker compose -f docker-compose.test.yml run --rm test -k test_filters
+#
+#   # or via the PYTEST_ARGS environment variable (wins over the CLI args)
+#   PYTEST_ARGS="tests/test_snapshot.py -v" docker compose -f docker-compose.test.yml run --rm test
+#
+#   # static checks (ruff + mypy) — profile "lint"
+#   docker compose -f docker-compose.test.yml --profile lint run --rm lint
+# =============================================================================
+
+name: abstractor-test
+
+services:
+  # ---------------------------------------------------------------------------
+  # pytest service (default profile)
+  # ---------------------------------------------------------------------------
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      # Default pytest invocation. Override per-run via the PYTEST_ARGS env
+      # variable (host shell / .env), e.g.:
+      #   docker compose run -e PYTEST_ARGS="-x -q" --rm test
+      # asyncio_mode=auto is required because the tests use bare `async def`
+      # without explicit pytest-asyncio markers (pytest-homeassistant-
+      # custom-component follows this convention).
+      PYTEST_ARGS: ${PYTEST_ARGS:-tests/ -v --cov=custom_components/abstractor --cov-report=term-missing --cov-report=xml:test-results/coverage.xml -o asyncio_mode=auto -p no:cacheprovider}
+    volumes:
+      # Test reports (coverage.xml, ...) written into the repo test-results/ dir.
+      - ./test-results:/workspace/test-results
+    # Entrypoint from the image dispatches pytest; CMD provides the default args.
+
+  # ---------------------------------------------------------------------------
+  # Static checks (ruff + mypy) — enable with --profile lint
+  # ---------------------------------------------------------------------------
+  lint:
+    profiles: ["lint"]
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["lint"]
+    # Working copy stays ephemeral: no mounts, no HA instance required.
