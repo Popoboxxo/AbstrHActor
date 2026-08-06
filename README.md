@@ -34,8 +34,11 @@ an entry while preserving its registry identity and recorder history.
 - **Export / Import services** — versioned snapshot of all mappings and values
   for backup and restore.
 - **Diagnostics** — native HA diagnostics for support and debugging.
-- **Device registry integration** — each abstract sensor appears as a logical
-  device in the HA device registry with manufacturer and model metadata.
+- **Device registry integration** — each abstract sensor appears as its own
+  logical device in the HA device registry (device name is configurable at
+  setup; clustering multiple abstract sensors under one shared device, and
+  customizing manufacturer/model, is not implemented yet — tracked as a
+  follow-up).
 
 ## Architecture
 
