@@ -247,3 +247,19 @@ sync.log
 .meta-config/secrets.local.yaml
 # opencode.json is intentionally tracked — stray command below is removed
 # (was: git rm --cached opencode.json)
+
+# --- local runtime / generated noise, not project state ---
+.tokensave/
+.meta-viz/
+.meta-config/*.bak.*
+.meta-config/context-hashes.json
+.meta-config/generated/
+AGENTS.md.sync-backup-*
+sync.log
+
+# Home Assistant demo instance runtime state (docker/docker-compose.demo.yml)
+# Contains generated auth tokens/secrets — never commit.
+docker/ha_config/
+
+# pytest/coverage output
+test-results/
