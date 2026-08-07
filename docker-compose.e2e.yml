@@ -9,8 +9,19 @@
 #
 # Usage:
 #   bash docker/setup-demo.sh                       # fetch hass-virtual once
+#   rm -r docker/ha_config_e2e/.storage             # see warning below
 #   docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit
 #   docker compose -f docker-compose.e2e.yml down -v
+#
+# IMPORTANT: `down -v` does NOT reset HA's onboarding/device state between
+# runs. docker/ha_config_e2e/ is a host bind mount (not a named Docker
+# volume), so `-v` — which only removes anonymous/named volumes — has no
+# effect on it; HA's .storage/ directory (config entries, entity registry,
+# onboarding flag, ...) persists on the host across every `down`/`up` cycle.
+# Tests that assume a truly fresh instance (scripts/e2e_bootstrap.py's
+# onboarding flow, unique-device-count assertions) will accumulate stale
+# devices and become flaky/fail without an explicit
+# `rm -r docker/ha_config_e2e/.storage` before each intended-to-be-fresh run.
 # =============================================================================
 
 name: abstractor-e2e
@@ -19,7 +30,13 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     volumes:
-      - ./docker/ha_config:/config
+      # Deliberately NOT docker/ha_config/ (docker-compose.demo.yml) — that
+      # instance is meant for manual poking and accumulates onboarding state
+      # (once onboarding is done, HA's /api/onboarding/* routes 404, which
+      # breaks scripts/e2e_bootstrap.py's fresh-instance assumption). E2E
+      # gets its own config dir instead — but it's still a host bind mount,
+      # not disposable on its own; see the `down -v` warning above.
+      - ./docker/ha_config_e2e:/config
       - ./custom_components/abstractor:/config/custom_components/abstractor:ro
     environment:
       - TZ=Europe/Berlin

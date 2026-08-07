@@ -4,9 +4,11 @@
 FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
 
 WORKDIR /workspace
+ENV PYTHONPATH=/workspace
 
 COPY requirements_e2e.txt .
-RUN pip install --no-cache-dir -r requirements_e2e.txt
+RUN pip install --no-cache-dir -r requirements_e2e.txt \
+    && playwright install --with-deps chromium
 
 COPY custom_components/ custom_components/
 COPY scripts/e2e_bootstrap.py scripts/e2e_bootstrap.py

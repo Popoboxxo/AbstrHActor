@@ -11,7 +11,14 @@ import re
 def test_panel_appears_in_sidebar(logged_in_page, hass_base_url):
     page = logged_in_page
     page.goto(hass_base_url)
-    assert page.get_by_text("Abstractor", exact=True).count() > 0, (
+    # Once a device is configured, "Abstractor" also appears as an installed
+    # integration card and page heading elsewhere — #sidebar-panel-abstractor
+    # is the sidebar nav item's own stable id, unambiguous regardless of that.
+    # .count() doesn't auto-wait like .click()/.fill() do, so wait explicitly
+    # for the sidebar to have actually rendered before checking it.
+    sidebar_entry = page.locator("#sidebar-panel-abstractor")
+    sidebar_entry.wait_for(state="visible", timeout=10000)
+    assert sidebar_entry.count() > 0, (
         "expected an 'Abstractor' entry in the sidebar once a device is configured"
     )
 
