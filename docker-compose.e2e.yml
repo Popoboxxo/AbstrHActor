@@ -1,0 +1,44 @@
+# =============================================================================
+# Abstractor — E2E test stack (docker-compose.e2e.yml)
+#
+# Brings up a real Home Assistant instance (demo platform + hass-virtual
+# controllable sensors) plus a Playwright test runner that drives it
+# through an actual browser. Unlike docker-compose.test.yml (fast unit
+# tests, no HA instance), this exercises the real Config Flow, Options
+# Flow, sensor pipeline and sidebar panel end to end.
+#
+# Usage:
+#   bash docker/setup-demo.sh                       # fetch hass-virtual once
+#   docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit
+#   docker compose -f docker-compose.e2e.yml down -v
+# =============================================================================
+
+name: abstractor-e2e
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./docker/ha_config:/config
+      - ./custom_components/abstractor:/config/custom_components/abstractor:ro
+    environment:
+      - TZ=Europe/Berlin
+    ports:
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8123')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    depends_on:
+      homeassistant:
+        condition: service_healthy
+    environment:
+      - HASS_BASE_URL=http://homeassistant:8123
+    volumes:
+      - ./test-results:/workspace/test-results

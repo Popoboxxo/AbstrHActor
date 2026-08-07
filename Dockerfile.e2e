@@ -1,0 +1,16 @@
+# E2E test runner: real HA instance (docker-compose.demo.yml) + Playwright
+# driving a real browser against it. Separate image from Dockerfile.test
+# (unit tests) since this one needs a browser runtime.
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+
+WORKDIR /workspace
+
+COPY requirements_e2e.txt .
+RUN pip install --no-cache-dir -r requirements_e2e.txt
+
+COPY custom_components/ custom_components/
+COPY scripts/e2e_bootstrap.py scripts/e2e_bootstrap.py
+COPY tests_e2e/ tests_e2e/
+
+ENTRYPOINT ["pytest"]
+CMD ["tests_e2e/", "-v"]

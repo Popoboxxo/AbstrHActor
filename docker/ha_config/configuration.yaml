@@ -1,4 +1,10 @@
 # Abstractor demo instance — minimal config with HA's built-in demo platform
-# enabled so there are ready-made source entities to point Abstractor at.
+# and hass-virtual (github.com/twrecked/hass-virtual) enabled, so there are
+# both random-ish demo entities AND stable, programmatically-controllable
+# virtual sensors (via the virtual.set service) to drive E2E tests against.
 default_config:
 demo:
+virtual:
+  yaml_config: true
+sensor: !include virtual_sensors.yaml
+binary_sensor: !include virtual_binary_sensors.yaml

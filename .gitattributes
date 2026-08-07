@@ -1,0 +1,6 @@
+# Force LF for anything that runs inside the Linux test/demo containers,
+# regardless of the checkout platform (this repo has been bitten twice by
+# CRLF breaking scripts/entrypoint.sh's shebang under Docker on Windows).
+*.sh text eol=lf
+Dockerfile* text eol=lf
+docker-compose*.yml text eol=lf

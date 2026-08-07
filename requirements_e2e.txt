@@ -1,0 +1,5 @@
+# E2E test dependencies — separate from requirements_test.txt (unit tests)
+# so the fast unit-test image doesn't need a browser runtime.
+playwright>=1.47
+pytest-playwright>=0.5
+requests>=2.32
