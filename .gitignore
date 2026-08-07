@@ -268,3 +268,6 @@ docker/ha_config/*
 
 # pytest/coverage output
 test-results/
+
+# Local scratch note for content pending an external MCP sync — not project state.
+.reqogniloom-pending-sync.md
