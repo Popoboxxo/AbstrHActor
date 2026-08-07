@@ -263,6 +263,8 @@ sync.log
 # reproducible after a wipe (see docker/README.md).
 docker/ha_config/*
 !docker/ha_config/configuration.yaml
+!docker/ha_config/virtual_sensors.yaml
+!docker/ha_config/virtual_binary_sensors.yaml
 
 # pytest/coverage output
 test-results/

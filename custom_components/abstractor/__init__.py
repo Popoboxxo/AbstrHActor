@@ -18,6 +18,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
+from .frontend import async_register_panel, async_unregister_panel
 from .repository.device_registry import DeviceRegistry
 from .snapshot import build_snapshot, validate_snapshot
 
@@ -70,6 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=IMPORT_SERVICE_SCHEMA,
         )
     await _save_snapshot(hass)
+    await async_register_panel(hass)
 
     return True
 
@@ -82,12 +84,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator:
             coordinator.remove_entry(entry.entry_id)
             if not coordinator.entries:
+                # Snapshot the coordinator's last-known values BEFORE tearing
+                # it down: _save_snapshot reads domain_data["coordinator"],
+                # so popping it first would persist an empty snapshot right
+                # when a restore would matter most.
+                await _save_snapshot(hass)
                 await coordinator.async_shutdown()
                 domain_data.pop("coordinator", None)
                 domain_data.pop("registry", None)
-                await _save_snapshot(hass)
                 hass.services.async_remove(DOMAIN, SERVICE_EXPORT_DATA)
                 hass.services.async_remove(DOMAIN, SERVICE_IMPORT_DATA)
+                await async_unregister_panel(hass)
 
     return unload_ok
 
