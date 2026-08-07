@@ -1,0 +1,42 @@
+name: E2E
+
+# Separate from validate.yaml on purpose: this spins up a real HA instance
+# + browser and is slower/heavier than HACS/hassfest validation, so it
+# doesn't gate every push — run it explicitly or on a schedule instead.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1" # weekly, Monday 04:00 UTC
+  pull_request:
+    paths:
+      - "custom_components/abstractor/**"
+      - "tests_e2e/**"
+      - "docker-compose.e2e.yml"
+      - "Dockerfile.e2e"
+
+jobs:
+  e2e:
+    name: E2E (Playwright against real HA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch hass-virtual (test fixture sensors)
+        run: bash docker/setup-demo.sh
+
+      - name: Run E2E suite
+        run: |
+          docker compose -f docker-compose.e2e.yml up \
+            --build --abort-on-container-exit --exit-code-from e2e
+
+      - name: Collect results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: test-results/
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v
