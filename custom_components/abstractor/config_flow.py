@@ -109,6 +109,38 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             step_id="user", data_schema=self._schema(), errors=errors
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit an existing Abstract sensor's settings, or move it to another device."""
+        errors: dict[str, str] = {}
+        current = self._get_reconfigure_subentry()
+
+        if user_input is not None:
+            sources = user_input.get(CONF_SOURCE_ENTITY_IDS) or [
+                user_input.get(CONF_SOURCE_ENTITY_ID)
+            ]
+            sources = [source for source in sources if source]
+            if not sources:
+                errors["base"] = "source_required"
+            else:
+                data = self._normalize(user_input, sources)
+                device_type = data[CONF_DEVICE_TYPE]
+                return self.async_update_and_abort(
+                    self._get_reconfigure_entry(),
+                    current,
+                    title=f"Abstract {device_type}",
+                    data=data,
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                self._schema(), current.data
+            ),
+            errors=errors,
+        )
+
     def _normalize(self, user_input: dict[str, Any], sources: list[str]) -> dict[str, Any]:
         """Shared shaping for both create and reconfigure: sources, legacy id,
         and resolving the picked target device into our own identifier key."""
@@ -133,7 +165,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
 
     @staticmethod
     def _schema() -> vol.Schema:
-        """Build the create-sensor schema."""
+        """Build the sensor schema — shared by create and reconfigure."""
         return vol.Schema(
             {
                 vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
@@ -150,5 +182,14 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(
                     selector.DeviceSelectorConfig(integration=DOMAIN)
                 ),
+                vol.Optional(CONF_SPIKE_FILTER, default=False): bool,
+                vol.Optional(CONF_INVERT, default=False): bool,
+                vol.Optional(CONF_FALLBACK_ZERO, default=False): bool,
+                vol.Optional(CONF_NET_SUBTRACT_ENTITY_ID): selector.EntitySelector(),
+                vol.Optional(CONF_FALLBACK_SOURCE_ENTITY_ID): selector.EntitySelector(),
+                vol.Optional(
+                    CONF_FALLBACK_CONDITION_ENTITY_ID
+                ): selector.EntitySelector(),
+                vol.Optional(CONF_FALLBACK_CONDITION_STATE): selector.TextSelector(),
             }
         )
