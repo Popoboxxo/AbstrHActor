@@ -18,6 +18,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_CREATE_NEW_DEVICE,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
@@ -162,7 +163,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                self._schema(), suggested_values
+                self._schema(reconfigure=True), suggested_values
             ),
             errors=errors,
         )
@@ -177,12 +178,18 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         and resolving the picked target device into our own identifier key.
 
         `current_data` is the subentry's pre-existing data, passed only on
-        reconfigure. When the resubmitted form doesn't select a target device
-        (e.g. the device selector was left untouched and HA didn't resend it,
-        or the step is a create with no `current_data` at all), any group id
-        the subentry already had is carried forward unchanged rather than
-        silently dropped — reconfiguring a bundled sensor for an unrelated
-        reason must not un-bundle it from its device.
+        reconfigure. Device-group resolution, in priority order:
+        1. `CONF_TARGET_DEVICE_ID` submitted → resolve and use that group id
+           (moving to a specific existing device always wins).
+        2. Else `CONF_CREATE_NEW_DEVICE` is True in this submission → the
+           explicit "detach" signal; `CONF_DEVICE_GROUP_ID` is left absent
+           from the returned data entirely, so the sensor falls back to its
+           own device keyed by its own subentry_id (same as an ungrouped
+           sensor elsewhere in this codebase).
+        3. Else (neither submitted) → any group id the subentry already had
+           is carried forward unchanged rather than silently dropped —
+           reconfiguring a bundled sensor for an unrelated reason (e.g.
+           toggling spike_filter) must not un-bundle it from its device.
         """
         data = dict(user_input)
         if len(sources) > 1:
@@ -197,33 +204,48 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             data.pop(CONF_LEGACY_UNIQUE_ID, None)
 
         target_device_id = data.pop(CONF_TARGET_DEVICE_ID, None)
+        create_new_device = data.pop(CONF_CREATE_NEW_DEVICE, False)
         if target_device_id:
             group_id = _device_group_id_for_device(self.hass, target_device_id)
             if group_id:
                 data[CONF_DEVICE_GROUP_ID] = group_id
+        elif create_new_device:
+            # Explicit detach: leave CONF_DEVICE_GROUP_ID absent entirely.
+            pass
         elif current_data and current_data.get(CONF_DEVICE_GROUP_ID):
             data[CONF_DEVICE_GROUP_ID] = current_data[CONF_DEVICE_GROUP_ID]
         return data
 
     @staticmethod
-    def _schema() -> vol.Schema:
-        """Build the sensor schema — shared by create and reconfigure."""
-        return vol.Schema(
+    def _schema(*, reconfigure: bool = False) -> vol.Schema:
+        """Build the sensor schema — shared by create and reconfigure.
+
+        `reconfigure=True` adds `CONF_CREATE_NEW_DEVICE`, an explicit
+        "detach into its own device" checkbox that only makes sense when
+        editing an already-bundled sensor — on the create step, "no device
+        selected" already unambiguously means "new device" by definition,
+        so that field is omitted there.
+        """
+        schema: dict[Any, Any] = {
+            vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=SENSOR_TYPES,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_SOURCE_ENTITY_ID): selector.EntitySelector(),
+            vol.Optional(CONF_SOURCE_ENTITY_IDS): selector.EntitySelector(
+                selector.EntitySelectorConfig(multiple=True)
+            ),
+            vol.Optional(CONF_LEGACY_UNIQUE_ID): selector.TextSelector(),
+            vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(
+                selector.DeviceSelectorConfig(integration=DOMAIN)
+            ),
+        }
+        if reconfigure:
+            schema[vol.Optional(CONF_CREATE_NEW_DEVICE, default=False)] = bool
+        schema.update(
             {
-                vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=SENSOR_TYPES,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(CONF_SOURCE_ENTITY_ID): selector.EntitySelector(),
-                vol.Optional(CONF_SOURCE_ENTITY_IDS): selector.EntitySelector(
-                    selector.EntitySelectorConfig(multiple=True)
-                ),
-                vol.Optional(CONF_LEGACY_UNIQUE_ID): selector.TextSelector(),
-                vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(
-                    selector.DeviceSelectorConfig(integration=DOMAIN)
-                ),
                 vol.Optional(CONF_SPIKE_FILTER, default=False): bool,
                 vol.Optional(CONF_INVERT, default=False): bool,
                 vol.Optional(CONF_FALLBACK_ZERO, default=False): bool,
@@ -235,3 +257,4 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Optional(CONF_FALLBACK_CONDITION_STATE): selector.TextSelector(),
             }
         )
+        return vol.Schema(schema)

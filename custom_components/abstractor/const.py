@@ -16,6 +16,7 @@ CONF_FALLBACK_CONDITION_STATE: Final = "fallback_condition_state"
 CONF_NET_SUBTRACT_ENTITY_ID: Final = "net_subtract_entity_id"
 CONF_DEVICE_GROUP_ID: Final = "device_group_id"
 CONF_TARGET_DEVICE_ID: Final = "target_device_id"
+CONF_CREATE_NEW_DEVICE: Final = "create_new_device"
 SUBENTRY_TYPE_SENSOR: Final = "sensor"
 
 # Storage

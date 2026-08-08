@@ -8,6 +8,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.abstractor.config_flow import _device_group_id_for_device
 from custom_components.abstractor.const import (
+    CONF_CREATE_NEW_DEVICE,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
@@ -364,6 +365,61 @@ async def test_subentry_reconfigure_prefills_target_device(
         key for key in result["data_schema"].schema if key == CONF_TARGET_DEVICE_ID
     )
     assert marker.description["suggested_value"] == device.id
+
+
+async def test_subentry_reconfigure_detaches_with_create_new_device(
+    hass: HomeAssistant,
+) -> None:
+    """Reconfiguring an already-bundled sensor with CONF_CREATE_NEW_DEVICE
+    checked (and no target device picked) must explicitly split it back out
+    to its own device — CONF_DEVICE_GROUP_ID must be fully absent from the
+    resulting data, not just falsy (regression for the round-1 fix's
+    unintended side effect: it made this split impossible, per design spec
+    line 23-24)."""
+    from homeassistant.config_entries import ConfigSubentry
+
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    device_reg = dr.async_get(hass)
+    device_reg.async_get_or_create(
+        config_entry_id=root_entry.entry_id,
+        identifiers={(DOMAIN, "existing-group")},
+    )
+
+    grouped_subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_DEVICE_GROUP_ID: "existing-group",
+        },
+        subentry_type="sensor",
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, grouped_subentry)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": grouped_subentry.subentry_id,
+        },
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_CREATE_NEW_DEVICE: True,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+    updated = root_entry.subentries[grouped_subentry.subentry_id]
+    assert CONF_DEVICE_GROUP_ID not in updated.data
 
 
 async def test_subentry_reconfigure_requires_source(hass: HomeAssistant) -> None:
