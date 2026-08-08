@@ -3,10 +3,17 @@ from unittest.mock import patch
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.abstractor.config_flow import _device_group_id_for_device
 from custom_components.abstractor.const import (
+    CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
+    CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
+    CONF_SOURCE_ENTITY_IDS,
+    CONF_TARGET_DEVICE_ID,
     DOMAIN,
 )
 
@@ -35,8 +42,6 @@ async def test_form(hass: HomeAssistant) -> None:
 
 async def test_subentry_create_form(hass: HomeAssistant) -> None:
     """A subentry flow creates a sensor under the root entry."""
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
     root_entry.add_to_hass(hass)
 
@@ -61,3 +66,151 @@ async def test_subentry_create_form(hass: HomeAssistant) -> None:
     assert len(subentries) == 1
     assert subentries[0].data[CONF_DEVICE_TYPE] == "power"
     assert subentries[0].data[CONF_SOURCE_ENTITY_ID] == "sensor.test_power"
+
+
+async def test_device_group_id_for_device_found(hass: HomeAssistant) -> None:
+    """Resolves the (DOMAIN, X) identifier's X for a device registered under it."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_or_create(
+        config_entry_id=root_entry.entry_id,
+        identifiers={(DOMAIN, "existing-group")},
+    )
+
+    assert _device_group_id_for_device(hass, device.id) == "existing-group"
+
+
+async def test_device_group_id_for_device_no_domain_identifier(
+    hass: HomeAssistant,
+) -> None:
+    """Returns None when the device exists but has no DOMAIN identifier."""
+    other_entry = MockConfigEntry(domain="other_domain", data={})
+    other_entry.add_to_hass(hass)
+
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={("other_domain", "not-abstractor")},
+    )
+
+    assert _device_group_id_for_device(hass, device.id) is None
+
+
+async def test_device_group_id_for_device_not_found(hass: HomeAssistant) -> None:
+    """Returns None when the device_id does not resolve in the registry at all."""
+    assert _device_group_id_for_device(hass, "nonexistent-device-id") is None
+
+
+async def test_subentry_create_form_requires_source(hass: HomeAssistant) -> None:
+    """Submitting without any source entity re-shows the form with an error."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {CONF_DEVICE_TYPE: "power"},
+    )
+
+    assert result2["type"] == "form"
+    assert result2["errors"] == {"base": "source_required"}
+    assert len(root_entry.subentries) == 0
+
+
+async def test_subentry_create_form_multi_source_dedup(hass: HomeAssistant) -> None:
+    """Multiple source entities are deduplicated and sorted into CONF_SOURCE_ENTITY_IDS."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_IDS: [
+                "sensor.b_power",
+                "sensor.a_power",
+                "sensor.a_power",
+            ],
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    subentries = list(root_entry.subentries.values())
+    assert len(subentries) == 1
+    assert subentries[0].data[CONF_SOURCE_ENTITY_IDS] == [
+        "sensor.a_power",
+        "sensor.b_power",
+    ]
+
+
+async def test_subentry_create_form_legacy_unique_id(hass: HomeAssistant) -> None:
+    """A legacy unique id supplied in the form ends up in the subentry data."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
+            CONF_LEGACY_UNIQUE_ID: "old_unique_id_123",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    subentries = list(root_entry.subentries.values())
+    assert len(subentries) == 1
+    assert subentries[0].data[CONF_LEGACY_UNIQUE_ID] == "old_unique_id_123"
+
+
+async def test_subentry_create_form_target_device_resolves_group_id(
+    hass: HomeAssistant,
+) -> None:
+    """Picking a target device resolves to this integration's own group id."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_or_create(
+        config_entry_id=root_entry.entry_id,
+        identifiers={(DOMAIN, "existing-group")},
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
+            CONF_TARGET_DEVICE_ID: device.id,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    subentries = list(root_entry.subentries.values())
+    assert len(subentries) == 1
+    assert subentries[0].data[CONF_DEVICE_GROUP_ID] == "existing-group"
+    assert CONF_TARGET_DEVICE_ID not in subentries[0].data
