@@ -269,6 +269,103 @@ async def test_subentry_reconfigure_moves_device(hass: HomeAssistant) -> None:
     assert updated.data[CONF_DEVICE_GROUP_ID] == existing_subentry.subentry_id
 
 
+async def test_subentry_reconfigure_preserves_device_group_when_unset(
+    hass: HomeAssistant,
+) -> None:
+    """Reconfiguring a bundled sensor without touching the device selector
+    must NOT silently un-bundle it from its device (regression for the
+    blocker where _normalize only wrote CONF_DEVICE_GROUP_ID when
+    CONF_TARGET_DEVICE_ID was present in the current form submission)."""
+    from homeassistant.config_entries import ConfigSubentry
+
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    device_reg = dr.async_get(hass)
+    device_reg.async_get_or_create(
+        config_entry_id=root_entry.entry_id,
+        identifiers={(DOMAIN, "existing-group")},
+    )
+
+    grouped_subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_DEVICE_GROUP_ID: "existing-group",
+        },
+        subentry_type="sensor",
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, grouped_subentry)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": grouped_subentry.subentry_id,
+        },
+    )
+    # Only change device_type — the device selector is not touched/resubmitted.
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "energy",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+    updated = root_entry.subentries[grouped_subentry.subentry_id]
+    assert updated.data[CONF_DEVICE_GROUP_ID] == "existing-group"
+    assert updated.data[CONF_DEVICE_TYPE] == "energy"
+
+
+async def test_subentry_reconfigure_prefills_target_device(
+    hass: HomeAssistant,
+) -> None:
+    """The reconfigure form's device selector is pre-filled with the
+    subentry's CURRENT device, resolved back from CONF_DEVICE_GROUP_ID."""
+    from homeassistant.config_entries import ConfigSubentry
+
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_or_create(
+        config_entry_id=root_entry.entry_id,
+        identifiers={(DOMAIN, "existing-group")},
+    )
+
+    grouped_subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_DEVICE_GROUP_ID: "existing-group",
+        },
+        subentry_type="sensor",
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, grouped_subentry)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": grouped_subentry.subentry_id,
+        },
+    )
+
+    assert result["type"] == "form"
+    marker = next(
+        key for key in result["data_schema"].schema if key == CONF_TARGET_DEVICE_ID
+    )
+    assert marker.description["suggested_value"] == device.id
+
+
 async def test_subentry_reconfigure_requires_source(hass: HomeAssistant) -> None:
     """Reconfiguring without any source entity re-shows the form with an error."""
     from homeassistant.config_entries import ConfigSubentry

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -55,6 +56,18 @@ def _device_group_id_for_device(hass, device_id: str) -> str | None:
         if domain == DOMAIN:
             return identifier
     return None
+
+
+def _device_id_for_group(hass, group_id: str) -> str | None:
+    """Resolve this integration's own (DOMAIN, X) identifier back to a device_id.
+
+    Reverse of `_device_group_id_for_device`: used to pre-fill the reconfigure
+    form's device selector with the subentry's CURRENT device, so resubmitting
+    the form for an unrelated reason (e.g. toggling spike_filter) shows the
+    already-bundled device as selected instead of looking like "no device".
+    """
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, group_id)})
+    return device.id if device is not None else None
 
 
 class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -124,7 +137,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             if not sources:
                 errors["base"] = "source_required"
             else:
-                data = self._normalize(user_input, sources)
+                data = self._normalize(user_input, sources, current_data=current.data)
                 device_type = data[CONF_DEVICE_TYPE]
                 return self.async_update_and_abort(
                     self._get_reconfigure_entry(),
@@ -133,17 +146,44 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     data=data,
                 )
 
+        # Pre-fill the device selector with the subentry's CURRENT device.
+        # CONF_TARGET_DEVICE_ID (a transient form field, HA registry device_id)
+        # and CONF_DEVICE_GROUP_ID (what's actually stored, our own (DOMAIN, X)
+        # identifier) are different keys, so current.data alone never fills the
+        # selector — without this, resubmitting the form for an unrelated
+        # reason looks exactly like explicitly clearing the device.
+        suggested_values = dict(current.data)
+        group_id = suggested_values.get(CONF_DEVICE_GROUP_ID)
+        if group_id:
+            device_id = _device_id_for_group(self.hass, group_id)
+            if device_id:
+                suggested_values[CONF_TARGET_DEVICE_ID] = device_id
+
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                self._schema(), current.data
+                self._schema(), suggested_values
             ),
             errors=errors,
         )
 
-    def _normalize(self, user_input: dict[str, Any], sources: list[str]) -> dict[str, Any]:
+    def _normalize(
+        self,
+        user_input: dict[str, Any],
+        sources: list[str],
+        current_data: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Shared shaping for both create and reconfigure: sources, legacy id,
-        and resolving the picked target device into our own identifier key."""
+        and resolving the picked target device into our own identifier key.
+
+        `current_data` is the subentry's pre-existing data, passed only on
+        reconfigure. When the resubmitted form doesn't select a target device
+        (e.g. the device selector was left untouched and HA didn't resend it,
+        or the step is a create with no `current_data` at all), any group id
+        the subentry already had is carried forward unchanged rather than
+        silently dropped — reconfiguring a bundled sensor for an unrelated
+        reason must not un-bundle it from its device.
+        """
         data = dict(user_input)
         if len(sources) > 1:
             data[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
@@ -161,6 +201,8 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             group_id = _device_group_id_for_device(self.hass, target_device_id)
             if group_id:
                 data[CONF_DEVICE_GROUP_ID] = group_id
+        elif current_data and current_data.get(CONF_DEVICE_GROUP_ID):
+            data[CONF_DEVICE_GROUP_ID] = current_data[CONF_DEVICE_GROUP_ID]
         return data
 
     @staticmethod
