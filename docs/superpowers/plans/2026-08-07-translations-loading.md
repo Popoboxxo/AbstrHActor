@@ -104,10 +104,15 @@ Run (from the repo root, via the E2E docker stack — see `docker/README.md` for
 ```bash
 docker compose -f docker-compose.e2e.yml down -v
 rm -r docker/ha_config_e2e/.storage
-docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e -- tests_e2e/test_translations_e2e.py
+docker compose -f docker-compose.e2e.yml build e2e
+docker compose -f docker-compose.e2e.yml up -d homeassistant
+docker compose -f docker-compose.e2e.yml run --rm e2e tests_e2e/test_translations_e2e.py -v
+docker compose -f docker-compose.e2e.yml down -v
 ```
 
 Expected: **FAIL** on the first assertion (`"Source entities"` not found), because `custom_components/abstractor/translations/` doesn't exist yet, so HA falls back to raw keys.
+
+(`docker compose up` cannot target a single test file — `Dockerfile.e2e` sets `ENTRYPOINT ["pytest"]` / `CMD ["tests_e2e/", "-v"]`, so `up` always runs the whole suite. `run --rm e2e <args>` replaces `CMD` and runs only the given file; `run` starts `homeassistant` as a dependency automatically, but bringing it up explicitly first with `up -d homeassistant` avoids a race with the healthcheck.)
 
 - [ ] **Step 3: Commit the failing test**
 
@@ -209,10 +214,13 @@ Content is `strings.json`'s `config`, `options`, and `services` blocks, copied v
 ```bash
 docker compose -f docker-compose.e2e.yml down -v
 rm -r docker/ha_config_e2e/.storage
-docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e -- tests_e2e/test_translations_e2e.py
+docker compose -f docker-compose.e2e.yml build e2e
+docker compose -f docker-compose.e2e.yml up -d homeassistant
+docker compose -f docker-compose.e2e.yml run --rm e2e tests_e2e/test_translations_e2e.py -v
+docker compose -f docker-compose.e2e.yml down -v
 ```
 
-Expected: **PASS**.
+Expected: **PASS**. (See Task 1 Step 2 for why `run --rm e2e <file>` is used instead of `up`.)
 
 - [ ] **Step 3: Run the full E2E suite to check for regressions**
 
