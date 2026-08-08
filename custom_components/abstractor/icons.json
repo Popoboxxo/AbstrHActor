@@ -1,10 +1,10 @@
 {
   "services": {
     "export_data": {
-      "icon": "mdi:database-export"
+      "service": "mdi:database-export"
     },
     "import_data": {
-      "icon": "mdi:database-import"
+      "service": "mdi:database-import"
     }
   }
 }

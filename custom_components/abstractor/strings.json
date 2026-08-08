@@ -16,11 +16,11 @@
           "source_entity_id": "Single hardware sensor to abstract.",
           "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
           "legacy_unique_id": "Reuse the unique_id of a migrated YAML template sensor so recorder history keeps counting."
-        },
-        "error": {
-          "source_required": "Select at least one source entity."
         }
       }
+    },
+    "error": {
+      "source_required": "Select at least one source entity."
     }
   },
   "options": {
