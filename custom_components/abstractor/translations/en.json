@@ -1,0 +1,69 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Abstract Device",
+        "description": "Choose the type of abstract device you want to create.",
+        "data": {
+          "device_type": "Device Type",
+          "source_entity_id": "Source entity",
+          "source_entity_ids": "Source entities",
+          "legacy_unique_id": "Legacy unique ID (optional)"
+        },
+        "data_description": {
+          "device_type": "Power, energy, or water abstraction layer.",
+          "source_entity_id": "Single hardware sensor to abstract.",
+          "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
+          "legacy_unique_id": "Reuse the unique_id of a migrated YAML template sensor so recorder history keeps counting."
+        },
+        "error": {
+          "source_required": "Select at least one source entity."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Abstract Device Options",
+        "description": "Change the source entities or adjust the value pipeline.",
+        "data": {
+          "source_entity_ids": "Source entities",
+          "spike_filter": "Enable spike filter",
+          "invert": "Invert value",
+          "fallback_zero": "Fallback to zero",
+          "net_subtract_entity_id": "Subtract entity (net flow)",
+          "fallback_source_entity_id": "Fallback source entity",
+          "fallback_condition_entity_id": "Fallback condition entity",
+          "fallback_condition_state": "Fallback condition state"
+        },
+        "data_description": {
+          "source_entity_ids": "Replace or extend the hardware entities feeding this abstract sensor.",
+          "spike_filter": "Reject drops below the last valid value (recommended for energy and water counters).",
+          "invert": "Multiply the value by -1 (e.g. net flow: load minus feed-in).",
+          "fallback_zero": "Report 0 instead of unavailable when no source delivers a value.",
+          "net_subtract_entity_id": "Subtracted from the aggregate after summing, e.g. charge minus discharge.",
+          "fallback_source_entity_id": "Alternate hardware source used when the primary is unavailable and the condition below is met.",
+          "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
+          "fallback_condition_state": "State the condition entity must match for the fallback to activate."
+        }
+      }
+    }
+  },
+  "services": {
+    "export_data": {
+      "name": "Export Abstractor Data",
+      "description": "Persist and log a complete snapshot of all abstract sensor mappings and values."
+    },
+    "import_data": {
+      "name": "Import Abstractor Data",
+      "description": "Validate and store a previously exported snapshot. Does not recreate or modify config entries.",
+      "fields": {
+        "data": {
+          "name": "Snapshot",
+          "description": "Snapshot object produced by abstractor.export_data."
+        }
+      }
+    }
+  }
+}

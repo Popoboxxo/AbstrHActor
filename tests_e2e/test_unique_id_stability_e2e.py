@@ -104,14 +104,13 @@ def test_reconfiguring_source_keeps_same_entity_id(
     # ours is the most recently created, i.e. the last one.
     page.get_by_role("button", name="Configure", exact=True).last.click()
     page.wait_for_timeout(500)
-    # This dialog's field labels render as raw internal names
-    # (source_entity_ids, spike_filter, ...) instead of the translated text
-    # from strings.json — a real (separate) UI bug, not a locator issue.
-    # get_by_label never matches because these aren't proper <label>
-    # associations. The source_entity_ids field already shows our current
-    # source as a chip; "Add entity" is the visible, unambiguous affordance
-    # for changing it, so use that instead of trying to label-match the
-    # field itself.
+    # get_by_label never matches this dialog's fields because they aren't
+    # proper <label> associations (true regardless of translation state,
+    # fixed separately in docs/superpowers/specs/2026-08-07-translations-
+    # loading-design.md). The source_entity_ids field already shows our
+    # current source as a chip; "Add entity" is the visible, unambiguous
+    # affordance for changing it, so use that instead of trying to
+    # label-match the field itself.
     page.get_by_text("Add entity", exact=False).click()
     # "Add entity" opens its own "Select option" dialog layered on top of
     # the options dialog — its search field shares the exact placeholder

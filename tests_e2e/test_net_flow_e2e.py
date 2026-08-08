@@ -107,29 +107,20 @@ def test_net_flow_subtracts_discharge_from_charge(
     # ours is the most recently created, i.e. the last one.
     page.get_by_role("button", name="Configure", exact=True).last.click()
     page.wait_for_timeout(500)
-    # This dialog's field labels render as raw internal names
-    # (net_subtract_entity_id, fallback_source_entity_id, ...) instead of
-    # the translated text from strings.json — a real (separate) UI bug, not
-    # a locator issue. get_by_label never matches because these aren't
-    # proper <label> associations. net_subtract_entity_id is the first
-    # empty ("Select an entity") picker in the form, before
-    # fallback_source_entity_id's identical-looking one.
-    # get_by_text("Select an entity") clicks the visible text but doesn't
-    # reliably focus the actual input underneath it — subsequent keystrokes
-    # then fall through as global HA hotkeys (opened the quick-bar, then
-    # the Assist/voice dialog, blocking everything). get_by_placeholder
-    # doesn't match either (the placeholder isn't a reflected HTML
-    # attribute here). Same underlying bug as the untranslated headings:
-    # each picker's aria-label is the raw schema key, not the translated
-    # string — this is exactly what made the config-flow source picker's
-    # get_by_label(...) reliable earlier, so use the same approach here.
-    page.get_by_label("net_subtract_entity_id", exact=True).click()
+    # Each picker's aria-label works regardless of translation state, but
+    # WHICH text it holds depends on whether translations/en.json loaded —
+    # raw schema key if not, translated label ("Subtract entity (net flow)")
+    # if so. Same dual-mode regex as the config-flow source picker
+    # (get_by_label(re.compile("source_entity_id|source entity$", ...))) so
+    # this test survives either state instead of hardcoding the post-fix one.
+    net_subtract_label = re.compile("net_subtract_entity_id|Subtract entity", re.I)
+    page.get_by_label(net_subtract_label).click()
     # Clicking a single-entity picker opens its own sub-dialog (same
     # pattern as the "Add entity" dialog for multi-select pickers), whose
     # search field shares the exact placeholder "Search" with the domain
     # listing page's own search box underneath — scope to the sub-dialog
     # specifically instead of the whole page.
-    picker_dialog = page.get_by_role("dialog", name="net_subtract_entity_id")
+    picker_dialog = page.get_by_role("dialog", name=net_subtract_label)
     search_field = picker_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
     search_field.press_sequentially("Battery Discharge Power")
