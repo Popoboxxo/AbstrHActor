@@ -23,3 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master
+
+  translations-sync:
+    name: Translations in sync with strings.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare strings.json and translations/en.json
+        run: |
+          python3 -c "
+          import json, sys
+          with open('custom_components/abstractor/strings.json') as f:
+              source = json.load(f)
+          with open('custom_components/abstractor/translations/en.json') as f:
+              translated = json.load(f)
+          for key in ('config', 'options', 'services'):
+              if source.get(key) != translated.get(key):
+                  print(f'MISMATCH in {key!r} block between strings.json and translations/en.json')
+                  sys.exit(1)
+          print('strings.json and translations/en.json are in sync.')
+          "
