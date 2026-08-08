@@ -14,6 +14,9 @@ CONF_FALLBACK_SOURCE_ENTITY_ID: Final = "fallback_source_entity_id"
 CONF_FALLBACK_CONDITION_ENTITY_ID: Final = "fallback_condition_entity_id"
 CONF_FALLBACK_CONDITION_STATE: Final = "fallback_condition_state"
 CONF_NET_SUBTRACT_ENTITY_ID: Final = "net_subtract_entity_id"
+CONF_DEVICE_GROUP_ID: Final = "device_group_id"
+CONF_TARGET_DEVICE_ID: Final = "target_device_id"
+SUBENTRY_TYPE_SENSOR: Final = "sensor"
 
 # Storage
 STORAGE_KEY: Final = f"{DOMAIN}.storage"
