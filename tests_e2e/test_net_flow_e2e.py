@@ -107,29 +107,23 @@ def test_net_flow_subtracts_discharge_from_charge(
     # ours is the most recently created, i.e. the last one.
     page.get_by_role("button", name="Configure", exact=True).last.click()
     page.wait_for_timeout(500)
-    # This dialog's field labels render as raw internal names
-    # (net_subtract_entity_id, fallback_source_entity_id, ...) instead of
-    # the translated text from strings.json — a real (separate) UI bug, not
-    # a locator issue. get_by_label never matches because these aren't
-    # proper <label> associations. net_subtract_entity_id is the first
-    # empty ("Select an entity") picker in the form, before
-    # fallback_source_entity_id's identical-looking one.
-    # get_by_text("Select an entity") clicks the visible text but doesn't
-    # reliably focus the actual input underneath it — subsequent keystrokes
-    # then fall through as global HA hotkeys (opened the quick-bar, then
-    # the Assist/voice dialog, blocking everything). get_by_placeholder
-    # doesn't match either (the placeholder isn't a reflected HTML
-    # attribute here). Same underlying bug as the untranslated headings:
-    # each picker's aria-label is the raw schema key, not the translated
-    # string — this is exactly what made the config-flow source picker's
-    # get_by_label(...) reliable earlier, so use the same approach here.
-    page.get_by_label("net_subtract_entity_id", exact=True).click()
+    # Now that translations/en.json exists (see
+    # docs/superpowers/specs/2026-08-07-translations-loading-design.md),
+    # each picker's aria-label reflects the TRANSLATED field label, not the
+    # raw schema key ("Subtract entity (net flow)" for net_subtract_entity_id
+    # — confirmed via manual DOM inspection; the raw-key locator this test
+    # used before now matches 0 elements). get_by_label never matches via a
+    # proper <label> association here, but aria-label works regardless of
+    # translation state — this is exactly what made the config-flow source
+    # picker's get_by_label(...) reliable, so use the same approach with the
+    # current (translated) text.
+    page.get_by_label("Subtract entity (net flow)", exact=True).click()
     # Clicking a single-entity picker opens its own sub-dialog (same
     # pattern as the "Add entity" dialog for multi-select pickers), whose
     # search field shares the exact placeholder "Search" with the domain
     # listing page's own search box underneath — scope to the sub-dialog
     # specifically instead of the whole page.
-    picker_dialog = page.get_by_role("dialog", name="net_subtract_entity_id")
+    picker_dialog = page.get_by_role("dialog", name="Subtract entity (net flow)")
     search_field = picker_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
     search_field.press_sequentially("Battery Discharge Power")

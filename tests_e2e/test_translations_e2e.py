@@ -53,7 +53,16 @@ def test_options_dialog_shows_translated_labels(
         "raw schema key 'source_entity_ids' is still visible as a field "
         "heading — translations aren't loading"
     )
-    assert page.get_by_text("Enable spike filter", exact=True).count() > 0, (
+    # exact=True (used above for the EntitySelector-based "Source entities"
+    # field) does not match this field: spike_filter renders as a boolean
+    # checkbox row (ha-formfield) whose label text is nested one level
+    # deeper than the entity-picker's — confirmed via manual DOM inspection
+    # that the label's rendered text is exactly "Enable spike filter" with
+    # no extra whitespace, get_by_text just resolves to a different node
+    # when exact-matching that structure. exact=False is safe here: the
+    # string is distinctive enough not to collide with anything else on
+    # this dialog (confirmed no other "filter"/"spike" text present).
+    assert page.get_by_text("Enable spike filter", exact=False).count() > 0, (
         "expected the translated field label 'Enable spike filter' in the "
         "Options dialog"
     )
