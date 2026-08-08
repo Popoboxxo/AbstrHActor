@@ -15,14 +15,14 @@
 #   docker compose build --build-arg HOMEASSISTANT_VERSION=2025.4.1
 # =============================================================================
 
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 # -----------------------------------------------------------------------------
 # Build-time overrides
 # -----------------------------------------------------------------------------
 # Home Assistant is the heavyweight dependency (async loop, entities, etc.).
 # Pin it for reproducibility; bump deliberately.
-ARG HOMEASSISTANT_VERSION=2025.1.4
+ARG HOMEASSISTANT_VERSION=2025.3.0
 # UID used for the non-root test user (defaults to 1000, matches most UIDs).
 ARG TEST_UID=1000
 

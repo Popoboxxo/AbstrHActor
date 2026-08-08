@@ -6,11 +6,18 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlowResult,
+    ConfigSubentryFlow,
+    SubentryFlowResult,
+)
 from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
@@ -22,66 +29,111 @@ from .const import (
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_SPIKE_FILTER,
+    CONF_TARGET_DEVICE_ID,
     CONFIG_ENTRY_VERSION,
     DOMAIN,
     SENSOR_TYPES,
+    SUBENTRY_TYPE_SENSOR,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _device_group_id_for_device(hass, device_id: str) -> str | None:
+    """Look up this integration's own (DOMAIN, X) identifier for a device_id.
+
+    A user picks a target device via HA's internal registry device_id
+    (opaque to us); to bundle a new sensor onto that device we need the
+    SAME identifier key an earlier subentry originally registered that
+    device under, so the device registry keeps merging them into one
+    device instead of creating a second one.
+    """
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None:
+        return None
+    for domain, identifier in device.identifiers:
+        if domain == DOMAIN:
+            return identifier
+    return None
+
+
 class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Abstractor."""
+    """Handle the one-time setup of the Abstractor root entry."""
 
     VERSION = CONFIG_ENTRY_VERSION
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step."""
+        """Create the singleton root entry; no sensor data is collected here."""
+        await self.async_set_unique_id("abstractor_root")
+        self._abort_if_unique_id_configured()
+
+        if user_input is not None:
+            return self.async_create_entry(title="Abstractor", data={})
+
+        return self.async_show_form(step_id="user")
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls, config_entry: ConfigEntry
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        """Return subentries supported by this integration."""
+        return {SUBENTRY_TYPE_SENSOR: AbstractorSensorSubentryFlowHandler}
+
+
+class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
+    """Create or reconfigure one Abstract sensor as a subentry."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Create a new Abstract sensor subentry."""
+        errors: dict[str, str] = {}
         if user_input is not None:
             sources = user_input.get(CONF_SOURCE_ENTITY_IDS) or [
                 user_input.get(CONF_SOURCE_ENTITY_ID)
             ]
             sources = [source for source in sources if source]
             if not sources:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=self._user_schema(),
-                    errors={"base": "source_required"},
-                )
-            if len(sources) > 1:
-                user_input[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
+                errors["base"] = "source_required"
             else:
-                user_input.pop(CONF_SOURCE_ENTITY_IDS, None)
-
-            legacy_unique_id = user_input.get(CONF_LEGACY_UNIQUE_ID) or None
-            if legacy_unique_id:
-                # Migrating an existing YAML template sensor (REQ-CORE-003):
-                # reuse its unique_id verbatim so recorder / long-term
-                # statistics keep counting instead of starting a new series.
-                user_input[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
-                unique_id = legacy_unique_id
-            else:
-                user_input.pop(CONF_LEGACY_UNIQUE_ID, None)
-                unique_id = (
-                    f"abstractor_{user_input[CONF_DEVICE_TYPE]}_"
-                    f"{'_'.join(sorted(sources))}"
+                data = self._normalize(user_input, sources)
+                device_type = data[CONF_DEVICE_TYPE]
+                return self.async_create_entry(
+                    title=f"Abstract {device_type}", data=data
                 )
-            await self.async_set_unique_id(unique_id)
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=f"Abstract {user_input[CONF_DEVICE_TYPE]}", data=user_input
-            )
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=self._user_schema(),
+            step_id="user", data_schema=self._schema(), errors=errors
         )
 
+    def _normalize(self, user_input: dict[str, Any], sources: list[str]) -> dict[str, Any]:
+        """Shared shaping for both create and reconfigure: sources, legacy id,
+        and resolving the picked target device into our own identifier key."""
+        data = dict(user_input)
+        if len(sources) > 1:
+            data[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
+        else:
+            data.pop(CONF_SOURCE_ENTITY_IDS, None)
+
+        legacy_unique_id = data.get(CONF_LEGACY_UNIQUE_ID) or None
+        if legacy_unique_id:
+            data[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
+        else:
+            data.pop(CONF_LEGACY_UNIQUE_ID, None)
+
+        target_device_id = data.pop(CONF_TARGET_DEVICE_ID, None)
+        if target_device_id:
+            group_id = _device_group_id_for_device(self.hass, target_device_id)
+            if group_id:
+                data[CONF_DEVICE_GROUP_ID] = group_id
+        return data
+
     @staticmethod
-    def _user_schema() -> vol.Schema:
-        """Build the onboarding schema."""
+    def _schema() -> vol.Schema:
+        """Build the create-sensor schema."""
         return vol.Schema(
             {
                 vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
@@ -95,84 +147,8 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(multiple=True)
                 ),
                 vol.Optional(CONF_LEGACY_UNIQUE_ID): selector.TextSelector(),
+                vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(
+                    selector.DeviceSelectorConfig(integration=DOMAIN)
+                ),
             }
-        )
-
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
-        return AbstractorOptionsFlowHandler()
-
-
-class AbstractorOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options."""
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_SOURCE_ENTITY_IDS,
-                        default=self.config_entry.data.get(
-                            CONF_SOURCE_ENTITY_IDS,
-                            [self.config_entry.data.get(CONF_SOURCE_ENTITY_ID)],
-                        ),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(multiple=True)
-                    ),
-                    vol.Optional(
-                        CONF_SPIKE_FILTER,
-                        default=self.config_entry.options.get(CONF_SPIKE_FILTER, False)
-                    ): bool,
-                    vol.Optional(
-                        CONF_INVERT,
-                        default=self.config_entry.options.get(CONF_INVERT, False)
-                    ): bool,
-                    vol.Optional(
-                        CONF_FALLBACK_ZERO,
-                        default=self.config_entry.options.get(CONF_FALLBACK_ZERO, False)
-                    ): bool,
-                    vol.Optional(
-                        CONF_NET_SUBTRACT_ENTITY_ID,
-                        description={
-                            "suggested_value": self.config_entry.options.get(
-                                CONF_NET_SUBTRACT_ENTITY_ID
-                            )
-                        },
-                    ): selector.EntitySelector(),
-                    vol.Optional(
-                        CONF_FALLBACK_SOURCE_ENTITY_ID,
-                        description={
-                            "suggested_value": self.config_entry.options.get(
-                                CONF_FALLBACK_SOURCE_ENTITY_ID
-                            )
-                        },
-                    ): selector.EntitySelector(),
-                    vol.Optional(
-                        CONF_FALLBACK_CONDITION_ENTITY_ID,
-                        description={
-                            "suggested_value": self.config_entry.options.get(
-                                CONF_FALLBACK_CONDITION_ENTITY_ID
-                            )
-                        },
-                    ): selector.EntitySelector(),
-                    vol.Optional(
-                        CONF_FALLBACK_CONDITION_STATE,
-                        description={
-                            "suggested_value": self.config_entry.options.get(
-                                CONF_FALLBACK_CONDITION_STATE
-                            )
-                        },
-                    ): selector.TextSelector(),
-                }
-            ),
         )
