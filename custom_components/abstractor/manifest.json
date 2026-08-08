@@ -3,7 +3,7 @@
   "name": "Abstractor",
   "codeowners": ["@Popoboxxo"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["http"],
   "documentation": "https://github.com/Popoboxxo/AbstrHActor",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Popoboxxo/AbstrHActor/issues",
