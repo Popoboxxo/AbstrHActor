@@ -37,7 +37,10 @@ jobs:
               source = json.load(f)
           with open('custom_components/abstractor/translations/en.json') as f:
               translated = json.load(f)
-          for key in ('config', 'options', 'services'):
+          # 'title' is deliberately excluded: custom integrations take their
+          # display name from manifest.json's 'name', not strings.json's
+          # top-level title, so it's never mirrored into translations/en.json.
+          for key in set(source) - {'title'}:
               if source.get(key) != translated.get(key):
                   print(f'MISMATCH in {key!r} block between strings.json and translations/en.json')
                   sys.exit(1)

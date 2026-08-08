@@ -9,9 +9,7 @@ from __future__ import annotations
 import re
 
 
-def test_options_dialog_shows_translated_labels(
-    logged_in_page, hass_base_url, hass_bearer_token
-):
+def test_options_dialog_shows_translated_labels(logged_in_page, hass_base_url):
     page = logged_in_page
 
     # Add a device via the Config Flow — same pattern as
@@ -26,7 +24,6 @@ def test_options_dialog_shows_translated_labels(
     search_field.wait_for(state="visible", timeout=5000)
     search_field.press_sequentially("Fridge Power")
     page.get_by_text("Fridge Power", exact=False).first.click()
-    page.keyboard.press("Escape")  # close the entity-picker dropdown
     page.get_by_role("button", name=re.compile("submit|ok", re.I)).click()
     page.wait_for_timeout(500)
     skip_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
@@ -40,10 +37,10 @@ def test_options_dialog_shows_translated_labels(
     page.get_by_role("button", name="Configure", exact=True).last.click()
     page.wait_for_timeout(500)
 
-    # The bug: without translations/en.json, HA falls back to showing the
-    # raw schema key as the field heading. Assert the TRANSLATED heading is
-    # visible, and the raw key is not — this fails today and passes once
-    # translations/en.json exists (Task 2).
+    # Locks in the fix: assert the TRANSLATED heading is visible and the
+    # raw schema key is not — without translations/en.json, HA falls back
+    # to showing the raw key as the field heading (see
+    # docs/superpowers/specs/2026-08-07-translations-loading-design.md).
     assert page.get_by_text("Source entities", exact=True).count() > 0, (
         "expected the translated field label 'Source entities' in the "
         "Options dialog — got raw key instead, translations/en.json is "

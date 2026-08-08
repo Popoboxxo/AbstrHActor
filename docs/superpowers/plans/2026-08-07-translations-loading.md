@@ -34,7 +34,7 @@
 - Consumes: the same "add a device, then open its Options dialog via the per-domain page's Configure button" navigation pattern already proven in `tests_e2e/test_unique_id_stability_e2e.py::_add_device` (lines 17–55) and the Options-dialog-opening block in `tests_e2e/test_unique_id_stability_e2e.py::test_reconfiguring_source_keeps_same_entity_id` (lines 90–106). Do not refactor that file to share code — duplicate the minimal needed sequence inline in the new test file, matching the existing suite's convention of light duplication over cross-file helper imports (every existing E2E test file already does this).
 - Produces: nothing consumed by later tasks — this is a leaf test file.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """E2E regression test: Config/Options Flow fields must show their
@@ -97,7 +97,7 @@ def test_options_dialog_shows_translated_labels(
     )
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run (from the repo root, via the E2E docker stack — see `docker/README.md` for the required `rm -r docker/ha_config_e2e/.storage` cleanup before a fresh run):
 
@@ -114,7 +114,7 @@ Expected: **FAIL** on the first assertion (`"Source entities"` not found), becau
 
 (`docker compose up` cannot target a single test file — `Dockerfile.e2e` sets `ENTRYPOINT ["pytest"]` / `CMD ["tests_e2e/", "-v"]`, so `up` always runs the whole suite. `run --rm e2e <args>` replaces `CMD` and runs only the given file; `run` starts `homeassistant` as a dependency automatically, but bringing it up explicitly first with `up -d homeassistant` avoids a race with the healthcheck.)
 
-- [ ] **Step 3: Commit the failing test**
+- [x] **Step 3: Commit the failing test**
 
 ```bash
 git add tests_e2e/test_translations_e2e.py
@@ -133,7 +133,7 @@ git commit -m "test: add failing E2E test for translated Options dialog labels"
 - Consumes: nothing.
 - Produces: the file Task 1's test asserts against; also the file Task 3's CI guard compares against `strings.json`.
 
-- [ ] **Step 1: Create the translations directory and file**
+- [x] **Step 1: Create the translations directory and file**
 
 Content is `strings.json`'s `config`, `options`, and `services` blocks, copied verbatim (confirmed current content of `strings.json` as of this plan — if `strings.json` has changed since, copy its *current* `config`/`options`/`services` blocks instead of this snapshot):
 
@@ -209,7 +209,7 @@ Content is `strings.json`'s `config`, `options`, and `services` blocks, copied v
 }
 ```
 
-- [ ] **Step 2: Run the E2E test to verify it now passes**
+- [x] **Step 2: Run the E2E test to verify it now passes**
 
 ```bash
 docker compose -f docker-compose.e2e.yml down -v
@@ -222,7 +222,7 @@ docker compose -f docker-compose.e2e.yml down -v
 
 Expected: **PASS**. (See Task 1 Step 2 for why `run --rm e2e <file>` is used instead of `up`.)
 
-- [ ] **Step 3: Run the full E2E suite to check for regressions**
+- [x] **Step 3: Run the full E2E suite to check for regressions**
 
 ```bash
 docker compose -f docker-compose.e2e.yml down -v
@@ -232,7 +232,7 @@ docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --
 
 Expected: all 6 tests pass (the 5 pre-existing tests plus the new one). If any pre-existing test now fails, it's very likely because it was relying on the *raw key* text somewhere `get_by_text` matched loosely (e.g. a substring match against `"source_entity_ids"` that no longer appears) — inspect the failure, and if so, update that assertion to match the new translated text instead of reverting this fix. `aria-label`-based locators (e.g. `page.get_by_label(re.compile("source_entity_id|source entity$", re.I))` in `test_config_flow_e2e.py` and `test_unique_id_stability_e2e.py`) are expected to be unaffected — `aria-label` on HA's picker components is generated from the raw field key regardless of translation state, confirmed during the original E2E debugging session (see `test_unique_id_stability_e2e.py` lines 107–109's comment, which documents this as a separate, known mechanism from the visible-heading bug this task fixes).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add custom_components/abstractor/translations/en.json
@@ -250,7 +250,7 @@ git commit -m "fix: ship translations/en.json so config/options flow labels rend
 - Consumes: `custom_components/abstractor/strings.json`, `custom_components/abstractor/translations/en.json` (both from Task 2 and earlier).
 - Produces: nothing consumed by later tasks — this is the last task in this plan.
 
-- [ ] **Step 1: Add the CI step**
+- [x] **Step 1: Add the CI step**
 
 Modify `.github/workflows/validate.yaml`, adding a new job (current file has `hacs` and `hassfest` jobs — add a third, independent job so a translation-sync failure doesn't get bundled into or confused with the HACS validation job's own pass/fail signal):
 
@@ -326,7 +326,7 @@ jobs:
           "
 ```
 
-- [ ] **Step 2: Dry-run the comparison locally to verify it passes on the current (in-sync) files**
+- [x] **Step 2: Dry-run the comparison locally to verify it passes on the current (in-sync) files**
 
 ```bash
 python3 -c "
@@ -345,7 +345,7 @@ print('strings.json and translations/en.json are in sync.')
 
 Expected: prints `strings.json and translations/en.json are in sync.` and exits 0.
 
-- [ ] **Step 3: Dry-run the comparison against an intentionally mismatched copy to verify it correctly fails**
+- [x] **Step 3: Dry-run the comparison against an intentionally mismatched copy to verify it correctly fails**
 
 ```bash
 cp custom_components/abstractor/translations/en.json /tmp/en.json.bak
@@ -376,7 +376,7 @@ rm /tmp/en.json.bak
 
 Expected: prints `MISMATCH in 'config' block...` and the exit code line shows `exit code: 1`. Then confirm the restore worked: `git status` shows no changes to `translations/en.json`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .github/workflows/validate.yaml
