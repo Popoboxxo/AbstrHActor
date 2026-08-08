@@ -1,0 +1,30 @@
+- platform: virtual
+  name: Fridge Power
+  class: power
+  initial_value: '42'
+  unit_of_measurement: 'W'
+- platform: virtual
+  name: Fridge Energy
+  class: energy
+  initial_value: '12.5'
+  unit_of_measurement: 'kWh'
+- platform: virtual
+  name: Garden Water
+  class: water
+  initial_value: '3.2'
+  unit_of_measurement: 'L'
+- platform: virtual
+  name: Battery Charge Power
+  class: power
+  initial_value: '500'
+  unit_of_measurement: 'W'
+- platform: virtual
+  name: Battery Discharge Power
+  class: power
+  initial_value: '120'
+  unit_of_measurement: 'W'
+- platform: virtual
+  name: Fallback Power Source
+  class: power
+  initial_value: '30'
+  unit_of_measurement: 'W'
