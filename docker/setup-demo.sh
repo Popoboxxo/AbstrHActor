@@ -8,15 +8,18 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-DEST="ha_config/custom_components/virtual"
-mkdir -p ha_config/custom_components
-
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 git clone --depth 1 https://github.com/twrecked/hass-virtual.git "$TMP"
-rm -rf "$DEST"
-cp -r "$TMP/custom_components/virtual" "$DEST"
 
-echo "hass-virtual installed into $DEST"
+for CONFIG_DIR in ha_config ha_config_e2e; do
+  DEST="$CONFIG_DIR/custom_components/virtual"
+  mkdir -p "$CONFIG_DIR/custom_components"
+  rm -rf "$DEST"
+  cp -r "$TMP/custom_components/virtual" "$DEST"
+  echo "hass-virtual installed into $DEST"
+done
+
 echo "Next: docker compose -f docker-compose.demo.yml up -d"
+echo "  or: docker compose -f docker-compose.e2e.yml up --build"

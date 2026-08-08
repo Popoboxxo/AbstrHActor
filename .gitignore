@@ -266,6 +266,15 @@ docker/ha_config/*
 !docker/ha_config/virtual_sensors.yaml
 !docker/ha_config/virtual_binary_sensors.yaml
 
+# Home Assistant E2E instance runtime state (docker-compose.e2e.yml). Same
+# reasoning as docker/ha_config/* above — the seed config is tracked so the
+# E2E instance's fixture entities (used by tests_e2e/) are reproducible on a
+# fresh checkout instead of depending on local, uncommitted state.
+docker/ha_config_e2e/*
+!docker/ha_config_e2e/configuration.yaml
+!docker/ha_config_e2e/virtual_sensors.yaml
+!docker/ha_config_e2e/virtual_binary_sensors.yaml
+
 # pytest/coverage output
 test-results/
 
