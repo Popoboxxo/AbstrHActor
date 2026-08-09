@@ -69,3 +69,17 @@ async def test_debug_event_notifies_only_when_debug_toggle_is_on() -> None:
     await coordinator._async_notify_debug("entry-1", "spike rejected")
 
     services.async_call.assert_awaited_once()
+
+
+async def test_add_and_remove_subentry() -> None:
+    """Coordinator tracks pipelines by subentry_id, not entry_id."""
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.add_subentry("subentry-1", {"device_type": "power", "source_entity_id": "sensor.x"})
+
+    assert "subentry-1" in coordinator.subentry_data
+    assert "subentry-1" in coordinator.pipelines
+
+    coordinator.remove_subentry("subentry-1")
+
+    assert "subentry-1" not in coordinator.subentry_data
+    assert "subentry-1" not in coordinator.pipelines

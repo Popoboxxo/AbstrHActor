@@ -5,7 +5,6 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -26,36 +25,58 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Abstractor data."""
 
     def __init__(self, hass: HomeAssistant) -> None:
-        """Initialize."""
+        """Initialize.
+
+        `config_entry=None` is passed explicitly (instead of leaving it
+        undefined) to opt this coordinator OUT of HA's own automatic
+        "shut down when the current config entry unloads" behaviour
+        (`DataUpdateCoordinator.__init__` registers `self.async_shutdown` via
+        `config_entry.async_on_unload` for whichever entry the ContextVar
+        `config_entries.current_entry` resolves to at construction time —
+        here, the singleton root entry, since this is instantiated from
+        inside its own async_setup_entry).
+
+        This coordinator's shutdown is managed manually by __init__.py's
+        async_unload_entry instead, gated on `coordinator.subentry_data`
+        being empty: a plain reconfigure/subentry-add/-remove reload also
+        unloads and re-sets-up the SAME (singleton) entry, and the
+        coordinator is meant to survive that — only a full domain teardown
+        (see async_unload_entry) should actually shut it down. Leaving
+        `config_entry` undefined would shut it down via HA's own hook on
+        EVERY such reload regardless of that check, permanently — the base
+        class's `_async_refresh` silently no-ops forever once
+        `_shutdown_requested` is set, so every subentry's data would go
+        stale after the very first reload of any kind.
+        """
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=None,
             name=DOMAIN,
             update_interval=timedelta(seconds=30),
         )
-        self.entries: dict[str, ConfigEntry] = {}
+        self.subentry_data: dict[str, dict] = {}
         self.pipelines: dict[str, AbstractorFilterPipeline] = {}
         self.influx_exporter = None
         self._last_notified_events: dict[str, str] = {}
 
-    def add_entry(self, entry: ConfigEntry) -> None:
-        """Add an entry to central polling."""
-        self.entries[entry.entry_id] = entry
-        config = {**entry.data, **entry.options}
+    def add_subentry(self, subentry_id: str, subentry_data: dict) -> None:
+        """Add a subentry to central polling."""
+        config = dict(subentry_data)
         config["device_type"] = config.get("device_type", "power")
-        self.pipelines[entry.entry_id] = AbstractorFilterPipeline(config)
+        self.subentry_data[subentry_id] = config
+        self.pipelines[subentry_id] = AbstractorFilterPipeline(config)
 
-    def remove_entry(self, entry_id: str) -> None:
-        """Remove an entry from central polling."""
-        self.entries.pop(entry_id, None)
-        self.pipelines.pop(entry_id, None)
-        self._last_notified_events.pop(entry_id, None)
+    def remove_subentry(self, subentry_id: str) -> None:
+        """Remove a subentry from central polling."""
+        self.subentry_data.pop(subentry_id, None)
+        self.pipelines.pop(subentry_id, None)
+        self._last_notified_events.pop(subentry_id, None)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via central polling."""
         data: dict[str, float | None] = {}
-        for entry_id, entry in self.entries.items():
-            config = {**entry.data, **entry.options}
+        for subentry_id, config in self.subentry_data.items():
             source_ids = config.get(CONF_SOURCE_ENTITY_IDS) or [
                 config.get(CONF_SOURCE_ENTITY_ID)
             ]
@@ -68,7 +89,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 for source_id in source_ids
             ]
 
-            pipeline = self.pipelines.get(entry_id)
+            pipeline = self.pipelines.get(subentry_id)
             if pipeline:
                 net_subtract_raw = self._read_state(config.get(CONF_NET_SUBTRACT_ENTITY_ID))
                 fallback_raw = self._read_state(config.get(CONF_FALLBACK_SOURCE_ENTITY_ID))
@@ -79,8 +100,8 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     fallback_raw=fallback_raw,
                     fallback_condition_met=fallback_condition_met,
                 )
-                data[entry_id] = val
-                await self._async_notify_debug(entry_id, pipeline.last_event)
+                data[subentry_id] = val
+                await self._async_notify_debug(subentry_id, pipeline.last_event)
 
                 if self.influx_exporter and val is not None:
                     await self.influx_exporter.async_push(source_ids[0], val)
@@ -109,12 +130,12 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         expected_state = config.get(CONF_FALLBACK_CONDITION_STATE)
         return self._read_state(condition_entity_id) == expected_state
 
-    async def _async_notify_debug(self, entry_id: str, event: str | None) -> None:
+    async def _async_notify_debug(self, subentry_id: str, event: str | None) -> None:
         """Send deduplicated debug events through the existing HA notify group."""
         if event is None:
-            self._last_notified_events.pop(entry_id, None)
+            self._last_notified_events.pop(subentry_id, None)
             return
-        if self._last_notified_events.get(entry_id) == event:
+        if self._last_notified_events.get(subentry_id) == event:
             return
         if not self.hass.states.is_state("input_boolean.automation_debugger", "on"):
             return
@@ -123,7 +144,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         await self.hass.services.async_call(
             "notify",
             "adminnotificationgroup",
-            {"message": f"Abstractor {entry_id}: {event}"},
+            {"message": f"Abstractor {subentry_id}: {event}"},
             blocking=False,
         )
-        self._last_notified_events[entry_id] = event
+        self._last_notified_events[subentry_id] = event

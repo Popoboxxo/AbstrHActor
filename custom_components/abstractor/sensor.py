@@ -11,10 +11,11 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
@@ -28,34 +29,37 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the sensor platform."""
+    """Set up the sensor platform: one entity per Abstractor subentry."""
     coordinator: AbstractorDataUpdateCoordinator = hass.data[DOMAIN]["coordinator"]
 
-    device_type = entry.data.get(CONF_DEVICE_TYPE, "")
-    # Identity (unique_id) is derived from entry.data ONLY, never entry.options.
-    # entry.data is frozen at creation time by the config flow; entry.options is
-    # what the options flow (REQ-CORE-007, hardware swap) rewrites. Deriving the
-    # unique_id from the current source instead would change it whenever the
-    # source entity is reconfigured, breaking REQ-CORE-001 (stable identity /
-    # unbroken recorder history across a hardware swap).
-    identity_source_ids = entry.data.get(CONF_SOURCE_ENTITY_IDS) or [
-        entry.data.get(CONF_SOURCE_ENTITY_ID)
-    ]
-    identity_source_ids = [source for source in identity_source_ids if source]
-
-    async_add_entities(
-        [
-            AbstractorSensor(
-                coordinator,
-                entry,
-                device_type,
-                identity_source_ids,
-                entry.data.get(CONF_LEGACY_UNIQUE_ID),
-            )
+    for subentry_id, subentry in entry.subentries.items():
+        device_type = subentry.data.get(CONF_DEVICE_TYPE, "")
+        # Identity (unique_id) is derived from subentry.data ONLY. subentry.data
+        # is what the create/reconfigure flow writes atomically each time (see
+        # config_flow.py); deriving unique_id from anything else would risk
+        # changing it on reconfigure, breaking REQ-CORE-001 (stable identity /
+        # unbroken recorder history across a hardware swap or device move).
+        identity_source_ids = subentry.data.get(CONF_SOURCE_ENTITY_IDS) or [
+            subentry.data.get(CONF_SOURCE_ENTITY_ID)
         ]
-    )
+        identity_source_ids = [source for source in identity_source_ids if source]
+
+        async_add_entities(
+            [
+                AbstractorSensor(
+                    coordinator,
+                    entry,
+                    device_type,
+                    identity_source_ids,
+                    subentry.data.get(CONF_LEGACY_UNIQUE_ID),
+                    subentry_id=subentry_id,
+                    device_group_id=subentry.data.get(CONF_DEVICE_GROUP_ID),
+                )
+            ],
+            config_subentry_id=subentry_id,
+        )
 
 class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], SensorEntity):
     """Abstractor Sensor Entity."""
@@ -69,10 +73,14 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
         device_type: str,
         identity_source_ids: list[str],
         legacy_unique_id: str | None = None,
+        *,
+        subentry_id: str,
+        device_group_id: str | None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entry = entry
+        self._subentry_id = subentry_id
         self._device_type = device_type
         self._identity_source_ids = identity_source_ids
 
@@ -87,8 +95,13 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
                 f"abstractor_{device_type}_{'_'.join(sorted(identity_source_ids))}"
             )
         self._attr_name = device_type.capitalize()
+        # device_group_id set -> this sensor joins an existing device (the
+        # subentry that originally registered it under this identifier).
+        # Not set -> this sensor gets its own device, keyed by its own
+        # subentry_id — identical to today's one-device-per-sensor default.
+        device_key = device_group_id or subentry_id
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
+            identifiers={(DOMAIN, device_key)},
             name=f"Abstract {device_type.capitalize()}",
             manufacturer="Abstractor",
             model="Abstract sensor",
@@ -110,4 +123,4 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
     @property
     def native_value(self):
         """Return the state of the sensor."""
-        return self.coordinator.data.get(self.entry.entry_id)
+        return self.coordinator.data.get(self._subentry_id)

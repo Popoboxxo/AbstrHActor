@@ -72,18 +72,33 @@ untouched.
 ## Migration
 
 Existing installations have many flat top-level entries, each its own device.
-`async_migrate_entry` (triggered automatically the first time the updated
-integration loads) creates the singleton root entry once, then converts every
-existing top-level Abstractor entry into a subentry under it — **the
-migration only ever changes config-entry structure, never `unique_id`,
-`entity_id`, or device identifiers**, so recorder history is unaffected. A
-fresh installation (no existing entries) skips migration and creates the root
-entry directly in the new shape.
+`async_migrate_entry` cannot do this migration: it receives one existing
+`ConfigEntry` at a time and can only rewrite that entry's own data/version —
+there is no mechanism for an entry to dissolve itself into a differently-
+structured entry elsewhere. Verified against Home Assistant's own
+`kitchen_sink` reference integration, which demonstrates the actual supported
+pattern for this kind of structural change: a one-time reconciliation run
+from `async_setup` (the module-level hook that runs once when the integration
+domain loads, before any per-entry `async_setup_entry` calls) instead.
 
-**Failure handling:** if migration fails for an entry, that entry is left in
-its pre-migration state (reported by HA as needing attention) rather than
-partially converted — no entry is ever left in an ambiguous state that could
-corrupt identity or history.
+On first load after the update, `async_setup` detects any legacy flat
+top-level entries, creates the singleton root entry once
+(`hass.config_entries.async_add(...)`), converts each legacy entry's data
+into a `ConfigSubentry` and attaches it to the root
+(`hass.config_entries.async_add_subentry(...)`), then removes the now-empty
+legacy entry (`hass.config_entries.async_remove(...)`). **The migration only
+ever changes config-entry structure, never `unique_id`, `entity_id`, or
+device identifiers**, so recorder history is unaffected. A fresh installation
+(no existing entries) skips reconciliation and creates the root entry
+directly in the new shape.
+
+**Failure handling:** reconciliation converts one legacy entry at a time —
+create its subentry on the root, confirm success, only then remove the
+legacy entry. If it fails partway through the batch, already-converted
+entries stay converted (harmless — they're already in their new, correct
+form) and not-yet-converted entries are simply retried on the next
+`async_setup` (unaffected, since they're untouched flat entries until their
+own turn). No entry is ever left half-converted.
 
 **Orphaned device references:** if a user deletes a device that another
 subentry's stored identifier still points to, Home Assistant simply creates a

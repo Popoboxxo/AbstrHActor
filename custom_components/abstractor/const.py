@@ -3,6 +3,11 @@ from typing import Final
 
 DOMAIN: Final = "abstractor"
 CONFIG_ENTRY_VERSION: Final = 1
+# Identity of the singleton parent entry that every sensor subentry hangs off.
+# Both the config flow and the legacy-entry reconciliation key on this exact
+# value, so it must not be spelled out as a literal in either of them.
+ROOT_UNIQUE_ID: Final = "abstractor_root"
+ROOT_ENTRY_TITLE: Final = "Abstractor"
 CONF_DEVICE_TYPE: Final = "device_type"
 CONF_SOURCE_ENTITY_ID: Final = "source_entity_id"
 CONF_SOURCE_ENTITY_IDS: Final = "source_entity_ids"
@@ -14,6 +19,10 @@ CONF_FALLBACK_SOURCE_ENTITY_ID: Final = "fallback_source_entity_id"
 CONF_FALLBACK_CONDITION_ENTITY_ID: Final = "fallback_condition_entity_id"
 CONF_FALLBACK_CONDITION_STATE: Final = "fallback_condition_state"
 CONF_NET_SUBTRACT_ENTITY_ID: Final = "net_subtract_entity_id"
+CONF_DEVICE_GROUP_ID: Final = "device_group_id"
+CONF_TARGET_DEVICE_ID: Final = "target_device_id"
+CONF_CREATE_NEW_DEVICE: Final = "create_new_device"
+SUBENTRY_TYPE_SENSOR: Final = "sensor"
 
 # Storage
 STORAGE_KEY: Final = f"{DOMAIN}.storage"
