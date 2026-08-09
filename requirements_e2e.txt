@@ -3,3 +3,10 @@
 playwright>=1.47
 pytest-playwright>=0.5
 requests>=2.32
+# HA's entity registry (entity_id -> device_id mapping) is only exposed via
+# the WebSocket API (homeassistant/components/config/entity_registry.py
+# registers "config/entity_registry/list" as a websocket_command, no REST
+# view exists for it — confirmed against a live instance while writing
+# tests_e2e/test_device_bundling_e2e.py; /api/config/entity_registry/list
+# 404s). Used to fetch device_id per entity for that test's assertions.
+websockets>=13.0

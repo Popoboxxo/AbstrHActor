@@ -4,52 +4,93 @@ from __future__ import annotations
 
 import re
 
+# The subentry "add" action is a plain <button> (confirmed via DOM
+# inspection against a live instance — HA's frontend does not expose it as
+# role="link"), whose accessible name is the translated initiate_flow.user
+# string ("Add Abstract sensor" — see strings.json / translations/en.json).
+# "add.*sensor" survives either that or a raw-key fallback render.
+ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.I)
+SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.I)
 
-def test_add_power_device_creates_live_entity(logged_in_page, hass_base_url):
-    page = logged_in_page
+
+def _dismiss_success_dialog(page) -> None:
+    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
+    if finish_button.count():
+        finish_button.first.click()
+        page.wait_for_timeout(300)
+
+
+def _ensure_root_entry(page, hass_base_url: str) -> None:
+    """Create the singleton Abstractor root entry (Task 3+: "Add
+    integration" only creates this empty parent — sensor fields moved to a
+    separate subentry flow, see _add_sensor_subentry), or no-op if a
+    previous test in this run already created it (it's a HA-enforced
+    singleton via unique_id, so re-running "Add integration" would abort
+    instead of showing a form)."""
+    page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
+    page.wait_for_load_state("networkidle")
+    if page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).count():
+        return
+
     page.goto(f"{hass_base_url}/config/integrations/dashboard")
-
     # Custom HA elements (ha-fab, mwc-button, ...) don't reliably expose an
     # accessible role="button" to Playwright's get_by_role — get_by_text is
     # what actually finds them (confirmed via manual DOM inspection).
     page.get_by_text("Add integration", exact=False).click()
-    # get_by_text("Abstractor") becomes ambiguous once a device already
-    # exists (it then also matches the sidebar panel entry and the
-    # already-installed integration card behind this dialog) — pressing
-    # Enter on the filtered (single-result) brand search avoids relying on
-    # text matching entirely, the same fix pattern as the entity picker.
     brand_search = page.get_by_placeholder(re.compile("search for a brand", re.I))
     brand_search.fill("Abstractor")
     brand_search.press("Enter")
+    # The root entry's async_step_user form has no data fields at all (see
+    # strings.json's config.step.user) — Submit is immediately available.
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
+    page.wait_for_timeout(500)
+    _dismiss_success_dialog(page)
 
-    page.get_by_label(re.compile("source_entity_id|source entity$", re.I)).click()
-    # ha-entity-picker filters as-you-type off real input events — .fill()
-    # sets the value without dispatching them, so the dropdown never narrows.
-    # get_by_placeholder("search") with a case-insensitive regex is ambiguous
-    # (the prior brand-picker dialog leaves a "Search integrations" input in
-    # the DOM) — exact=True disambiguates against that. press_sequentially
-    # (not raw keyboard.type) is what's actually reliable here: it re-focuses
-    # its target locator itself, so it survives the picker's internal
-    # re-renders instead of silently typing into whatever last had OS focus.
-    search_field = page.get_by_placeholder("Search", exact=True)
-    search_field.wait_for(state="visible", timeout=5000)
-    search_field.press_sequentially("Fridge Power")
-    page.get_by_text("Fridge Power", exact=False).first.click()
 
-    # get_by_text with an anchored regex (^...$) reliably matches 0 elements
-    # here even though the button's own text is exactly "Submit" — confirmed
-    # via DOM dump and by the fact that an unanchored get_by_text/get_by_role
-    # both find it fine. get_by_role is what actually works for this button.
-    page.get_by_role("button", name=re.compile("submit|ok", re.I)).click()
+def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
+    """Drive the subentry "Add Abstract sensor" flow from the integration's
+    own page, leaving device_type at its default ("power")."""
+    page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
+    page.wait_for_load_state("networkidle")
+    page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
     page.wait_for_timeout(500)
 
-    # get_by_text("finish|skip") can match a transient toast/snackbar
-    # message instead of the real dialog button, and clicking it hangs for
-    # the full timeout since the still-open dialog intercepts the pointer
-    # event — scope to role=button like the Submit fix above.
-    skip_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
-    if skip_button.count():
-        skip_button.first.click()
+    # This picker opens as its own role="dialog" (named after the field's
+    # aria-label) layered on top of the subentry form dialog, which itself
+    # sits on top of the domain listing page underneath both — the search
+    # placeholder "Search" is ambiguous across all of them, and text like
+    # the entity's name can even exist in more than one layer at once.
+    # Scoping every locator to this specific dialog (rather than relying on
+    # `.first`, which resolves in DOM/document order, NOT visual stacking
+    # order, and can silently grab a match hidden under the modal overlay)
+    # avoids that — confirmed against a live instance.
+    source_dialog = page.get_by_role("dialog", name="Source entity")
+    page.get_by_label("Source entity", exact=True).click()
+    # ha-entity-picker filters as-you-type off real input events — .fill()
+    # sets the value without dispatching them, so the dropdown never narrows.
+    # press_sequentially (not raw keyboard.type) re-focuses its target
+    # locator itself, surviving the picker's internal re-renders — but a
+    # delay is required between characters, or a stray keystroke can land
+    # on HA's global quick-bar hotkeys (bound to keydown on an unfocused
+    # document, e.g. "d" for its Devices tab) instead of the field, while
+    # the picker's own filter-triggered re-render is transiently unmounting
+    # it (confirmed via screenshot showing the quick-bar overlay appear
+    # mid-type without this delay).
+    search_field = source_dialog.get_by_placeholder("Search", exact=True)
+    search_field.wait_for(state="visible", timeout=5000)
+    search_field.press_sequentially(source_name, delay=100)
+    source_dialog.get_by_text(source_name, exact=False).first.click()
+
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
+    page.wait_for_timeout(500)
+    _dismiss_success_dialog(page)
+
+
+def test_add_power_device_creates_live_entity(logged_in_page, hass_base_url):
+    page = logged_in_page
+
+    _ensure_root_entry(page, hass_base_url)
+    _add_sensor_subentry(page, hass_base_url, "Fridge Power")
 
     page.goto(f"{hass_base_url}/config/entities")
     page.wait_for_load_state("networkidle")

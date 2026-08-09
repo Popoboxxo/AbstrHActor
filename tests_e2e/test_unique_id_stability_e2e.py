@@ -13,46 +13,77 @@ import re
 
 import requests
 
+ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.I)
+SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.I)
 
-def _add_device(page, hass_base_url: str, source_name: str) -> None:
+
+def _dismiss_success_dialog(page) -> None:
+    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
+    if finish_button.count():
+        finish_button.first.click()
+        page.wait_for_timeout(300)
+
+
+def _ensure_root_entry(page, hass_base_url: str) -> None:
+    """Create the singleton Abstractor root entry (Task 3+: "Add
+    integration" only creates this empty parent now), or no-op if a
+    previous test in this run already created it."""
+    page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
+    page.wait_for_load_state("networkidle")
+    if page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).count():
+        return
+
+    page.goto(f"{hass_base_url}/config/integrations/dashboard")
     # Custom HA elements (ha-fab, mwc-button, ...) don't reliably expose an
     # accessible role="button" to Playwright's get_by_role — get_by_text is
     # what actually finds them (confirmed via manual DOM inspection).
-    page.goto(f"{hass_base_url}/config/integrations/dashboard")
     page.get_by_text("Add integration", exact=False).click()
-    # get_by_text("Abstractor") becomes ambiguous once a device already
-    # exists (it then also matches the sidebar panel entry and the
-    # already-installed integration card behind this dialog) — pressing
-    # Enter on the filtered (single-result) brand search avoids relying on
-    # text matching entirely, the same fix pattern as the entity picker.
     brand_search = page.get_by_placeholder(re.compile("search for a brand", re.I))
     brand_search.fill("Abstractor")
     brand_search.press("Enter")
-    page.get_by_label(re.compile("source_entity_id|source entity$", re.I)).click()
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
+    page.wait_for_timeout(500)
+    _dismiss_success_dialog(page)
+
+
+def _add_device(page, hass_base_url: str, source_name: str) -> None:
+    """Drive the subentry "Add Abstract sensor" flow — same pattern as
+    tests_e2e/test_config_flow_e2e.py (Task 3+ replaced the single-step
+    "Add integration" + sensor-fields flow this helper used to drive with
+    a two-step one: create the singleton root entry once, then a subentry
+    per sensor)."""
+    _ensure_root_entry(page, hass_base_url)
+
+    page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
+    page.wait_for_load_state("networkidle")
+    page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
+    page.wait_for_timeout(500)
+
+    # This picker opens as its own role="dialog" (named after the field's
+    # aria-label) layered on top of the subentry form dialog, which itself
+    # sits on top of the domain listing page underneath both — scoping to
+    # it avoids both the shared "Search" placeholder ambiguity and
+    # get_by_text(...).first silently matching a same-named element hidden
+    # under the modal overlay (DOM/document order, not visual stacking
+    # order) instead of the one actually in this dialog — confirmed
+    # against a live instance.
+    source_dialog = page.get_by_role("dialog", name="Source entity")
+    page.get_by_label("Source entity", exact=True).click()
     # ha-entity-picker filters as-you-type off real input events — .fill()
     # sets the value without dispatching them, so the dropdown never narrows.
-    # get_by_placeholder("search") with a case-insensitive regex is ambiguous
-    # (the prior brand-picker dialog leaves a "Search integrations" input in
-    # the DOM) — exact=True disambiguates against that. press_sequentially
-    # (not raw keyboard.type) is what's actually reliable here: it re-focuses
-    # its target locator itself, so it survives the picker's internal
-    # re-renders instead of silently typing into whatever last had OS focus.
-    search_field = page.get_by_placeholder("Search", exact=True)
+    # press_sequentially (not raw keyboard.type) re-focuses its target
+    # locator itself, surviving the picker's internal re-renders — but a
+    # delay is required between characters, or a stray keystroke can land
+    # on HA's global quick-bar hotkeys (bound to keydown on an unfocused
+    # document, e.g. "d" for its Devices tab) instead of the field.
+    search_field = source_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
-    search_field.press_sequentially(source_name)
-    page.get_by_text(source_name, exact=False).first.click()
-    # get_by_text with an anchored regex (^...$) reliably matches 0 elements
-    # for this button even though its own text is exactly "Submit" —
-    # get_by_role is what actually works here (confirmed via DOM dump).
-    page.get_by_role("button", name=re.compile("submit|ok", re.I)).click()
+    search_field.press_sequentially(source_name, delay=100)
+    source_dialog.get_by_text(source_name, exact=False).first.click()
+
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
     page.wait_for_timeout(500)
-    # get_by_text("finish|skip") can match a transient toast/snackbar
-    # message instead of the real dialog button, and clicking it hangs for
-    # the full timeout since the still-open dialog intercepts the pointer
-    # event — scope to role=button like the Submit fix above.
-    skip_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
-    if skip_button.count():
-        skip_button.first.click()
+    _dismiss_success_dialog(page)
 
 
 def _current_entity_ids(hass_base_url: str, token: str) -> set[str]:
@@ -85,44 +116,45 @@ def test_reconfiguring_source_keeps_same_entity_id(
     entity_ids_before = _current_entity_ids(hass_base_url, hass_bearer_token)
     assert entity_ids_before, "expected the newly added device's entity to be listed"
 
-    # Reconfigure: swap the source entity via the Options Flow — the
-    # real-world equivalent of replacing the physical hardware sensor.
-    # Once the domain card shows multiple config entries ("N devices"), HA
-    # renders it as a link to a per-domain listing page instead of a
-    # button that pops a single entry's menu directly — role=button (which
-    # worked for the single-entry case in test_net_flow) matches nothing
-    # here. Going straight to that page's URL sidesteps the card click
-    # entirely (also avoids the ambiguity with the sidebar panel link,
-    # which points at the same domain slug).
+    # Reconfigure: swap the source entity via this sensor's own subentry
+    # Reconfigure flow — the real-world equivalent of replacing the
+    # physical hardware sensor. Task 3+ moved sensor settings off the
+    # parent config entry onto a per-sensor subentry, so there's no more
+    # single "Configure" gear per integration entry to click; each
+    # subentry gets its own, whose accessible name is exactly the
+    # translated config_subentries.sensor.initiate_flow.reconfigure string
+    # (confirmed via DOM inspection against a live instance). Every
+    # subentry's Reconfigure button shares that exact same accessible name
+    # (not distinguished by device or sensor type), so once other tests in
+    # a full-suite run have added their own sensors against this shared HA
+    # container, more than one can match — ours is the most recently
+    # created, i.e. the last one.
     page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
     page.wait_for_load_state("networkidle")
-    # Every config entry on this page renders with an identical generic
-    # title ("Abstract power" / "Abstract Power") — there's no visible text
-    # to distinguish our just-created entry from any other. Each entry's
-    # gear icon is a <button aria-label="Configure"> (no visible text, so
-    # get_by_text never matches it) in DOM order matching creation order —
-    # ours is the most recently created, i.e. the last one.
-    page.get_by_role("button", name="Configure", exact=True).last.click()
+    page.get_by_role("button", name="Reconfigure Abstract sensor").last.click()
     page.wait_for_timeout(500)
-    # get_by_label never matches this dialog's fields because they aren't
-    # proper <label> associations (true regardless of translation state,
-    # fixed separately in docs/superpowers/specs/2026-08-07-translations-
-    # loading-design.md). The source_entity_ids field already shows our
-    # current source as a chip; "Add entity" is the visible, unambiguous
-    # affordance for changing it, so use that instead of trying to
-    # label-match the field itself.
-    page.get_by_text("Add entity", exact=False).click()
-    # "Add entity" opens its own "Select option" dialog layered on top of
-    # the options dialog — its search field shares the exact placeholder
-    # "Search" with the domain listing page's own search box underneath,
-    # so scope to the new dialog specifically instead of the whole page.
-    add_entity_dialog = page.get_by_role("dialog", name="Select option")
-    search_field = add_entity_dialog.get_by_placeholder("Search", exact=True)
+
+    # The current source now renders as a single-select "Source entity"
+    # field pre-filled with a chip (not the old multi-select "Add entity"
+    # affordance this test used to drive) — clicking the field itself
+    # reopens its picker to choose a REPLACEMENT (standard combobox
+    # behaviour: picking a new entity swaps the existing single value
+    # rather than requiring it to be cleared first), which is what a
+    # hardware swap actually looks like now. Not using the field's own
+    # "Clear" (X) button: that aria-label is shared with an unrelated
+    # field on the same form (the "Legacy unique ID" text selector's
+    # built-in clear/reveal icons render with the same generic
+    # "Clear"/"Show password" labels, with no field-specific text to
+    # disambiguate — confirmed via DOM inspection against a live instance)
+    # and picking the wrong one would silently no-op instead of swapping
+    # the source.
+    source_dialog = page.get_by_role("dialog", name="Source entity")
+    page.get_by_label("Source entity", exact=True).click()
+    search_field = source_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
-    search_field.press_sequentially("Fridge Power")
-    page.get_by_text("Fridge Power", exact=False).first.click()
-    page.keyboard.press("Escape")  # close the entity-picker dropdown, not the dialog
-    page.get_by_role("button", name=re.compile("submit|ok", re.I)).click()
+    search_field.press_sequentially("Fridge Power", delay=100)
+    source_dialog.get_by_text("Fridge Power", exact=False).first.click()
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
     page.wait_for_timeout(1000)  # entry reload after options update
 
     entity_ids_after = _current_entity_ids(hass_base_url, hass_bearer_token)
@@ -131,4 +163,37 @@ def test_reconfiguring_source_keeps_same_entity_id(
         "reconfiguring the source entity must not change the abstracted "
         f"sensor's entity_id (REQ-CORE-001): before={entity_ids_before} "
         f"after={entity_ids_after}"
+    )
+
+    # The entity_id-stability assertion above is trivially true if the
+    # reconfigure submission silently failed to apply at all (same
+    # entity_id because nothing actually changed) — so also confirm the
+    # swap itself took effect, by polling the entity's own state for the
+    # NEW source's value. "Fallback Power Source" and "Fridge Power" are
+    # deliberately different virtual-sensor values (30 vs 42, see
+    # docker/ha_config_e2e/virtual_sensors.yaml) specifically so this is a
+    # reliable discriminator between "source actually swapped" and
+    # "reconfigure was a no-op".
+    entity_id = next(iter(entity_ids_after))
+    state = None
+    for _ in range(20):
+        resp = requests.get(
+            f"{hass_base_url}/api/states/{entity_id}",
+            headers={"Authorization": f"Bearer {hass_bearer_token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        state = resp.json()["state"]
+        try:
+            if float(state) == 42:
+                break
+        except ValueError:
+            pass
+        page.wait_for_timeout(500)
+
+    assert state is not None and float(state) == 42, (
+        "expected the reconfigured sensor to report Fridge Power's value "
+        f"(42 W) after the source swap actually took effect; {entity_id} "
+        f"state was {state!r} (still 30 would mean the Reconfigure submit "
+        "silently failed to apply, masked by the entity_id-only check above)"
     )
