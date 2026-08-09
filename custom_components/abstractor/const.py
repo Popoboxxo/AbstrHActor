@@ -3,6 +3,11 @@ from typing import Final
 
 DOMAIN: Final = "abstractor"
 CONFIG_ENTRY_VERSION: Final = 1
+# Identity of the singleton parent entry that every sensor subentry hangs off.
+# Both the config flow and the legacy-entry reconciliation key on this exact
+# value, so it must not be spelled out as a literal in either of them.
+ROOT_UNIQUE_ID: Final = "abstractor_root"
+ROOT_ENTRY_TITLE: Final = "Abstractor"
 CONF_DEVICE_TYPE: Final = "device_type"
 CONF_SOURCE_ENTITY_ID: Final = "source_entity_id"
 CONF_SOURCE_ENTITY_IDS: Final = "source_entity_ids"

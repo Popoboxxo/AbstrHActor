@@ -34,6 +34,8 @@ from .const import (
     CONF_TARGET_DEVICE_ID,
     CONFIG_ENTRY_VERSION,
     DOMAIN,
+    ROOT_ENTRY_TITLE,
+    ROOT_UNIQUE_ID,
     SENSOR_TYPES,
     SUBENTRY_TYPE_SENSOR,
 )
@@ -80,11 +82,11 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Create the singleton root entry; no sensor data is collected here."""
-        await self.async_set_unique_id("abstractor_root")
+        await self.async_set_unique_id(ROOT_UNIQUE_ID)
         self._abort_if_unique_id_configured()
 
         if user_input is not None:
-            return self.async_create_entry(title="Abstractor", data={})
+            return self.async_create_entry(title=ROOT_ENTRY_TITLE, data={})
 
         return self.async_show_form(step_id="user")
 

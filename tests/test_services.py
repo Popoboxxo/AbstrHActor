@@ -8,17 +8,22 @@ from custom_components.abstractor.const import DOMAIN
 
 
 def _hass(store: Mock) -> SimpleNamespace:
-    """Build the minimal hass surface used by service handlers."""
-    entry = SimpleNamespace(
+    """Build the minimal hass surface used by service handlers.
+
+    Sensor configuration is read from the config entries' subentries since
+    device bundling; only the last-known values still come from the
+    coordinator.
+    """
+    subentry = SimpleNamespace(
         data={"device_type": "power", "source_entity_id": "sensor.test_source"},
-        options={},
         title="Abstract power",
-        unique_id="abstractor_power_sensor.test_source",
-        version=1,
+        unique_id=None,
     )
-    coordinator = SimpleNamespace(entries={"entry-1": entry}, data={"entry-1": 4.0})
+    entry = SimpleNamespace(subentries={"subentry-1": subentry}, version=1)
+    coordinator = SimpleNamespace(data={"subentry-1": 4.0})
     return SimpleNamespace(
         data={DOMAIN: {"storage": store, "coordinator": coordinator}},
+        config_entries=SimpleNamespace(async_entries=lambda domain: [entry]),
     )
 
 
