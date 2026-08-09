@@ -125,6 +125,20 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             step_id="user", data_schema=self._schema(), errors=errors
         )
 
+    def _get_subentry_config_entry(self) -> ConfigEntry:
+        """Return the config entry linked to this subentry flow's context.
+
+        HA 2025.3.0 (this integration's pinned floor, per manifest.json)
+        exposes ``ConfigSubentryFlow._get_reconfigure_entry()``. Newer HA
+        (observed on 2026.8.0) renamed it to ``_get_entry()`` as part of
+        unifying entry access across subentry flow steps. Feature-detect
+        at call time so a single code path works across that whole range
+        without pinning an upper `homeassistant` version bound.
+        """
+        if hasattr(self, "_get_entry"):
+            return self._get_entry()
+        return self._get_reconfigure_entry()
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
@@ -143,7 +157,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 data = self._normalize(user_input, sources, current_data=current.data)
                 device_type = data[CONF_DEVICE_TYPE]
                 return self.async_update_and_abort(
-                    self._get_reconfigure_entry(),
+                    self._get_subentry_config_entry(),
                     current,
                     title=f"Abstract {device_type}",
                     data=data,
