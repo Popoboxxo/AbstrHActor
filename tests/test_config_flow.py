@@ -186,10 +186,20 @@ async def test_subentry_create_form_legacy_unique_id(hass: HomeAssistant) -> Non
     assert subentries[0].data[CONF_LEGACY_UNIQUE_ID] == "old_unique_id_123"
 
 
-async def test_subentry_create_form_target_device_resolves_group_id(
+# GH#18: CONF_TARGET_DEVICE_ID and CONF_CREATE_NEW_DEVICE have been removed
+# from _schema() entirely — using either on current Home Assistant (2026.8.0)
+# silently merges/moves a device between subentries and destroys the OTHER
+# sensor's entity registry row. The tests below therefore no longer submit
+# those fields through the form (HA's own schema validation would now reject
+# them, since the schema doesn't define them at all); instead they exercise
+# `_normalize`'s resolution logic directly — it stays correct and is kept as
+# the seam a future, non-destructive bundling fix will reuse (see
+# config_flow.py's `_normalize` docstring).
+async def test_normalize_resolves_target_device_id_to_group_id(
     hass: HomeAssistant,
 ) -> None:
-    """Picking a target device resolves to this integration's own group id."""
+    """A submitted CONF_TARGET_DEVICE_ID resolves to this integration's own
+    group id."""
     root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
     root_entry.add_to_hass(hass)
 
@@ -199,79 +209,47 @@ async def test_subentry_create_form_target_device_resolves_group_id(
         identifiers={(DOMAIN, "existing-group")},
     )
 
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={"source": config_entries.SOURCE_USER},
-    )
-
-    result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+    flow = AbstractorSensorSubentryFlowHandler()
+    flow.hass = hass
+    data = flow._normalize(
         {
             CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_ID: "sensor.test_power",
             CONF_TARGET_DEVICE_ID: device.id,
         },
+        ["sensor.test_power"],
     )
-    await hass.async_block_till_done()
 
-    assert result2["type"] == "create_entry"
-    subentries = list(root_entry.subentries.values())
-    assert len(subentries) == 1
-    assert subentries[0].data[CONF_DEVICE_GROUP_ID] == "existing-group"
-    assert CONF_TARGET_DEVICE_ID not in subentries[0].data
+    assert data[CONF_DEVICE_GROUP_ID] == "existing-group"
+    assert CONF_TARGET_DEVICE_ID not in data
 
 
-async def test_subentry_reconfigure_moves_device(hass: HomeAssistant) -> None:
-    """Reconfiguring a subentry can move it onto an existing device."""
-    from homeassistant.config_entries import ConfigSubentry
-
+async def test_normalize_reconfigure_moves_device(hass: HomeAssistant) -> None:
+    """A submitted CONF_TARGET_DEVICE_ID during a reconfigure moves the
+    subentry onto that device's own group id."""
     root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
     root_entry.add_to_hass(hass)
 
-    existing_subentry = ConfigSubentry(
-        data={CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.a"},
-        subentry_type="sensor",
-        title="Abstract power",
-        unique_id=None,
-    )
-    hass.config_entries.async_add_subentry(root_entry, existing_subentry)
-
+    existing_subentry_id = "existing-subentry-id"
     device_registry = dr.async_get(hass)
     target_device = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
-        config_subentry_id=existing_subentry.subentry_id,
-        identifiers={(DOMAIN, existing_subentry.subentry_id)},
+        identifiers={(DOMAIN, existing_subentry_id)},
     )
 
-    another_subentry = ConfigSubentry(
-        data={CONF_DEVICE_TYPE: "energy", CONF_SOURCE_ENTITY_ID: "sensor.b"},
-        subentry_type="sensor",
-        title="Abstract energy",
-        unique_id=None,
-    )
-    hass.config_entries.async_add_subentry(root_entry, another_subentry)
-
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "subentry_id": another_subentry.subentry_id,
-        },
-    )
-    result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+    flow = AbstractorSensorSubentryFlowHandler()
+    flow.hass = hass
+    data = flow._normalize(
         {
             CONF_DEVICE_TYPE: "energy",
             CONF_SOURCE_ENTITY_ID: "sensor.b",
             CONF_TARGET_DEVICE_ID: target_device.id,
         },
+        ["sensor.b"],
+        current_data={CONF_DEVICE_TYPE: "energy", CONF_SOURCE_ENTITY_ID: "sensor.b"},
     )
-    await hass.async_block_till_done()
 
-    assert result2["type"] == "abort"
-    assert result2["reason"] == "reconfigure_successful"
-    updated = root_entry.subentries[another_subentry.subentry_id]
-    assert updated.data[CONF_DEVICE_GROUP_ID] == existing_subentry.subentry_id
+    assert data[CONF_DEVICE_GROUP_ID] == existing_subentry_id
 
 
 async def test_subentry_reconfigure_preserves_device_group_when_unset(
@@ -328,102 +306,39 @@ async def test_subentry_reconfigure_preserves_device_group_when_unset(
     assert updated.data[CONF_DEVICE_TYPE] == "energy"
 
 
-async def test_subentry_reconfigure_prefills_target_device(
+# test_subentry_reconfigure_prefills_target_device used to live here: it
+# asserted that the reconfigure form's schema contained a CONF_TARGET_DEVICE_ID
+# key pre-filled with the subentry's current device. That field (and the
+# pre-fill logic that fed it in async_step_reconfigure) has been removed
+# entirely (GH#18, see the block comment above) — there is no longer a UI
+# field for this test to assert against, so it was removed rather than
+# adapted.
+
+
+async def test_normalize_reconfigure_detaches_with_create_new_device(
     hass: HomeAssistant,
 ) -> None:
-    """The reconfigure form's device selector is pre-filled with the
-    subentry's CURRENT device, resolved back from CONF_DEVICE_GROUP_ID."""
-    from homeassistant.config_entries import ConfigSubentry
-
-    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
-    root_entry.add_to_hass(hass)
-
-    device_reg = dr.async_get(hass)
-    device = device_reg.async_get_or_create(
-        config_entry_id=root_entry.entry_id,
-        identifiers={(DOMAIN, "existing-group")},
-    )
-
-    grouped_subentry = ConfigSubentry(
-        data={
-            CONF_DEVICE_TYPE: "power",
-            CONF_SOURCE_ENTITY_ID: "sensor.a",
-            CONF_DEVICE_GROUP_ID: "existing-group",
-        },
-        subentry_type="sensor",
-        title="Abstract power",
-        unique_id=None,
-    )
-    hass.config_entries.async_add_subentry(root_entry, grouped_subentry)
-
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "subentry_id": grouped_subentry.subentry_id,
-        },
-    )
-
-    assert result["type"] == "form"
-    marker = next(
-        key for key in result["data_schema"].schema if key == CONF_TARGET_DEVICE_ID
-    )
-    assert marker.description["suggested_value"] == device.id
-
-
-async def test_subentry_reconfigure_detaches_with_create_new_device(
-    hass: HomeAssistant,
-) -> None:
-    """Reconfiguring an already-bundled sensor with CONF_CREATE_NEW_DEVICE
-    checked (and no target device picked) must explicitly split it back out
-    to its own device — CONF_DEVICE_GROUP_ID must be fully absent from the
-    resulting data, not just falsy (regression for the round-1 fix's
-    unintended side effect: it made this split impossible, per design spec
-    line 23-24)."""
-    from homeassistant.config_entries import ConfigSubentry
-
-    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
-    root_entry.add_to_hass(hass)
-
-    device_reg = dr.async_get(hass)
-    device_reg.async_get_or_create(
-        config_entry_id=root_entry.entry_id,
-        identifiers={(DOMAIN, "existing-group")},
-    )
-
-    grouped_subentry = ConfigSubentry(
-        data={
-            CONF_DEVICE_TYPE: "power",
-            CONF_SOURCE_ENTITY_ID: "sensor.a",
-            CONF_DEVICE_GROUP_ID: "existing-group",
-        },
-        subentry_type="sensor",
-        title="Abstract power",
-        unique_id=None,
-    )
-    hass.config_entries.async_add_subentry(root_entry, grouped_subentry)
-
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "subentry_id": grouped_subentry.subentry_id,
-        },
-    )
-    result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+    """_normalize's explicit-detach signal (CONF_CREATE_NEW_DEVICE=True, no
+    target device) leaves CONF_DEVICE_GROUP_ID fully absent from the result,
+    not just falsy — a regression for the round-1 fix's unintended side
+    effect, which made this split impossible (per design spec line 23-24)."""
+    flow = AbstractorSensorSubentryFlowHandler()
+    flow.hass = hass
+    data = flow._normalize(
         {
             CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_ID: "sensor.a",
             CONF_CREATE_NEW_DEVICE: True,
         },
+        ["sensor.a"],
+        current_data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_DEVICE_GROUP_ID: "existing-group",
+        },
     )
-    await hass.async_block_till_done()
 
-    assert result2["type"] == "abort"
-    assert result2["reason"] == "reconfigure_successful"
-    updated = root_entry.subentries[grouped_subentry.subentry_id]
-    assert CONF_DEVICE_GROUP_ID not in updated.data
+    assert CONF_DEVICE_GROUP_ID not in data
 
 
 async def test_subentry_reconfigure_requires_source(hass: HomeAssistant) -> None:

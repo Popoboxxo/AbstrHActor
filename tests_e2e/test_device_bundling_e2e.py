@@ -10,6 +10,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 import websockets
 
 # The subentry "add" action is a plain <button> (NOT an <a>/role="link" —
@@ -152,6 +153,20 @@ def _dismiss_success_dialog(page) -> None:
         page.wait_for_timeout(300)
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "GH#18: bundling a second sensor onto an existing device via "
+        "CONF_TARGET_DEVICE_ID silently merges/moves the device between "
+        "subentries and destroys the OTHER sensor's entity registry row on "
+        "current Home Assistant (2026.8.0). CONF_TARGET_DEVICE_ID / "
+        "CONF_CREATE_NEW_DEVICE were removed from the config flow's form "
+        "(see config_flow.py) to stop users from triggering this; this test "
+        "documents the underlying bug and must stay xfail until GH#18 is "
+        "actually fixed, at which point the marker itself starts failing "
+        "and must be removed together with re-adding the form fields."
+    ),
+)
 def test_second_sensor_bundles_onto_existing_device(
     logged_in_page, hass_base_url, hass_bearer_token
 ):

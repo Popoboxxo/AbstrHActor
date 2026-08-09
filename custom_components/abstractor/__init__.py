@@ -396,6 +396,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Polling is per sensor subentry, not per config entry: the root entry
     # itself carries no sensor configuration since device bundling landed.
+    #
+    # Deleting a single subentry does not, by itself, remove it from the
+    # coordinator: HA's own subentry removal only updates entry.subentries
+    # and then triggers a reload through the update listener below, so this
+    # loop is the only place that ever sees BOTH the coordinator's currently
+    # polled ids and the subentries that are still supposed to exist. Any
+    # coordinator key no longer present in entry.subentries is stale — prune
+    # it first, or the removed sensor's source keeps getting polled forever.
+    current_subentry_ids = set(entry.subentries)
+    for stale_subentry_id in set(coordinator.subentry_data) - current_subentry_ids:
+        coordinator.remove_subentry(stale_subentry_id)
+
     for subentry_id, subentry in entry.subentries.items():
         coordinator.add_subentry(subentry_id, dict(subentry.data))
     domain_data[entry.entry_id] = entry.data
@@ -427,7 +439,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry.
+
+    Under the singleton-root architecture (see ROOT_UNIQUE_ID/
+    ROOT_ENTRY_TITLE and the config flow's `_abort_if_unique_id_configured`)
+    there is only ever ONE Abstractor config entry, so `entry.subentries`
+    here reflects every sensor still configured, and removing all of them
+    from the coordinator always does empty `coordinator.subentry_data` —
+    whether they are removed one at a time (each individually triggers this
+    same unload as half of its own reload, see async_setup_entry's pruning
+    for the other half) or all at once because the whole integration is
+    being removed. Either way, the coordinator, services and sidebar panel
+    are only needed for as long as at least one subentry still is.
+
+    Before the async_setup_entry pruning fix, a subentry removed on its own
+    could leave a "ghost" id in `coordinator.subentry_data` that was never in
+    `entry.subentries` to be removed by the loop below — subentry_data could
+    then never truly reach empty, and removing the whole integration
+    afterwards would leave the coordinator, services and panel stuck
+    running forever. The pruning fix keeps the two in sync after every
+    setup/reload, so the `if not coordinator.subentry_data` below is a
+    correct, reachable check again rather than one that quietly rots.
+    """
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         domain_data = hass.data[DOMAIN]
         domain_data.pop(entry.entry_id, None)

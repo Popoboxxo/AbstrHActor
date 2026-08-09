@@ -61,18 +61,6 @@ def _device_group_id_for_device(hass, device_id: str) -> str | None:
     return None
 
 
-def _device_id_for_group(hass, group_id: str) -> str | None:
-    """Resolve this integration's own (DOMAIN, X) identifier back to a device_id.
-
-    Reverse of `_device_group_id_for_device`: used to pre-fill the reconfigure
-    form's device selector with the subentry's CURRENT device, so resubmitting
-    the form for an unrelated reason (e.g. toggling spike_filter) shows the
-    already-bundled device as selected instead of looking like "no device".
-    """
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, group_id)})
-    return device.id if device is not None else None
-
-
 class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the one-time setup of the Abstractor root entry."""
 
@@ -163,23 +151,18 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     data=data,
                 )
 
-        # Pre-fill the device selector with the subentry's CURRENT device.
-        # CONF_TARGET_DEVICE_ID (a transient form field, HA registry device_id)
-        # and CONF_DEVICE_GROUP_ID (what's actually stored, our own (DOMAIN, X)
-        # identifier) are different keys, so current.data alone never fills the
-        # selector — without this, resubmitting the form for an unrelated
-        # reason looks exactly like explicitly clearing the device.
+        # The schema is built per subentry: once this one has a legacy unique
+        # id, that id IS the sensor's identity, so the field is dropped from
+        # the form instead of being offered prefilled and clearable (see
+        # _schema and _normalize).
         #
-        # The schema is built per subentry for a related reason: once this one
-        # has a legacy unique id, that id IS the sensor's identity, so the
-        # field is dropped from the form instead of being offered prefilled
-        # and clearable (see _schema and _normalize).
+        # NOTE: the device-bundling UI fields (CONF_TARGET_DEVICE_ID,
+        # CONF_CREATE_NEW_DEVICE) that used to be pre-filled here have been
+        # removed from _schema() (GH#18 — using either on current Home
+        # Assistant silently merges/moves a device between subentries and
+        # destroys the OTHER sensor's entity registry row). No suggested
+        # values are needed for a field the form no longer shows.
         suggested_values = dict(current.data)
-        group_id = suggested_values.get(CONF_DEVICE_GROUP_ID)
-        if group_id:
-            device_id = _device_id_for_group(self.hass, group_id)
-            if device_id:
-                suggested_values[CONF_TARGET_DEVICE_ID] = device_id
 
         return self.async_show_form(
             step_id="reconfigure",
@@ -202,7 +185,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         current_data: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Shared shaping for both create and reconfigure: sources, legacy id,
-        and resolving the picked target device into our own identifier key.
+        and resolving a picked target device into our own identifier key.
 
         `current_data` is the subentry's pre-existing data, passed only on
         reconfigure. Anything it already carries wins over an absent field in
@@ -223,6 +206,16 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
            is carried forward unchanged rather than silently dropped —
            reconfiguring a bundled sensor for an unrelated reason (e.g.
            toggling spike_filter) must not un-bundle it from its device.
+
+        GH#18: steps 1 and 2 above are no longer reachable through the UI —
+        `_schema()` stopped offering `CONF_TARGET_DEVICE_ID` /
+        `CONF_CREATE_NEW_DEVICE` because using either on current Home
+        Assistant silently merges/moves a device between subentries and
+        destroys the OTHER sensor's entity registry row. The resolution logic
+        stays here, inert without a form field to feed it, as the seam a
+        future, non-destructive bundling fix will reuse. Step 3 (carrying an
+        existing `CONF_DEVICE_GROUP_ID` forward) is the only path currently
+        reachable and remains fully active.
         """
         data = dict(user_input)
         if len(sources) > 1:
@@ -271,11 +264,14 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
     ) -> vol.Schema:
         """Build the sensor schema — shared by create and reconfigure.
 
-        `reconfigure=True` adds `CONF_CREATE_NEW_DEVICE`, an explicit
-        "detach into its own device" checkbox that only makes sense when
-        editing an already-bundled sensor — on the create step, "no device
-        selected" already unambiguously means "new device" by definition,
-        so that field is omitted there.
+        `reconfigure` is accepted for API symmetry with `_normalize` and the
+        callers below, even though it currently does not change the returned
+        schema: it used to add `CONF_CREATE_NEW_DEVICE`, an explicit "detach
+        into its own device" checkbox, but that field (together with
+        `CONF_TARGET_DEVICE_ID`) has been removed from the form entirely
+        (GH#18 — using either on current Home Assistant silently
+        merges/moves a device between subentries and destroys the OTHER
+        sensor's entity registry row).
 
         `legacy_unique_id_pinned=True` drops `CONF_LEGACY_UNIQUE_ID` from the
         form: the subentry already has one, which makes it that sensor's
@@ -300,11 +296,6 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         }
         if not legacy_unique_id_pinned:
             schema[vol.Optional(CONF_LEGACY_UNIQUE_ID)] = selector.TextSelector()
-        schema[vol.Optional(CONF_TARGET_DEVICE_ID)] = selector.DeviceSelector(
-            selector.DeviceSelectorConfig(integration=DOMAIN)
-        )
-        if reconfigure:
-            schema[vol.Optional(CONF_CREATE_NEW_DEVICE, default=False)] = bool
         schema.update(
             {
                 vol.Optional(CONF_SPIKE_FILTER, default=False): bool,
