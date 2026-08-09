@@ -73,7 +73,7 @@
             "device_type": "Power, energy, or water abstraction layer.",
             "source_entity_id": "Single hardware sensor to abstract.",
             "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
-            "legacy_unique_id": "Reuse the unique_id of a migrated YAML template sensor so recorder history keeps counting.",
+            "legacy_unique_id": "Reuse the unique_id of a migrated YAML template sensor so recorder history keeps counting. Once set it becomes this sensor's identity and is no longer shown here, because changing it would orphan the entity and its history.",
             "target_device_id": "Attach this sensor to a different existing device. Leave empty to keep its current device — or check 'Create as new device' below to detach it into its own device.",
             "create_new_device": "Detach this sensor from its current device and give it its own — has no effect if you also picked a target device above.",
             "spike_filter": "Reject drops below the last valid value (recommended for energy and water counters).",

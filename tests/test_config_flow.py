@@ -6,7 +6,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.abstractor.config_flow import _device_group_id_for_device
+from custom_components.abstractor.config_flow import (
+    AbstractorSensorSubentryFlowHandler,
+    _device_group_id_for_device,
+)
 from custom_components.abstractor.const import (
     CONF_CREATE_NEW_DEVICE,
     CONF_DEVICE_GROUP_ID,
@@ -14,6 +17,7 @@ from custom_components.abstractor.const import (
     CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
+    CONF_SPIKE_FILTER,
     CONF_TARGET_DEVICE_ID,
     DOMAIN,
 )
@@ -452,3 +456,149 @@ async def test_subentry_reconfigure_requires_source(hass: HomeAssistant) -> None
     assert result2["type"] == "form"
     assert result2["errors"] == {"base": "source_required"}
     assert root_entry.subentries[subentry.subentry_id].data == subentry.data
+
+async def test_subentry_reconfigure_cannot_clear_a_pinned_legacy_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """A pinned legacy unique id survives a reconfigure that omits the field.
+
+    Once a subentry carries CONF_LEGACY_UNIQUE_ID it IS that sensor's identity
+    — set either by a YAML template migration or by the device-bundling
+    reconciliation pinning the pre-migration unique_id. Reconfiguring for an
+    unrelated reason (here: toggling the spike filter) must not drop it, or
+    the unique_id gets re-derived from the current sources and the existing
+    entity, plus its recorder history, is orphaned.
+    """
+    from homeassistant.config_entries import ConfigSubentry
+
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    pinned_subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.old",
+            CONF_SOURCE_ENTITY_IDS: ["sensor.new_x", "sensor.new_y"],
+            CONF_LEGACY_UNIQUE_ID: "abstractor_sensor.old_power",
+        },
+        subentry_type="sensor",
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, pinned_subentry)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": pinned_subentry.subentry_id,
+        },
+    )
+    # The field is not even offered any more once it is set.
+    assert CONF_LEGACY_UNIQUE_ID not in [
+        str(key) for key in result["data_schema"].schema
+    ]
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.old",
+            CONF_SOURCE_ENTITY_IDS: ["sensor.new_x", "sensor.new_y"],
+            CONF_SPIKE_FILTER: True,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+    updated = root_entry.subentries[pinned_subentry.subentry_id]
+    assert updated.data[CONF_LEGACY_UNIQUE_ID] == "abstractor_sensor.old_power"
+    assert updated.data[CONF_SPIKE_FILTER] is True
+
+
+async def test_subentry_reconfigure_ignores_a_submitted_legacy_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """Even a submission that bypasses the form cannot change a pinned id.
+
+    The schema hiding the field protects the UI path; identity must not depend
+    on that alone, so _normalize carries the existing value forward whatever
+    arrives.
+    """
+    from homeassistant.config_entries import ConfigSubentry
+
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    pinned_subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.old",
+            CONF_LEGACY_UNIQUE_ID: "fridge_power_template",
+        },
+        subentry_type="sensor",
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, pinned_subentry)
+
+    flow = AbstractorSensorSubentryFlowHandler()
+    flow.hass = hass
+    for submitted in ({}, {CONF_LEGACY_UNIQUE_ID: ""}, {CONF_LEGACY_UNIQUE_ID: "other"}):
+        data = flow._normalize(
+            {
+                CONF_DEVICE_TYPE: "power",
+                CONF_SOURCE_ENTITY_ID: "sensor.old",
+                **submitted,
+            },
+            ["sensor.old"],
+            current_data=pinned_subentry.data,
+        )
+        assert data[CONF_LEGACY_UNIQUE_ID] == "fridge_power_template", submitted
+
+
+async def test_subentry_reconfigure_can_set_a_first_legacy_unique_id(
+    hass: HomeAssistant,
+) -> None:
+    """A sensor without one can still be given a legacy unique id later.
+
+    Pinning must not turn into "nobody may ever set one": REQ-CORE-003's
+    opt-in stays available for sensors that do not have one yet, it just
+    becomes permanent from then on.
+    """
+    from homeassistant.config_entries import ConfigSubentry
+
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    subentry = ConfigSubentry(
+        data={CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.a"},
+        subentry_type="sensor",
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry.subentry_id,
+        },
+    )
+    assert CONF_LEGACY_UNIQUE_ID in [str(key) for key in result["data_schema"].schema]
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_LEGACY_UNIQUE_ID: "fridge_power_template",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    updated = root_entry.subentries[subentry.subentry_id]
+    assert updated.data[CONF_LEGACY_UNIQUE_ID] == "fridge_power_template"

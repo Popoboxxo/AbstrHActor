@@ -125,15 +125,31 @@ def _async_adopt_registry_entries(
     # A disabled config entry stamps `disabled_by=CONFIG_ENTRY` on its own
     # registry rows. Folding such an entry into an ENABLED root leaves that
     # stamp behind, now claiming to follow an entry that is not disabled:
-    # nothing ever revisits it (HA only re-enables those rows when an entry's
-    # own disabled_by changes), so the sensor stays dark, and a row disabled
-    # "by config entry" cannot be re-enabled from the entity dialog either.
-    # Clear it here — the same thing HA does when an entry is re-enabled, and
-    # consistent with a disabled entry that has no registry rows yet, whose
-    # sensor simply comes back enabled. Rows the user disabled explicitly are
-    # left untouched, and if the root itself ends up disabled (every legacy
-    # entry was), the stamp still matches reality and stays.
-    revive = legacy_entry.disabled_by is not None and root_entry.disabled_by is None
+    # nothing ever revisits it, because HA only revisits those rows when an
+    # entry's own disabled_by changes, which never happens for the root here.
+    #
+    # The stamp is therefore re-pointed at the user instead of cleared. The
+    # row stays disabled — it was disabled before the upgrade, and a migration
+    # must not silently start an energy or water counter the user had switched
+    # off; a reactivated total corrupts the utility meter it feeds. USER is
+    # what makes that state stand on its own: it no longer follows any config
+    # entry, and it is the one disabler the entity and device dialogs let the
+    # user clear again (device first, then the entity, since an entity of a
+    # disabled device stays disabled).
+    #
+    # Rows the user disabled explicitly already are USER and are left alone,
+    # and if the root itself ends up disabled (every legacy entry was), the
+    # CONFIG_ENTRY stamp still matches reality and stays — re-enabling that
+    # root then brings its rows back exactly as HA normally does.
+    #
+    # Known gap: an entry disabled before it ever completed a setup has no
+    # registry rows to stamp, so its sensor does come up enabled under the
+    # root. There is nothing to carry the disabled state on at that point, and
+    # inventing a registry row from a guessed entity_id would be worse than
+    # the rare mismatch.
+    detach_disabled_stamp = (
+        legacy_entry.disabled_by is not None and root_entry.disabled_by is None
+    )
 
     for device in devices:
         device_registry.async_update_device(
@@ -141,8 +157,13 @@ def _async_adopt_registry_entries(
             add_config_entry_id=root_entry.entry_id,
             add_config_subentry_id=subentry_id,
         )
-        if revive and device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY:
-            device_registry.async_update_device(device.id, disabled_by=None)
+        if (
+            detach_disabled_stamp
+            and device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY
+        ):
+            device_registry.async_update_device(
+                device.id, disabled_by=dr.DeviceEntryDisabler.USER
+            )
 
     for entity in er.async_entries_for_config_entry(
         entity_registry, legacy_entry.entry_id
@@ -152,8 +173,13 @@ def _async_adopt_registry_entries(
             config_entry_id=root_entry.entry_id,
             config_subentry_id=subentry_id,
         )
-        if revive and entity.disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY:
-            entity_registry.async_update_entity(entity.entity_id, disabled_by=None)
+        if (
+            detach_disabled_stamp
+            and entity.disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY
+        ):
+            entity_registry.async_update_entity(
+                entity.entity_id, disabled_by=er.RegistryEntryDisabler.USER
+            )
 
     if not is_promotion:
         # Nothing else to do: removing the legacy entry afterwards takes its

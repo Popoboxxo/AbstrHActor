@@ -155,6 +155,11 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         # identifier) are different keys, so current.data alone never fills the
         # selector — without this, resubmitting the form for an unrelated
         # reason looks exactly like explicitly clearing the device.
+        #
+        # The schema is built per subentry for a related reason: once this one
+        # has a legacy unique id, that id IS the sensor's identity, so the
+        # field is dropped from the form instead of being offered prefilled
+        # and clearable (see _schema and _normalize).
         suggested_values = dict(current.data)
         group_id = suggested_values.get(CONF_DEVICE_GROUP_ID)
         if group_id:
@@ -165,7 +170,13 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                self._schema(reconfigure=True), suggested_values
+                self._schema(
+                    reconfigure=True,
+                    legacy_unique_id_pinned=bool(
+                        current.data.get(CONF_LEGACY_UNIQUE_ID)
+                    ),
+                ),
+                suggested_values,
             ),
             errors=errors,
         )
@@ -180,7 +191,13 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         and resolving the picked target device into our own identifier key.
 
         `current_data` is the subentry's pre-existing data, passed only on
-        reconfigure. Device-group resolution, in priority order:
+        reconfigure. Anything it already carries wins over an absent field in
+        the submission — a reconfigure changes what the user actually changed,
+        never what the form simply did not repeat.
+
+        `CONF_LEGACY_UNIQUE_ID` goes one step further: once set it is carried
+        forward *unconditionally*, so a resubmission can neither clear nor
+        change it. Device-group resolution, in priority order:
         1. `CONF_TARGET_DEVICE_ID` submitted → resolve and use that group id
            (moving to a specific existing device always wins).
         2. Else `CONF_CREATE_NEW_DEVICE` is True in this submission → the
@@ -199,7 +216,23 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         else:
             data.pop(CONF_SOURCE_ENTITY_IDS, None)
 
-        legacy_unique_id = data.get(CONF_LEGACY_UNIQUE_ID) or None
+        # A legacy unique id is this sensor's identity, not a preference: it is
+        # what the entity registry keyed the row on, and with it every bit of
+        # recorder history hanging off that row. Whether it got there through a
+        # YAML template migration (REQ-CORE-003) or through the device-bundling
+        # reconciliation pinning the pre-migration id, clearing or changing it
+        # re-derives the unique_id from the current sources, orphans the
+        # existing entity and starts a second one from zero.
+        #
+        # So an already-set value always wins: the reconfigure schema does not
+        # even offer the field once one exists, and this carries it forward
+        # regardless of what the submission contains — the schema decides what
+        # a user can see, this decides what the data can lose. Setting one for
+        # the first time stays possible; that is a deliberate, typed-in action.
+        pinned_legacy_unique_id = (
+            current_data.get(CONF_LEGACY_UNIQUE_ID) if current_data else None
+        )
+        legacy_unique_id = pinned_legacy_unique_id or data.get(CONF_LEGACY_UNIQUE_ID)
         if legacy_unique_id:
             data[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
         else:
@@ -219,7 +252,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         return data
 
     @staticmethod
-    def _schema(*, reconfigure: bool = False) -> vol.Schema:
+    def _schema(
+        *, reconfigure: bool = False, legacy_unique_id_pinned: bool = False
+    ) -> vol.Schema:
         """Build the sensor schema — shared by create and reconfigure.
 
         `reconfigure=True` adds `CONF_CREATE_NEW_DEVICE`, an explicit
@@ -227,6 +262,15 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         editing an already-bundled sensor — on the create step, "no device
         selected" already unambiguously means "new device" by definition,
         so that field is omitted there.
+
+        `legacy_unique_id_pinned=True` drops `CONF_LEGACY_UNIQUE_ID` from the
+        form: the subentry already has one, which makes it that sensor's
+        actual identity rather than an optional extra. Shown as a prefilled
+        text box it reads like a setting one may clear, and clearing it
+        silently re-derives the unique_id and orphans the entity together with
+        its recorder history. Not rendering it is the honest form of "this
+        cannot change" — and `_normalize` enforces the same thing on the data,
+        so a submission that bypasses the form cannot drop it either.
         """
         schema: dict[Any, Any] = {
             vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
@@ -239,11 +283,12 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             vol.Optional(CONF_SOURCE_ENTITY_IDS): selector.EntitySelector(
                 selector.EntitySelectorConfig(multiple=True)
             ),
-            vol.Optional(CONF_LEGACY_UNIQUE_ID): selector.TextSelector(),
-            vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(
-                selector.DeviceSelectorConfig(integration=DOMAIN)
-            ),
         }
+        if not legacy_unique_id_pinned:
+            schema[vol.Optional(CONF_LEGACY_UNIQUE_ID)] = selector.TextSelector()
+        schema[vol.Optional(CONF_TARGET_DEVICE_ID)] = selector.DeviceSelector(
+            selector.DeviceSelectorConfig(integration=DOMAIN)
+        )
         if reconfigure:
             schema[vol.Optional(CONF_CREATE_NEW_DEVICE, default=False)] = bool
         schema.update(

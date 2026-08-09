@@ -12,7 +12,11 @@ import asyncio
 from typing import Any
 
 import pytest
-from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
+from homeassistant.config_entries import (
+    SOURCE_RECONFIGURE,
+    ConfigEntryDisabler,
+    ConfigEntryState,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -30,8 +34,10 @@ from custom_components.abstractor.const import (
     CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
+    CONF_SPIKE_FILTER,
     DOMAIN,
     ROOT_UNIQUE_ID,
+    SUBENTRY_TYPE_SENSOR,
 )
 
 
@@ -455,17 +461,19 @@ async def test_reconciliation_promotes_an_enabled_entry(hass: HomeAssistant) -> 
         assert hass.states.get(entity_id) is not None, f"{entity_id} has no state"
 
 
-async def test_reconciliation_revives_rows_of_a_disabled_entry(
+async def test_reconciliation_keeps_disabled_rows_disabled_by_user(
     hass: HomeAssistant,
 ) -> None:
-    """Rows stamped disabled_by=CONFIG_ENTRY follow the entry they end up under.
+    """A row disabled before the upgrade stays disabled, but on its own terms.
 
-    A disabled entry's registry rows carry `disabled_by=CONFIG_ENTRY`. Once
-    folded into an ENABLED root that stamp claims to follow an entry that is
-    not disabled: HA never revisits it, so the sensor would stay dark forever
-    and the entity dialog offers no way to re-enable it — while an equally
-    disabled entry that never got as far as creating registry rows comes back
-    enabled. Same intent, opposite outcome; the migration levels that out.
+    A disabled entry's registry rows carry `disabled_by=CONFIG_ENTRY`. Folded
+    into an ENABLED root, that stamp follows an entry that is not disabled and
+    nothing ever revisits it. It must not simply be cleared either: the sensor
+    was switched off on purpose, and quietly restarting an energy or water
+    counter corrupts the utility meter reading from it. Re-pointing the stamp
+    at USER keeps the user's decision AND makes it independent of the root
+    entry, so they can re-enable it from the device/entity dialog whenever
+    they want to.
     """
     disabled = MockConfigEntry(
         domain=DOMAIN,
@@ -497,13 +505,27 @@ async def test_reconciliation_revives_rows_of_a_disabled_entry(
     assert await async_setup_component(hass, DOMAIN, {})
     await hass.async_block_till_done()
 
+    root_entry = hass.config_entries.async_entries(DOMAIN)[0]
+    assert root_entry.disabled_by is None
+
     migrated_device = device_registry.async_get(device.id)
     assert migrated_device is not None
-    assert migrated_device.disabled_by is None
+    assert migrated_device.disabled_by is dr.DeviceEntryDisabler.USER
     surviving = entity_registry.async_get(entity.entity_id)
     assert surviving is not None
-    assert surviving.disabled_by is None
-    assert hass.states.get(entity.entity_id) is not None
+    assert surviving.disabled_by is er.RegistryEntryDisabler.USER
+    # Still disabled: no state, and no second entity started in its place.
+    assert hass.states.get(entity.entity_id) is None
+    assert sorted(
+        e.unique_id
+        for e in er.async_entries_for_config_entry(entity_registry, root_entry.entry_id)
+    ) == ["abstractor_sensor.a_power", "abstractor_sensor.b_energy"]
+    # The healthy entry migrated alongside it is unaffected.
+    healthy_entity_id = entity_registry.async_get_entity_id(
+        "sensor", DOMAIN, "abstractor_sensor.b_energy"
+    )
+    assert healthy_entity_id is not None
+    assert hass.states.get(healthy_entity_id) is not None
 
 
 async def test_reconciliation_with_every_entry_disabled(
@@ -572,3 +594,89 @@ async def test_reconciliation_drops_the_promoted_entrys_stale_device_link(
     # ... and the device is therefore cleaned up together with its sensor.
     hass.config_entries.async_remove_subentry(root_entry, legacy.entry_id)
     assert device_registry.async_get(device.id) is None
+
+
+async def test_reconfigure_after_migration_keeps_the_pinned_identity(
+    hass: HomeAssistant,
+) -> None:
+    """The pin survives the first reconfigure of a migrated sensor.
+
+    Round 1 pinned the pre-migration unique_id into every migrated subentry so
+    a hardware swap recorded in `options` could not move the entity. That pin
+    is only worth as much as its next reconfigure: the field was prefilled and
+    clearable, so a user toggling the spike filter — with no reason to think
+    that text box was load-bearing — re-triggered exactly the orphaning the
+    pin exists to prevent, just later.
+
+    This walks the whole path: legacy entry with a swapped source in
+    `options`, a renamed entity, migration, then a reconfigure whose form does
+    not carry the legacy id. The entity row must come out of it byte for byte
+    the same, and no second entity may appear.
+    """
+    legacy = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="abstractor_power_sensor.old",
+        data={CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.old"},
+        options={CONF_SOURCE_ENTITY_IDS: ["sensor.new_x", "sensor.new_y"]},
+    )
+    legacy.add_to_hass(hass)
+
+    entity_registry = er.async_get(hass)
+    original = entity_registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "abstractor_sensor.old_power",
+        config_entry=legacy,
+        suggested_object_id="abstract_power",
+    )
+    entity_registry.async_update_entity(
+        original.entity_id, new_entity_id="sensor.wohnzimmer"
+    )
+    hass.states.async_set("sensor.new_x", "10")
+    hass.states.async_set("sensor.new_y", "5")
+
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    root_entry = hass.config_entries.async_entries(DOMAIN)[0]
+    subentry_id = next(iter(root_entry.subentries))
+    assert (
+        root_entry.subentries[subentry_id].data[CONF_LEGACY_UNIQUE_ID]
+        == "abstractor_sensor.old_power"
+    )
+    assert hass.states.get("sensor.wohnzimmer") is not None
+
+    # The user reconfigures for an unrelated reason and resubmits the form as
+    # prefilled — with the legacy id field left empty.
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, SUBENTRY_TYPE_SENSOR),
+        context={
+            "source": SOURCE_RECONFIGURE,
+            "subentry_id": subentry_id,
+        },
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.old",
+            CONF_SOURCE_ENTITY_IDS: ["sensor.new_x", "sensor.new_y"],
+            CONF_SPIKE_FILTER: True,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "abort"
+    assert result2["reason"] == "reconfigure_successful"
+    assert (
+        root_entry.subentries[subentry_id].data[CONF_LEGACY_UNIQUE_ID]
+        == "abstractor_sensor.old_power"
+    )
+    # Exhaustive: a re-derived unique_id would show up as a SECOND row here.
+    assert [
+        (entity.unique_id, entity.entity_id)
+        for entity in er.async_entries_for_config_entry(
+            entity_registry, root_entry.entry_id
+        )
+    ] == [("abstractor_sensor.old_power", "sensor.wohnzimmer")]
+    assert hass.states.get("sensor.wohnzimmer") is not None
