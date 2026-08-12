@@ -1,4 +1,4 @@
-agent-meta-version: 0.91.4
+agent-meta-version: 0.95.0
 ai-providers:
 - Claude
 - Gemini
@@ -38,7 +38,8 @@ roles:
 - dependency-auditor
 - devops-engineer
 - feedback
-- feature
+- planner
+- requirements
 - performance-optimizer
 - tester
 - validator
@@ -238,7 +239,6 @@ orchestrator:
       mode: main-chat
   handoff:
     protocol: none
-    token-budget: {}
 knowledge-engine:
   okf:
     enforce-frontmatter: true
