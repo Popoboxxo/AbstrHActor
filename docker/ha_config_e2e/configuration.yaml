@@ -1,16 +1,16 @@
-
-# Loads default set of integrations. Do not remove.
+# Abstractor E2E instance — minimal seed config, mirroring
+# docker/ha_config/configuration.yaml (demo instance).
+#
+# Deliberately WITHOUT the automation/script/scene/themes includes from HA's
+# default configuration.yaml template: those reference files HA only creates
+# when it generates a config from scratch. Since this file is tracked and
+# mounted into a fresh container, the referenced files don't exist in CI —
+# and a missing include file makes HA abort config parsing and boot into
+# recovery mode, where no custom integration and no full config UI loads.
+# Nothing in tests_e2e/ needs automations, scripts, scenes or themes.
 default_config:
 
 virtual:
   yaml_config: true
 sensor: !include virtual_sensors.yaml
 binary_sensor: !include virtual_binary_sensors.yaml
-
-# Load frontend themes from the themes folder
-frontend:
-  themes: !include_dir_merge_named themes
-
-automation: !include automations.yaml
-script: !include scripts.yaml
-scene: !include scenes.yaml
