@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
 import requests
 
 ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.I)
@@ -108,19 +107,6 @@ def _current_entity_ids(hass_base_url: str, token: str) -> set[str]:
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "GH#19: reconfiguring a subentry's source entity through the live "
-        "Config/Reconfigure Flow UI does not keep the abstracted sensor's "
-        "entity_id stable on current Home Assistant (2026.8.0), unlike the "
-        "unit-level entry.data/entry.options plumbing this mirrors (see "
-        "tests/test_sensor.py::test_unique_id_ignores_reconfigured_source_in_options, "
-        "which does pass). This test documents that live-UI regression and "
-        "must stay xfail until GH#19 is actually fixed, at which point the "
-        "marker itself starts failing and must be removed."
-    ),
-)
 def test_reconfiguring_source_keeps_same_entity_id(
     logged_in_page, hass_base_url, hass_bearer_token
 ):
