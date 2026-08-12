@@ -13,6 +13,13 @@ on:
       - "tests_e2e/**"
       - "docker-compose.e2e.yml"
       - "Dockerfile.e2e"
+      # Seed-Config und Setup-Skript der E2E-HA-Instanz: eine kaputte
+      # configuration.yaml legt die gesamte Suite lahm (HA startet im
+      # Recovery Mode), ohne diese Pfade liefe der Workflow fuer genau
+      # solche Aenderungen aber nie an.
+      - "docker/ha_config_e2e/**"
+      - "docker/setup-demo.sh"
+      - "scripts/e2e_bootstrap.py"
 
 jobs:
   e2e:
