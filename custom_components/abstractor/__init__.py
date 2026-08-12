@@ -11,6 +11,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -414,7 +415,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     if is_new_coordinator:
-        await coordinator.async_config_entry_first_refresh()
+        # NOT async_config_entry_first_refresh(): current HA (verified
+        # against 2026.8.1) hard-raises ConfigEntryError from that method
+        # for coordinators constructed with
+        # `config_entry=None` ("Detected code that uses
+        # `async_config_entry_first_refresh`, which is only supported for
+        # coordinators with a config entry"), which aborts setup of the
+        # whole entry. This coordinator deliberately has no config entry —
+        # see AbstractorDataUpdateCoordinator.__init__ for why it must
+        # survive the reloads that every subentry add/remove triggers.
+        # Doing what that helper would have done keeps the original
+        # semantics (one blocking refresh, setup fails if it didn't work)
+        # without reintroducing the entry binding.
+        await coordinator.async_refresh()
+        if not coordinator.last_update_success:
+            raise ConfigEntryNotReady(
+                "Initial data refresh failed"
+            ) from coordinator.last_exception
     else:
         await coordinator.async_request_refresh()
 
