@@ -133,9 +133,9 @@ Kategorien für `docs/REQUIREMENTS.md`:
 > **ROUTING:**
 
  Opencode->AGENTS.md |
-
+ Gemini->AGENTS.md
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.91.3` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v0.95.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
 
 
 ## Regeln
@@ -148,11 +148,20 @@ Kategorien für `docs/REQUIREMENTS.md`:
 4. Singleton Orchestrator: NUR der `main_chat` darf den `orchestrator` spawnen.
 5. Execution-Trace-Isolation: Worker-Output muss strukturiert sein (STATUS, RESULT, ARTIFACTS). Keine rohen Logs propagieren.
 
+## Bekannte Grenzen
+
+- **Tiefenlimit (Punkt 1) ist modellbasiert, keine technische Barriere.** Eine passende Implementierung existiert (`validate_envelope(max_depth=...)` in `scripts/lib/delegation_syntax.py`), wird aber im aktiven Delegationspfad nirgends aufgerufen. Die Regel verlässt sich auf Modell-Gehorsam, nicht auf Enforcement.
+- **Singleton-Orchestrator (Punkt 4) wird nur über eine Selbstdeklaration der Agenten-Identität gestützt** (`#agent-meta:agent=<name>` in `.claude/hooks/orchestrator-guard.sh`), die im Hook-Quelltext selbst als "soft, self-reported convention, not a security boundary" dokumentiert ist. Jeder Agent kann sich technisch als privilegiert deklarieren.
+
 
 
 # Branch-Guard
 
 Verwende Feature-Branches (`feat/`, `fix/`, `chore/`). Keine Code-Änderungen direkt auf `main` oder `master`.
+
+## Bekannte Grenzen
+
+Die technische Durchsetzung (`orchestrator-guard.sh`) erkennt Git-Mutationen über eine Regex-/shlex-basierte Analyse des Bash-Befehls, kein vollständiger Shell-Parser. Bekannte Lücken: `eval "git commit ..."` wird nicht erkannt, direkte Schreibzugriffe auf `.git/` werden nicht geprüft, andere Git-Tools (`hub`, `gh repo ...`) sind nicht erfasst. Bewusster Trade-off, kein Bug (siehe Kommentar in `.claude/hooks/orchestrator-guard.sh:18-30`) — nur relevant für Nutzer, die sich vollständig auf den Schutz statt auf die Konvention verlassen.
 
 
 
@@ -380,8 +389,6 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 
 | `explorer` | Read-only Codebase-Recherche, Dependency- und Impact-Mapping, Datei- und Symb... |
 
-| `feature` | Feature-Lifecycle-Subagent: Branch → REQ → TDD → Dev → Validate → PR |
-
 | `feedback` | Projekt-Feedback standardisieren: Bugs, Features, Verbesserungen als GitHub I... |
 
 | `git` | Commits, Branches, Tags, Push/Pull und alle Git-Operationen |
@@ -413,6 +420,8 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 | `orchestrator` | Einstiegspunkt für alle Entwicklungsaufgaben |
 
 | `performance-optimizer` | Big-O Bottleneck-Identifikation und datengetriebene Performance-Optimierung. |
+
+| `planner` | Umsetzungsplanung |
 
 | `release` | Versioning, Changelog, Build-Artifact, GitHub Release erstellen |
 
@@ -453,6 +462,8 @@ Die Knowledge Engine ist aktiviert. Domäne: **internal-docs**.
 - **Gardening:** `knowledge-gardener` pflegt Links, Tags, Typos, Timestamps
 
 <!-- agent-meta:managed-end -->
+
+
 
 
 
@@ -553,7 +564,6 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `documenter.md` → registriere als `documenter`
    - `e2e-tester.md` → registriere als `e2e-tester`
    - `explorer.md` → registriere als `explorer`
-   - `feature.md` → registriere als `feature`
    - `feedback.md` → registriere als `feedback`
    - `git.md` → registriere als `git`
    - `ideation.md` → registriere als `ideation`
@@ -570,9 +580,11 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `meta-feedback.md` → registriere als `meta-feedback`
    - `orchestrator.md` → registriere als `orchestrator`
    - `performance-optimizer.md` → registriere als `performance-optimizer`
+   - `planner.md` → registriere als `planner`
    - `quality-auditor.md` → registriere als `quality-auditor`
    - `release.md` → registriere als `release`
    - `requirements-architect.md` → registriere als `requirements-architect`
+   - `requirements.md` → registriere als `requirements`
    - `risk-analyst.md` → registriere als `risk-analyst`
    - `senior-developer.md` → registriere als `senior-developer`
    - `technical-writer.md` → registriere als `technical-writer`
@@ -598,7 +610,6 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="documenter", ...)
    define_subagent(name="e2e-tester", ...)
    define_subagent(name="explorer", ...)
-   define_subagent(name="feature", ...)
    define_subagent(name="feedback", ...)
    define_subagent(name="git", ...)
    define_subagent(name="ideation", ...)
@@ -615,9 +626,11 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="meta-feedback", ...)
    define_subagent(name="orchestrator", ...)
    define_subagent(name="performance-optimizer", ...)
+   define_subagent(name="planner", ...)
    define_subagent(name="quality-auditor", ...)
    define_subagent(name="release", ...)
    define_subagent(name="requirements-architect", ...)
+   define_subagent(name="requirements", ...)
    define_subagent(name="risk-analyst", ...)
    define_subagent(name="senior-developer", ...)
    define_subagent(name="technical-writer", ...)
