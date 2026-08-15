@@ -1,5 +1,5 @@
 """Constants for the Abstractor integration."""
-from typing import Final
+from typing import Any, Final
 
 DOMAIN: Final = "abstractor"
 CONFIG_ENTRY_VERSION: Final = 1
@@ -22,6 +22,14 @@ CONF_NET_SUBTRACT_ENTITY_ID: Final = "net_subtract_entity_id"
 CONF_DEVICE_GROUP_ID: Final = "device_group_id"
 CONF_TARGET_DEVICE_ID: Final = "target_device_id"
 CONF_CREATE_NEW_DEVICE: Final = "create_new_device"
+CONF_POLL_INTERVAL: Final = "poll_interval"
+CONF_INFLUX_HOST: Final = "influx_host"
+CONF_INFLUX_TOKEN: Final = "influx_token"
+CONF_INFLUX_ORG: Final = "influx_org"
+CONF_INFLUX_BUCKET: Final = "influx_bucket"
+CONF_DEVICE_NAME: Final = "device_name"
+CONF_DEVICE_MANUFACTURER: Final = "device_manufacturer"
+CONF_DEVICE_MODEL: Final = "device_model"
 SUBENTRY_TYPE_SENSOR: Final = "sensor"
 
 # Storage
@@ -40,3 +48,17 @@ SENSOR_TYPES = [
     TYPE_ENERGY,
     TYPE_WATER,
 ]
+
+DEFAULT_POLL_INTERVAL: Final = 30
+POLL_INTERVAL_PRESETS: Final = (2, 5, 30)
+POLL_INTERVAL_MIN: Final = 1
+POLL_INTERVAL_MAX: Final = 3600
+DEFAULT_DEVICE_NAME: Final = "Abstract {device_type}"
+DEFAULT_DEVICE_MANUFACTURER: Final = "Abstractor"
+DEFAULT_DEVICE_MODEL: Final = "Abstract sensor"
+DEFAULT_OPTIONS: Final[dict[str, Any]] = {
+    CONF_POLL_INTERVAL: DEFAULT_POLL_INTERVAL,
+    CONF_DEVICE_NAME: DEFAULT_DEVICE_NAME,
+    CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
+    CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
+}

@@ -4,22 +4,40 @@ from unittest.mock import patch
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import selector
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.abstractor.config_flow import (
+    AbstractorConfigFlow,
+    AbstractorOptionsFlow,
     AbstractorSensorSubentryFlowHandler,
     _device_group_id_for_device,
 )
 from custom_components.abstractor.const import (
     CONF_CREATE_NEW_DEVICE,
     CONF_DEVICE_GROUP_ID,
+    CONF_DEVICE_MANUFACTURER,
+    CONF_DEVICE_MODEL,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_INFLUX_BUCKET,
+    CONF_INFLUX_HOST,
+    CONF_INFLUX_ORG,
+    CONF_INFLUX_TOKEN,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_SPIKE_FILTER,
     CONF_TARGET_DEVICE_ID,
+    DEFAULT_DEVICE_MANUFACTURER,
+    DEFAULT_DEVICE_MODEL,
+    DEFAULT_DEVICE_NAME,
+    DEFAULT_POLL_INTERVAL,
     DOMAIN,
+    POLL_INTERVAL_MAX,
+    POLL_INTERVAL_MIN,
+    POLL_INTERVAL_PRESETS,
 )
 
 
@@ -517,3 +535,244 @@ async def test_subentry_reconfigure_can_set_a_first_legacy_unique_id(
     assert result2["type"] == "abort"
     updated = root_entry.subentries[subentry.subentry_id]
     assert updated.data[CONF_LEGACY_UNIQUE_ID] == "fridge_power_template"
+
+
+def _schema_field(data_schema, field_name: str) -> tuple:
+    """Return (vol marker, validator) for a named field of a rendered schema."""
+    for marker, validator in data_schema.schema.items():
+        if marker.schema == field_name:
+            return marker, validator
+    raise AssertionError(f"field {field_name} not present in schema")
+
+
+def _options_entry(hass: HomeAssistant, options: dict | None = None) -> MockConfigEntry:
+    """Create and register the singleton root entry, optionally with options."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id="abstractor_root", data={}, options=options or {}
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_async_get_options_flow_returns_options_flow() -> None:
+    """The root flow hands out an AbstractorOptionsFlow for the options UI (REQ-CORE-007)."""
+    flow = AbstractorConfigFlow.async_get_options_flow(MockConfigEntry())
+    assert isinstance(flow, AbstractorOptionsFlow)
+
+
+async def test_options_flow_renders_init_form_with_defaults(hass: HomeAssistant) -> None:
+    """[REQ-CORE-007] The init step renders every option field with defaults."""
+    root_entry = _options_entry(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "init"
+
+    schema = result["data_schema"]
+    for field in (
+        CONF_POLL_INTERVAL,
+        CONF_INFLUX_HOST,
+        CONF_INFLUX_TOKEN,
+        CONF_INFLUX_ORG,
+        CONF_INFLUX_BUCKET,
+        CONF_DEVICE_NAME,
+        CONF_DEVICE_MANUFACTURER,
+        CONF_DEVICE_MODEL,
+    ):
+        _schema_field(schema, field)
+    # GH#18: the removed device-bundling fields must not resurface here.
+    assert CONF_TARGET_DEVICE_ID not in [str(m.schema) for m in schema.schema]
+    assert CONF_CREATE_NEW_DEVICE not in [str(m.schema) for m in schema.schema]
+
+    poll_marker, poll_validator = _schema_field(schema, CONF_POLL_INTERVAL)
+    assert poll_marker.default() == str(DEFAULT_POLL_INTERVAL)
+    assert poll_validator.config["options"] == [
+        *(str(value) for value in POLL_INTERVAL_PRESETS),
+        "custom",
+    ]
+    assert poll_validator.config["mode"] == selector.SelectSelectorMode.DROPDOWN
+
+    _token_marker, token_validator = _schema_field(schema, CONF_INFLUX_TOKEN)
+    assert isinstance(token_validator, selector.TextSelector)
+    assert token_validator.config["type"] == selector.TextSelectorType.PASSWORD
+
+    _name_marker, name_validator = _schema_field(schema, CONF_DEVICE_NAME)
+    assert isinstance(name_validator, selector.TextSelector)
+    assert name_validator.config.get("type") is None
+    _mf_marker, mf_validator = _schema_field(schema, CONF_DEVICE_MANUFACTURER)
+    assert isinstance(mf_validator, selector.TextSelector)
+    assert _mf_marker.default() == DEFAULT_DEVICE_MANUFACTURER
+    _model_marker, model_validator = _schema_field(schema, CONF_DEVICE_MODEL)
+    assert isinstance(model_validator, selector.TextSelector)
+
+
+async def test_options_flow_renders_current_preset_interval_selected(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] A current preset interval is shown as its own option."""
+    root_entry = _options_entry(hass, {CONF_POLL_INTERVAL: 5})
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+
+    poll_marker, _ = _schema_field(result["data_schema"], CONF_POLL_INTERVAL)
+    assert poll_marker.default() == "5"
+
+
+async def test_options_flow_saves_preset_interval_and_merges_defaults(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] Saving a preset persists an int interval plus the
+    remaining DEFAULT_OPTIONS, without touching the singleton root's data."""
+    root_entry = _options_entry(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: "5",
+            CONF_INFLUX_HOST: "http://influx.local:8086",
+            CONF_INFLUX_ORG: "energy",
+            CONF_INFLUX_BUCKET: "abstractor",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert result2["data"][CONF_POLL_INTERVAL] == 5
+    assert result2["data"][CONF_INFLUX_HOST] == "http://influx.local:8086"
+    assert result2["data"][CONF_INFLUX_ORG] == "energy"
+    assert result2["data"][CONF_INFLUX_BUCKET] == "abstractor"
+    # The device presentation defaults are merged in for every save.
+    assert result2["data"][CONF_DEVICE_MANUFACTURER] == DEFAULT_DEVICE_MANUFACTURER
+    assert result2["data"][CONF_DEVICE_MODEL] == DEFAULT_DEVICE_MODEL
+    assert result2["data"][CONF_DEVICE_NAME] == DEFAULT_DEVICE_NAME
+    # Options go to the entry's options; the singleton root's data stays {}.
+    assert root_entry.options[CONF_POLL_INTERVAL] == 5
+    assert root_entry.data == {}
+
+
+async def test_options_flow_custom_interval_reveals_bounded_number_field(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] Choosing "custom" transitions to a Number step whose
+    bounds match POLL_INTERVAL_MIN/POLL_INTERVAL_MAX."""
+    root_entry = _options_entry(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_POLL_INTERVAL: "custom"}
+    )
+
+    assert result2["type"] == "form"
+    assert result2["step_id"] == "poll_interval"
+    poll_marker, poll_validator = _schema_field(
+        result2["data_schema"], CONF_POLL_INTERVAL
+    )
+    assert poll_marker.default() == DEFAULT_POLL_INTERVAL
+    assert poll_validator.config["min"] == POLL_INTERVAL_MIN
+    assert poll_validator.config["max"] == POLL_INTERVAL_MAX
+    assert poll_validator.config["step"] == 1
+    assert poll_validator.config["mode"] == selector.NumberSelectorMode.BOX
+
+
+async def test_options_flow_custom_interval_saves_integer(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] The Number step persists a plain int interval."""
+    root_entry = _options_entry(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_POLL_INTERVAL: "custom"}
+    )
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"], {CONF_POLL_INTERVAL: 7}
+    )
+    await hass.async_block_till_done()
+
+    assert result3["type"] == "create_entry"
+    assert result3["data"][CONF_POLL_INTERVAL] == 7
+    assert root_entry.options[CONF_POLL_INTERVAL] == 7
+    assert root_entry.data == {}
+
+
+async def test_options_flow_reopen_with_custom_interval_prefills(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] A non-preset current interval re-opens as "custom" and
+    the Number step is pre-filled with the current value."""
+    root_entry = _options_entry(hass, {CONF_POLL_INTERVAL: 7})
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    poll_marker, _ = _schema_field(result["data_schema"], CONF_POLL_INTERVAL)
+    assert poll_marker.default() == "custom"
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_POLL_INTERVAL: "custom"}
+    )
+    assert result2["step_id"] == "poll_interval"
+    poll_marker2, _ = _schema_field(result2["data_schema"], CONF_POLL_INTERVAL)
+    assert poll_marker2.default() == 7
+
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"], {CONF_POLL_INTERVAL: 7}
+    )
+    assert result3["data"][CONF_POLL_INTERVAL] == 7
+
+
+async def test_options_flow_custom_interval_preserves_other_submitted_fields(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] Fields submitted together with "custom" survive the
+    two-step transition instead of being dropped on the Number step."""
+    root_entry = _options_entry(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: "custom",
+            CONF_INFLUX_HOST: "http://influx.local:8086",
+            CONF_INFLUX_TOKEN: "secret-token",
+            CONF_INFLUX_ORG: "energy",
+            CONF_INFLUX_BUCKET: "abstractor",
+            CONF_DEVICE_MANUFACTURER: "Acme Labs",
+            CONF_DEVICE_MODEL: "OptiSense 3000",
+        },
+    )
+    assert result2["step_id"] == "poll_interval"
+
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"], {CONF_POLL_INTERVAL: 12}
+    )
+    await hass.async_block_till_done()
+
+    assert result3["type"] == "create_entry"
+    assert result3["data"][CONF_POLL_INTERVAL] == 12
+    assert result3["data"][CONF_INFLUX_HOST] == "http://influx.local:8086"
+    assert result3["data"][CONF_INFLUX_TOKEN] == "secret-token"
+    assert result3["data"][CONF_INFLUX_ORG] == "energy"
+    assert result3["data"][CONF_INFLUX_BUCKET] == "abstractor"
+    assert result3["data"][CONF_DEVICE_MANUFACTURER] == "Acme Labs"
+    assert result3["data"][CONF_DEVICE_MODEL] == "OptiSense 3000"
+    assert root_entry.options[CONF_POLL_INTERVAL] == 12
+
+
+def test_subentry_flow_get_entry_falls_back_on_old_ha() -> None:
+    """On HA versions before the `_get_entry` rename, the subentry flow
+    resolves its config entry through `_get_reconfigure_entry` instead."""
+    from unittest.mock import Mock
+
+    from homeassistant.config_entries import ConfigSubentryFlow
+
+    flow = AbstractorSensorSubentryFlowHandler()
+    flow._get_reconfigure_entry = Mock(return_value="resolved-entry")
+
+    # hasattr() must report the seam as absent for the fallback to trigger.
+    with patch.object(
+        ConfigSubentryFlow,
+        "_get_entry",
+        property(lambda self: (_ for _ in ()).throw(AttributeError)),
+    ):
+        assert flow._get_subentry_config_entry() == "resolved-entry"
