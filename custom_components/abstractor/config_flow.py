@@ -20,20 +20,35 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_CREATE_NEW_DEVICE,
     CONF_DEVICE_GROUP_ID,
+    CONF_DEVICE_MANUFACTURER,
+    CONF_DEVICE_MODEL,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
     CONF_FALLBACK_SOURCE_ENTITY_ID,
     CONF_FALLBACK_ZERO,
+    CONF_INFLUX_BUCKET,
+    CONF_INFLUX_HOST,
+    CONF_INFLUX_ORG,
+    CONF_INFLUX_TOKEN,
     CONF_INVERT,
     CONF_LEGACY_UNIQUE_ID,
     CONF_NET_SUBTRACT_ENTITY_ID,
+    CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_SPIKE_FILTER,
     CONF_TARGET_DEVICE_ID,
     CONFIG_ENTRY_VERSION,
+    DEFAULT_DEVICE_MANUFACTURER,
+    DEFAULT_DEVICE_MODEL,
+    DEFAULT_DEVICE_NAME,
+    DEFAULT_OPTIONS,
     DOMAIN,
+    POLL_INTERVAL_MAX,
+    POLL_INTERVAL_MIN,
+    POLL_INTERVAL_PRESETS,
     ROOT_ENTRY_TITLE,
     ROOT_UNIQUE_ID,
     SENSOR_TYPES,
@@ -66,6 +81,12 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = CONFIG_ENTRY_VERSION
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> AbstractorOptionsFlow:
+        """Return the options flow for the singleton root entry."""
+        return AbstractorOptionsFlow()
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -85,6 +106,124 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return subentries supported by this integration."""
         return {SUBENTRY_TYPE_SENSOR: AbstractorSensorSubentryFlowHandler}
+
+
+class AbstractorOptionsFlow(config_entries.OptionsFlow):
+    """Manage Abstractor polling, export, and device presentation options."""
+
+    def __init__(self) -> None:
+        """Initialize the options flow."""
+        self._pending_options: dict[str, Any] = {}
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show and persist the main options form."""
+        current = dict(DEFAULT_OPTIONS) | dict(self.config_entry.options)
+        current_interval = int(current[CONF_POLL_INTERVAL])
+        interval_value = (
+            str(current_interval)
+            if current_interval in POLL_INTERVAL_PRESETS
+            else "custom"
+        )
+
+        if user_input is not None:
+            submitted = dict(user_input)
+            interval_value = submitted[CONF_POLL_INTERVAL]
+            if interval_value == "custom":
+                self._pending_options = {
+                    **current,
+                    **submitted,
+                    CONF_POLL_INTERVAL: current_interval,
+                }
+                return await self.async_step_poll_interval()
+            submitted[CONF_POLL_INTERVAL] = int(interval_value)
+            return self.async_create_entry(
+                title="", data=dict(DEFAULT_OPTIONS) | submitted
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_POLL_INTERVAL, default=interval_value
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                *(str(value) for value in POLL_INTERVAL_PRESETS),
+                                "custom",
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
+                    ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
+                    ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
+                    ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_DEVICE_NAME,
+                        default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
+                    ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_DEVICE_MANUFACTURER,
+                        default=current.get(
+                            CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
+                        ),
+                    ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_DEVICE_MODEL,
+                        default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
+                    ): selector.TextSelector(),
+                }
+            ),
+        )
+
+    async def async_step_poll_interval(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect a bounded custom polling interval."""
+        if user_input is not None:
+            options = dict(self._pending_options)
+            options[CONF_POLL_INTERVAL] = int(user_input[CONF_POLL_INTERVAL])
+            return self.async_create_entry(
+                title="", data=dict(DEFAULT_OPTIONS) | options
+            )
+
+        current_interval = int(
+            self._pending_options.get(
+                CONF_POLL_INTERVAL, DEFAULT_OPTIONS[CONF_POLL_INTERVAL]
+            )
+        )
+        return self.async_show_form(
+            step_id="poll_interval",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_POLL_INTERVAL, default=current_interval
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=POLL_INTERVAL_MIN,
+                            max=POLL_INTERVAL_MAX,
+                            mode=selector.NumberSelectorMode.BOX,
+                            step=1,
+                        )
+                    )
+                }
+            ),
+        )
 
 
 class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):

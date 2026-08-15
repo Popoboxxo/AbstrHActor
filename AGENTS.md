@@ -135,7 +135,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
  Opencode->AGENTS.md |
  Gemini->AGENTS.md
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.95.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v0.96.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
 
 
 ## Regeln
@@ -206,6 +206,15 @@ Nach Erledigung: löschen. Datei nicht committen.
 
 
 
+# MCP Hard Prohibitions
+
+> Kurzfassung der harten Tool-Verbote aktiver MCP-Server. Vollständige Tool-Listen und
+> Hinweise: siehe `.claude/skills/mcp-<server>/SKILL.md` (`use-lazy-rules.md`).
+
+- **reqogniloom:** `workspace.close`, `workspace.reactivate`, `workspace.delete`, `permissions.set_rule`, `permissions.list`, `permissions.revoke`, `permissions.check`, `admin.backup_create`, `admin.backup_list`, `admin.restore`, `audit.query`, `audit.ai_review`, `events.dlq_list`, `events.dlq_replay`, `user.create`, `user.assign_role`, `user.list`, `user.deactivate` — absolut verboten.
+
+
+
 # No Worktree Isolation
 
 **Anti-Pattern:** Niemals das Argument `isolation: "worktree"` beim Spawnen von Subagenten verwenden.
@@ -235,6 +244,32 @@ Regeln für den Umgang mit allen Git-Submodulen (`.agent-meta/`, `external/*/`, 
 - **Keine Mutation von `.gitmodules` / Git Staging:** `.gitmodules` darf nicht automatisch modifiziert werden und Submodule dürfen nicht automatisch via `git add` gestaged werden.
 - **Kein Source-Code-Scaffolding in Konsumenten-Projekten:** In Konsumenten-Projekten wird kein Anwendungscode generiert/gerüstet; verwaltet werden ausschließlich `.meta-config/project.yaml` und die Managed Blocks.
 - **Framework-Änderungen nur im agent-meta Repo:** Änderungen am agent-meta Framework müssen auf Feature-Branches im agent-meta Repository selbst durchgeführt werden.
+
+
+
+# Lazy-Loaded Rules
+
+> Nicht immer geladen — bei Bedarf per `Read` öffnen: `.claude/skills/<skill>/SKILL.md`.
+
+| Skill | Wann |
+|---|---|
+| sync-interface | sync.py, Templates/Rules ändern |
+| architecture | Templates/Overrides/Placeholder ändern |
+| conventions | Vor Commits in agents/, config/, scripts/lib |
+| submodule-protection | .agent-meta/, external/, .gitmodules |
+| a2a-delegation-gates | A2A-Delegation an Subagenten |
+| python-conventions | Python-Code |
+| issue-lifecycle | GitHub-Issue |
+| lifecycle-tasks | Session-Start, pending-tasks.md vorhanden |
+| session-conclusion | Feature-Abschluss |
+| provider-agnostic | agents/1-generic editieren |
+| mcp-reqogniloom | ReqogniLoom-MCP-Tools |
+| mcp-honcho | Honcho-MCP-Memory-Tools |
+| mcp-playwright | Playwright-MCP-Browser-Tools |
+| mcp-viz-logger | viz-logger Event-Logging |
+| tool-graphify | Architektur-/Datei-Fragen mit graphify |
+
+Harte MCP-Tool-Verbote: siehe `mcp-guardrails.md` (always-on).
 
 
 

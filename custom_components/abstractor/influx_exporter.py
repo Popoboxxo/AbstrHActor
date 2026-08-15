@@ -4,11 +4,38 @@ from __future__ import annotations
 import logging
 
 import aiohttp
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import aiohttp_client
+
+from .const import (
+    CONF_INFLUX_BUCKET,
+    CONF_INFLUX_HOST,
+    CONF_INFLUX_ORG,
+    CONF_INFLUX_TOKEN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 _WRITE_PATH = "/api/v2/write"
 _TIMEOUT = aiohttp.ClientTimeout(total=10)
+
+
+def create_influx_exporter(
+    hass: HomeAssistant, options: dict[str, object]
+) -> InfluxExporter | None:
+    """Create an exporter when both required credentials are configured."""
+    host = str(options.get(CONF_INFLUX_HOST, "")).strip()
+    token = str(options.get(CONF_INFLUX_TOKEN, "")).strip()
+    if not host or not token:
+        return None
+    session = aiohttp_client.async_get_clientsession(hass)
+    return InfluxExporter(
+        session,
+        host,
+        token,
+        str(options.get(CONF_INFLUX_ORG, "")),
+        str(options.get(CONF_INFLUX_BUCKET, "")),
+    )
 
 
 class InfluxExporter:

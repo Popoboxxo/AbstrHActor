@@ -15,6 +15,7 @@ from .const import (
     CONF_NET_SUBTRACT_ENTITY_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
+    DEFAULT_POLL_INTERVAL,
     DOMAIN,
 )
 from .filters import AbstractorFilterPipeline
@@ -53,12 +54,30 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER,
             config_entry=None,
             name=DOMAIN,
-            update_interval=timedelta(seconds=30),
+            update_interval=timedelta(seconds=DEFAULT_POLL_INTERVAL),
         )
         self.subentry_data: dict[str, dict] = {}
         self.pipelines: dict[str, AbstractorFilterPipeline] = {}
         self.influx_exporter = None
         self._last_notified_events: dict[str, str] = {}
+
+    def set_update_interval(self, seconds: int) -> None:
+        """Update and reschedule the coordinator's periodic refresh timer.
+
+        HA exposes no public timer-rescheduling API. The installed coordinator
+        implementation owns `_unsub_refresh` and `_schedule_refresh`; using
+        those in-class seams avoids creating a second coordinator. The
+        fallback keeps the new interval and requests an immediate refresh on
+        HA versions where either private seam is unavailable.
+        """
+        self.update_interval = timedelta(seconds=seconds)
+        unsubscribe = getattr(self, "_unsub_refresh", None)
+        schedule_refresh = getattr(self, "_schedule_refresh", None)
+        if unsubscribe is not None and schedule_refresh is not None:
+            unsubscribe()
+            schedule_refresh()
+            return
+        self.hass.async_create_task(self.async_request_refresh())
 
     def add_subentry(self, subentry_id: str, subentry_data: dict) -> None:
         """Add a subentry to central polling."""

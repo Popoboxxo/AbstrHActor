@@ -21,9 +21,11 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONFIG_ENTRY_VERSION,
+    DEFAULT_POLL_INTERVAL,
     DOMAIN,
     ROOT_ENTRY_TITLE,
     ROOT_UNIQUE_ID,
@@ -35,6 +37,7 @@ from .const import (
 )
 from .coordinator import AbstractorDataUpdateCoordinator
 from .frontend import async_register_panel, async_unregister_panel
+from .influx_exporter import create_influx_exporter
 from .repository.device_registry import DeviceRegistry
 from .snapshot import build_snapshot, validate_snapshot
 
@@ -395,6 +398,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "registry" not in domain_data:
         domain_data["registry"] = DeviceRegistry()
 
+    coordinator.set_update_interval(
+        int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
+    )
+    coordinator.influx_exporter = create_influx_exporter(hass, dict(entry.options))
+
     # Polling is per sensor subentry, not per config entry: the root entry
     # itself carries no sensor configuration since device bundling landed.
     #
@@ -483,6 +491,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         domain_data.pop(entry.entry_id, None)
         coordinator = domain_data.get("coordinator")
         if coordinator:
+            coordinator.influx_exporter = None
             for subentry_id in entry.subentries:
                 coordinator.remove_subentry(subentry_id)
             if not coordinator.subentry_data:

@@ -16,10 +16,16 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_DEVICE_GROUP_ID,
+    CONF_DEVICE_MANUFACTURER,
+    CONF_DEVICE_MODEL,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
+    DEFAULT_DEVICE_MANUFACTURER,
+    DEFAULT_DEVICE_MODEL,
+    DEFAULT_DEVICE_NAME,
     DOMAIN,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
@@ -100,12 +106,22 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
         # Not set -> this sensor gets its own device, keyed by its own
         # subentry_id — identical to today's one-device-per-sensor default.
         device_key = device_group_id or subentry_id
+        device_name = str(
+            entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
+        ).replace("{device_type}", device_type.capitalize())
+        manufacturer = str(
+            entry.options.get(CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER)
+        )
+        model = str(entry.options.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL))
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_key)},
-            name=f"Abstract {device_type.capitalize()}",
-            manufacturer="Abstractor",
-            model="Abstract sensor",
+            name=device_name,
+            manufacturer=manufacturer,
+            model=model,
         )
+        registry = coordinator.hass.data[DOMAIN].get("registry")
+        if registry is not None:
+            registry.register_device(device_key, device_name, manufacturer, model)
 
         if device_type == "power":
             self._attr_device_class = SensorDeviceClass.POWER

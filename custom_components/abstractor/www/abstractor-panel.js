@@ -31,7 +31,7 @@ class AbstractorPanel extends HTMLElement {
     const hass = this._hass;
     if (!hass || !hass.devices || !hass.entities) return [];
     return Object.values(hass.devices)
-      .filter((d) => d.manufacturer === 'Abstractor')
+      .filter((d) => d.identifiers.some((id) => id[0] === 'abstractor'))
       .map((device) => {
         const entities = Object.values(hass.entities)
           .filter((e) => e.device_id === device.id)
@@ -44,7 +44,13 @@ class AbstractorPanel extends HTMLElement {
               unit: (state && state.attributes.unit_of_measurement) || '',
             };
           });
-        return { id: device.id, name: device.name_by_user || device.name, entities };
+        return {
+          id: device.id,
+          name: device.name_by_user || device.name,
+          manufacturer: device.manufacturer || '',
+          model: device.model || '',
+          entities,
+        };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -105,6 +111,10 @@ class AbstractorPanel extends HTMLElement {
       const h2 = document.createElement('h2');
       h2.textContent = d.name;
       card.appendChild(h2);
+
+      const details = document.createElement('p');
+      details.textContent = [d.manufacturer, d.model].filter(Boolean).join(' · ');
+      card.appendChild(details);
 
       const table = document.createElement('table');
       for (const e of d.entities) {

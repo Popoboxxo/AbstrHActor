@@ -1,8 +1,17 @@
 """Test the InfluxDB exporter (REQ-DATA-002)."""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
-from custom_components.abstractor.influx_exporter import InfluxExporter
+from custom_components.abstractor.const import (
+    CONF_INFLUX_BUCKET,
+    CONF_INFLUX_HOST,
+    CONF_INFLUX_ORG,
+    CONF_INFLUX_TOKEN,
+)
+from custom_components.abstractor.influx_exporter import (
+    InfluxExporter,
+    create_influx_exporter,
+)
 
 
 def _session(status: int = 204):
@@ -36,3 +45,89 @@ async def test_async_push_swallows_http_error_status() -> None:
     exporter = InfluxExporter(session, "http://influx.local:8086", "tok", "org", "bucket")
 
     await exporter.async_push("sensor.power", 1.0)  # must not raise
+
+
+def _patch_clientsession(session: Mock):
+    """Patch the real module-level aiohttp_client helper the factory uses."""
+    return patch(
+        "custom_components.abstractor.influx_exporter.aiohttp_client.async_get_clientsession",
+        return_value=session,
+    )
+
+
+def test_create_influx_exporter_returns_instance_with_credentials() -> None:
+    """[REQ-DATA-002] Host+token set -> an exporter bound to those options."""
+    session = Mock()
+    with _patch_clientsession(session) as mock_clientsession:
+        hass = Mock()
+        exporter = create_influx_exporter(
+            hass,
+            {
+                CONF_INFLUX_HOST: "http://influx.local:8086/",
+                CONF_INFLUX_TOKEN: "tok-123",
+                CONF_INFLUX_ORG: "energy",
+                CONF_INFLUX_BUCKET: "abstractor",
+            },
+        )
+
+        assert isinstance(exporter, InfluxExporter)
+        assert exporter._host == "http://influx.local:8086"  # trailing slash stripped
+        assert exporter._token == "tok-123"
+        assert exporter._org == "energy"
+        assert exporter._bucket == "abstractor"
+        mock_clientsession.assert_called_once_with(hass)
+
+
+def test_create_influx_exporter_returns_none_without_host() -> None:
+    """[REQ-DATA-002] Missing host -> None, no session is obtained."""
+    session = Mock()
+    with _patch_clientsession(session) as mock_clientsession:
+        hass = Mock()
+        exporter = create_influx_exporter(
+            hass,
+            {
+                CONF_INFLUX_TOKEN: "tok-123",
+                CONF_INFLUX_ORG: "energy",
+                CONF_INFLUX_BUCKET: "abstractor",
+            },
+        )
+
+        assert exporter is None
+        mock_clientsession.assert_not_called()
+
+
+def test_create_influx_exporter_returns_none_without_token() -> None:
+    """[REQ-DATA-002] Missing token -> None, no session is obtained."""
+    session = Mock()
+    with _patch_clientsession(session) as mock_clientsession:
+        hass = Mock()
+        exporter = create_influx_exporter(
+            hass,
+            {
+                CONF_INFLUX_HOST: "http://influx.local:8086",
+                CONF_INFLUX_ORG: "energy",
+                CONF_INFLUX_BUCKET: "abstractor",
+            },
+        )
+
+        assert exporter is None
+        mock_clientsession.assert_not_called()
+
+
+def test_create_influx_exporter_returns_none_for_blank_credentials() -> None:
+    """[REQ-DATA-002] Whitespace-only host/token count as missing."""
+    session = Mock()
+    with _patch_clientsession(session) as mock_clientsession:
+        hass = Mock()
+        exporter = create_influx_exporter(
+            hass,
+            {
+                CONF_INFLUX_HOST: "   ",
+                CONF_INFLUX_TOKEN: "",
+                CONF_INFLUX_ORG: "energy",
+                CONF_INFLUX_BUCKET: "abstractor",
+            },
+        )
+
+        assert exporter is None
+        mock_clientsession.assert_not_called()
