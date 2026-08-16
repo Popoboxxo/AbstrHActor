@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0-rc.1] — 2026-08-16
+
+> **Test release (pre-release).** Contains the audit-UI-config surface and
+> accumulated fixes since v1.0.0. Not offered automatically by HACS; opt in
+> via HACS pre-release settings to test.
+
+### Added
+
+- Options flow for configuring the polling interval, Influx exporter
+  credentials and device settings directly from the UI
+- Influx exporter is now activated at setup when credentials are configured
+- Poll interval from the options flow is applied by the coordinator
+- Device registry wired into the sensor lifecycle (devices registered from
+  config options)
+- Subentry-based device bundling: create Abstract sensors as subentries and
+  reconcile legacy flat entries on setup
+- Reconfigure flow for editing settings and moving a sensor to another device
+
+### Fixed
+
+- Coordinator setup no longer crashes on current Home Assistant (config-entry
+  leak)
+- E2E suite no longer boots HA into recovery mode
+- Removed invalid `homeassistant` key from manifest.json (hassfest failure)
+- Legacy unique_id is pinned through reconfigure; sensors disabled by the
+  user stay disabled
+- Device group is preserved when a sensor is reconfigured
+- Subentry flow works on both HA 2025.3.0 and 2026.8.0
+
+### Changed
+
+- Influx token is masked in diagnostics
+- Coordinator is keyed by subentry_id instead of entry_id
+- Minimum HA version raised to 2025.3.0
+
+### Removed
+
+- (None in this release)
+
 ## [1.0.0] — 2026-08-08
 
 ### Added
