@@ -428,6 +428,8 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 
 | `feedback` | Projekt-Feedback standardisieren: Bugs, Features, Verbesserungen als GitHub I... |
 
+| `frontend-component-engineer` | Screen-Spec + Token-Contract → produktionsreife UI-Komponenten. |
+
 | `git` | Commits, Branches, Tags, Push/Pull und alle Git-Operationen |
 
 | `ideation` | Neue Ideen explorieren, Vision schärfen, Übergabe an requirements |
@@ -606,6 +608,7 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `e2e-tester.md` → registriere als `e2e-tester`
    - `explorer.md` → registriere als `explorer`
    - `feedback.md` → registriere als `feedback`
+   - `frontend-component-engineer.md` → registriere als `frontend-component-engineer`
    - `git.md` → registriere als `git`
    - `ideation.md` → registriere als `ideation`
    - `intern-developer.md` → registriere als `intern-developer`
@@ -652,6 +655,7 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="e2e-tester", ...)
    define_subagent(name="explorer", ...)
    define_subagent(name="feedback", ...)
+   define_subagent(name="frontend-component-engineer", ...)
    define_subagent(name="git", ...)
    define_subagent(name="ideation", ...)
    define_subagent(name="intern-developer", ...)
