@@ -325,3 +325,5 @@ model-overrides:
 max-parallel-agents: 2
 debug-mode: false
 allow-committed-secrets: false
+# The active naming/versioning conventions preset, matched against config/conventions-presets.yaml. Individual overrides via 'conventions' block. Precedence: conventions > conventions-preset > 'default'.
+conventions-preset: default
