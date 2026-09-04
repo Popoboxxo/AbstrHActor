@@ -1,4 +1,5 @@
 """Test the Abstractor config flow."""
+import re
 from unittest.mock import patch
 
 from homeassistant import config_entries
@@ -89,6 +90,69 @@ async def test_subentry_create_form(hass: HomeAssistant) -> None:
     assert len(subentries) == 1
     assert subentries[0].data[CONF_DEVICE_TYPE] == "power"
     assert subentries[0].data[CONF_SOURCE_ENTITY_ID] == "sensor.test_power"
+
+
+async def test_subentry_create_auto_generates_stable_unique_id(hass: HomeAssistant) -> None:
+    """A newly created subentry gets a stable identity without the user
+    typing anything into the optional 'legacy unique id' field (GH#19)."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
+        },
+    )
+    await hass.async_block_till_done()
+
+    subentry = next(iter(root_entry.subentries.values()))
+    stable_id = subentry.data[CONF_LEGACY_UNIQUE_ID]
+    assert re.match(r"^abstractor_[0-9a-f]{32}$", stable_id)
+
+
+async def test_subentry_reconfigure_keeps_auto_generated_id_after_source_swap(
+    hass: HomeAssistant,
+) -> None:
+    """The whole point (GH#19): swapping a sensor's source hardware via
+    reconfigure must NOT change its unique_id, because a stable id was
+    already auto-generated at creation time."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    create_result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    await hass.config_entries.subentries.async_configure(
+        create_result["flow_id"],
+        {CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.old_plug"},
+    )
+    await hass.async_block_till_done()
+    subentry_id, subentry = next(iter(root_entry.subentries.items()))
+    original_id = subentry.data[CONF_LEGACY_UNIQUE_ID]
+
+    reconfigure_result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry_id,
+        },
+    )
+    await hass.config_entries.subentries.async_configure(
+        reconfigure_result["flow_id"],
+        {CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.new_plug"},
+    )
+    await hass.async_block_till_done()
+
+    updated_subentry = root_entry.subentries[subentry_id]
+    assert updated_subentry.data[CONF_SOURCE_ENTITY_ID] == "sensor.new_plug"
+    assert updated_subentry.data[CONF_LEGACY_UNIQUE_ID] == original_id
 
 
 async def test_device_group_id_for_device_found(hass: HomeAssistant) -> None:

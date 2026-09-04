@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Mapping
 from typing import Any
 
@@ -242,6 +243,21 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             if not sources:
                 errors["base"] = "source_required"
             else:
+                if not user_input.get(CONF_LEGACY_UNIQUE_ID):
+                    # No stable identity was typed in manually — generate one
+                    # now, at creation time only. This is what closes GH#19:
+                    # without it, a brand-new sensor's unique_id is derived
+                    # from its source entity ids (see sensor.py) and changes
+                    # the moment the user reconfigures it onto different
+                    # hardware, orphaning the entity and its recorder
+                    # history. _normalize()/sensor.py already treat a set
+                    # legacy_unique_id as permanent and winning over any
+                    # later source change — this just makes sure one always
+                    # exists from the start.
+                    user_input = {
+                        **user_input,
+                        CONF_LEGACY_UNIQUE_ID: f"abstractor_{uuid.uuid4().hex}",
+                    }
                 data = self._normalize(user_input, sources)
                 device_type = data[CONF_DEVICE_TYPE]
                 return self.async_create_entry(
