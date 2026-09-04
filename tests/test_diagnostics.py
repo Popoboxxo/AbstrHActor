@@ -10,6 +10,7 @@ async def test_config_entry_diagnostics_uses_shared_coordinator(hass) -> None:
     """Diagnostics should read the coordinator, not entry data."""
     entry = Mock()
     entry.entry_id = "entry-1"
+    entry.subentries = {}
     entry.as_dict.return_value = {"entry_id": entry.entry_id}
     coordinator = Mock(data={entry.entry_id: 12.0}, pipelines={})
     hass.data[DOMAIN] = {"coordinator": coordinator, entry.entry_id: entry.data}
@@ -18,6 +19,32 @@ async def test_config_entry_diagnostics_uses_shared_coordinator(hass) -> None:
 
     assert result["coordinator_data"] == {entry.entry_id: 12.0}
     assert result["pipeline_config"] == {}
+
+
+async def test_pipeline_config_is_keyed_by_subentry_id_not_entry_id() -> None:
+    """[GH regression] pipeline_config must include every subentry belonging
+    to the entry, keyed by subentry_id — not filtered by entry.entry_id,
+    which never matches a subentry_id except in one legacy-promotion edge
+    case. Reproduces the bug: coordinator.pipelines is keyed by subentry_id
+    ("subentry-a"), which is NOT entry.entry_id ("entry-1")."""
+    entry = Mock()
+    entry.entry_id = "entry-1"
+    entry.subentries = {"subentry-a": Mock(), "subentry-b": Mock()}
+    entry.as_dict.return_value = {"entry_id": "entry-1"}
+    pipeline_a = Mock(config={"device_type": "power"})
+    pipeline_b = Mock(config={"device_type": "energy"})
+    coordinator = Mock(
+        data={}, pipelines={"subentry-a": pipeline_a, "subentry-b": pipeline_b}
+    )
+    hass = Mock()
+    hass.data = {DOMAIN: {"coordinator": coordinator}}
+
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert result["pipeline_config"] == {
+        "subentry-a": {"device_type": "power"},
+        "subentry-b": {"device_type": "energy"},
+    }
 
 
 async def test_diagnostics_masks_influx_token(hass) -> None:

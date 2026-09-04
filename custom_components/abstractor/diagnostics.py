@@ -26,8 +26,8 @@ async def async_get_config_entry_diagnostics(
         "entry": entry_data,
         "coordinator_data": coordinator.data or {},
         "pipeline_config": {
-            key: value.config
-            for key, value in coordinator.pipelines.items()
-            if key == entry.entry_id
+            subentry_id: pipeline.config
+            for subentry_id, pipeline in coordinator.pipelines.items()
+            if subentry_id in entry.subentries
         },
     }
