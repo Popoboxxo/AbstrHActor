@@ -1,4 +1,4 @@
-agent-meta-version: 0.96.0
+agent-meta-version: 0.101.0-beta.5
 ai-providers:
 - Claude
 - Gemini
@@ -19,7 +19,6 @@ roles:
 - intern-developer
 - junior-developer
 - ui-ux-designer
-- frontend-component-engineer
 - knowledge-curator
 - knowledge-gardener
 - knowledge-indexer
@@ -33,7 +32,6 @@ roles:
 - accessibility-specialist
 - api-specialist
 - bug-feature-analyzer
-- claude-expert
 - data-engineer
 - database-engineer
 - dependency-auditor
@@ -45,6 +43,8 @@ roles:
 - tester
 - validator
 dod-preset: rapid-prototyping
+dod:
+  tests-required: true
 project:
   name: AbstrHActor
   prefix: Absrct
@@ -64,36 +64,32 @@ variables:
     (for serial/UART sensors) - paho-mqtt (for MQTT sensor bridge)
 
     '
-  PROJECT_STRUCTURE: "# Root — HACS requirements hacs.json              # HACS manifest\
-    \ (name, homeassistant version, etc.) custom_components/abstractor/\n  __init__.py\
-    \          # async_setup_entry, async_unload_entry\n  manifest.json        # HA\
-    \ manifest (domain, version, requirements, iot_class)\n  const.py            \
-    \ # DOMAIN, CONF_*, SENSOR_TYPES enum\n  config_flow.py       # ConfigFlow with\
-    \ unique ID, discovery steps\n  strings.json         # Config flow translations\
-    \ (i18n)\n  icons.json           # Entity icon translations (mdi icons)\n  sensor.py\
-    \            # Sensor platform — CoordinatorEntity + EntityDescription\n  binary_sensor.py\
-    \     # Binary sensor platform\n  switch.py            # Switch/actuator platform\n\
-    \  coordinator.py       # DataUpdateCoordinator — central polling\n  device.py\
-    \            # Abstract device representation\n  brand/\n    icon.png        \
-    \   # Brand icon for HACS UI (256x256)\n    logo.png           # Brand logo (optional)\n\
-    \  bridge/\n    __init__.py        # AbstractBridge protocol\n    serial_bridge.py\
-    \   # Serial/UART bridge implementation\n    mqtt_bridge.py     # MQTT bridge\
-    \ implementation\n    http_bridge.py     # HTTP/REST bridge implementation\n \
-    \ sensor_types/\n    __init__.py        # SensorType enum + EntityDescription\
-    \ registry\n    temperature.py     # Temperature sensor implementation\n    humidity.py\
-    \        # Humidity sensor implementation\n    pressure.py        # Pressure sensor\
-    \ implementation\n    power.py           # Power/energy sensor implementation\n\
-    \    water.py           # Water flow/consumption sensor implementation\n  repository/\n\
-    \    __init__.py        # Device registry (Repository pattern)\n    device_registry.py\
-    \ # In-memory device registry + discovery\n  tests/\n    __init__.py\n    test_config_flow.py#\
-    \ Config flow tests (required: 100% coverage)\n    test_sensor.py     # Sensor\
-    \ unit tests\n    test_bridge.py     # Bridge implementation tests\n    test_device.py\
-    \     # Device abstraction tests\n    conftest.py        # Pytest fixtures (mock\
-    \ HA, mock bridges)\ndocs/\n  ARCHITECTURE.md      # High-level architecture docs\n\
-    \  SENSOR_TYPES.md      # Supported sensor types and their interfaces\nrequirements.txt\
-    \       # PyPI dependencies requirements_test.txt  # Test dependencies (pytest,\
-    \ pytest-asyncio, pytest-cov) .github/\n  workflows/\n    validate.yaml      #\
-    \ HACS Action + Hassfest validation on push/PR\n"
+  PROJECT_STRUCTURE: "# Root\nhacs.json                  # HACS manifest (name, homeassistant\
+    \ version, etc.)\ncustom_components/abstractor/\n  __init__.py          # async_setup_entry,\
+    \ async_unload_entry\n  manifest.json        # HA manifest (domain, version, requirements,\
+    \ iot_class)\n  const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum\n  config_flow.py\
+    \       # ConfigFlow with unique ID, discovery steps\n  coordinator.py       #\
+    \ DataUpdateCoordinator — central polling\n  diagnostics.py       # Diagnostics\
+    \ support\n  filters.py           # Value filters (spike filter, monotonic guard)\n\
+    \  frontend.py          # Frontend integration entry point\n  influx_exporter.py\
+    \   # InfluxDB exporter\n  sensor.py            # Sensor platform — CoordinatorEntity\
+    \ + EntityDescription\n  snapshot.py          # Snapshot support\n  services.yaml\
+    \        # Service definitions\n  strings.json         # Config flow translations\
+    \ (i18n)\n  icons.json           # Entity icon translations (mdi icons)\n  repository/\n\
+    \    device_registry.py # Device registry (Repository pattern)\n  brand/\n   \
+    \ icon.png           # Brand icon for HACS UI (256x256)\n    logo.png        \
+    \   # Brand logo (optional)\n  translations/        # Translation catalogs\n \
+    \ www/                 # Frontend static assets\n  # PLANNED / roadmap (do not\
+    \ exist yet):\n  bridge/              # AbstractBridge protocol + serial/mqtt/http\
+    \ bridges\n  sensor_types/        # SensorType enum + EntityDescription registry\n\
+    tests/                 # 14 test files (root-level)\n  __init__.py\n  conftest.py\
+    \          # Pytest fixtures (mock HA, mock bridges)\n  test_config_flow.py  #\
+    \ Config flow tests (required: 100% coverage)\n  test_coordinator.py\n  test_diagnostics.py\n\
+    \  test_filters.py\n  test_frontend.py\n  test_influx_exporter.py\n  test_lifecycle.py\n\
+    \  test_migration.py\n  test_reconciliation.py\n  test_sensor.py\n  test_services.py\n\
+    \  test_snapshot.py\ndocs/\n  ARCHITECTURE.md      # High-level architecture docs\n\
+    \  SENSOR_TYPES.md      # Supported sensor types and their interfaces\n.github/\n\
+    \  workflows/\n    validate.yaml      # HACS Action + Hassfest validation on push/PR"
   ENTRY_POINT_PATTERN: custom_components/abstractor/__init__.py
   KEY_PATTERNS: "- **Bridge Pattern**: Separates hardware communication (serial, MQTT,\
     \ HTTP)\n  from the sensor abstraction. Each bridge implementation translates\
@@ -179,16 +175,20 @@ variables:
     - Do not commit .agent-meta/ changes directly (use submodule workflow)'
   SE_MAX_DEPTH: 5
   SE_MAX_PARALLEL_CELLS: 3
-  ARCHITECTURE: "custom_components/abstractor/\n  __init__.py          # async_setup_platform,\
-    \ async_setup_entry\n  manifest.json\n  const.py             # DOMAIN, CONF_*,\
-    \ SENSOR_TYPES\n  config_flow.py       # Optional: UI-based configuration\n  sensor.py\
-    \            # HA sensor platform\n  binary_sensor.py     # HA binary_sensor platform\n\
-    \  switch.py            # HA switch platform\n  device.py            # AbstractDevice\
-    \ base\n  bridge/\n    __init__.py        # AbstractBridge protocol\n    serial_bridge.py\
-    \   # SerialBridge implementation\n    mqtt_bridge.py     # MqttBridge implementation\n\
-    \    http_bridge.py     # HttpBridge implementation\n  sensor_types/\n    __init__.py\
-    \        # SensorType enum + registry\n  repository/\n    __init__.py        #\
-    \ DeviceRegistry\n    device_registry.py\n  tests/\n"
+  ARCHITECTURE: "custom_components/abstractor/\n  __init__.py          # async_setup_entry,\
+    \ async_unload_entry\n  manifest.json        # HA manifest (domain, version, requirements,\
+    \ iot_class)\n  const.py             # DOMAIN, CONF_*\n  config_flow.py      \
+    \ # ConfigFlow with unique ID, discovery steps\n  coordinator.py       # DataUpdateCoordinator\
+    \ — central polling\n  diagnostics.py       # Diagnostics support\n  filters.py\
+    \           # Spike filter / monotonic guard\n  frontend.py          # Frontend\
+    \ integration\n  influx_exporter.py   # InfluxDB exporter\n  sensor.py       \
+    \     # Sensor platform (CoordinatorEntity + EntityDescription)\n  snapshot.py\
+    \          # Snapshot support\n  repository/\n    device_registry.py # DeviceRegistry\
+    \ (Repository pattern)\n  brand/               # HACS brand assets\n  translations/\
+    \        # Translation catalogs\n  www/                 # Frontend static assets\n\
+    \  # PLANNED / roadmap (do not exist yet):\n  bridge/              # AbstractBridge\
+    \ protocol + serial/mqtt/http implementations\n  sensor_types/        # SensorType\
+    \ enum + per-type implementations\ntests/                 # 14 test files (root-level)"
   REQ_CATEGORIES: '- Core features: device discovery, sensor polling, config flow
     - Bridge implementations: serial, MQTT, HTTP - Sensor types: temperature, humidity,
     pressure, power, water - Non-functional: async performance, memory safety, HA

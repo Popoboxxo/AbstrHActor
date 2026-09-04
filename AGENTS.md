@@ -18,50 +18,54 @@
 ## Architektur
 
 ```
-# Root — HACS requirements hacs.json              # HACS manifest (name, homeassistant version, etc.) custom_components/abstractor/
+# Root
+hacs.json                  # HACS manifest (name, homeassistant version, etc.)
+custom_components/abstractor/
   __init__.py          # async_setup_entry, async_unload_entry
   manifest.json        # HA manifest (domain, version, requirements, iot_class)
   const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum
   config_flow.py       # ConfigFlow with unique ID, discovery steps
+  coordinator.py       # DataUpdateCoordinator — central polling
+  diagnostics.py       # Diagnostics support
+  filters.py           # Value filters (spike filter, monotonic guard)
+  frontend.py          # Frontend integration entry point
+  influx_exporter.py   # InfluxDB exporter
+  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
+  snapshot.py          # Snapshot support
+  services.yaml        # Service definitions
   strings.json         # Config flow translations (i18n)
   icons.json           # Entity icon translations (mdi icons)
-  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
-  binary_sensor.py     # Binary sensor platform
-  switch.py            # Switch/actuator platform
-  coordinator.py       # DataUpdateCoordinator — central polling
-  device.py            # Abstract device representation
+  repository/
+    device_registry.py # Device registry (Repository pattern)
   brand/
     icon.png           # Brand icon for HACS UI (256x256)
     logo.png           # Brand logo (optional)
-  bridge/
-    __init__.py        # AbstractBridge protocol
-    serial_bridge.py   # Serial/UART bridge implementation
-    mqtt_bridge.py     # MQTT bridge implementation
-    http_bridge.py     # HTTP/REST bridge implementation
-  sensor_types/
-    __init__.py        # SensorType enum + EntityDescription registry
-    temperature.py     # Temperature sensor implementation
-    humidity.py        # Humidity sensor implementation
-    pressure.py        # Pressure sensor implementation
-    power.py           # Power/energy sensor implementation
-    water.py           # Water flow/consumption sensor implementation
-  repository/
-    __init__.py        # Device registry (Repository pattern)
-    device_registry.py # In-memory device registry + discovery
-  tests/
-    __init__.py
-    test_config_flow.py# Config flow tests (required: 100% coverage)
-    test_sensor.py     # Sensor unit tests
-    test_bridge.py     # Bridge implementation tests
-    test_device.py     # Device abstraction tests
-    conftest.py        # Pytest fixtures (mock HA, mock bridges)
+  translations/        # Translation catalogs
+  www/                 # Frontend static assets
+  # PLANNED / roadmap (do not exist yet):
+  bridge/              # AbstractBridge protocol + serial/mqtt/http bridges
+  sensor_types/        # SensorType enum + EntityDescription registry
+tests/                 # 14 test files (root-level)
+  __init__.py
+  conftest.py          # Pytest fixtures (mock HA, mock bridges)
+  test_config_flow.py  # Config flow tests (required: 100% coverage)
+  test_coordinator.py
+  test_diagnostics.py
+  test_filters.py
+  test_frontend.py
+  test_influx_exporter.py
+  test_lifecycle.py
+  test_migration.py
+  test_reconciliation.py
+  test_sensor.py
+  test_services.py
+  test_snapshot.py
 docs/
   ARCHITECTURE.md      # High-level architecture docs
   SENSOR_TYPES.md      # Supported sensor types and their interfaces
-requirements.txt       # PyPI dependencies requirements_test.txt  # Test dependencies (pytest, pytest-asyncio, pytest-cov) .github/
+.github/
   workflows/
     validate.yaml      # HACS Action + Hassfest validation on push/PR
-
 ```
 
 **Entry-Point:**
@@ -205,6 +209,7 @@ Format: `<type>: <beschreibung>` (Bsp: `feat: ...`)
 # Definition of Done (DoD)
 
 Pflicht: Code komplett, Konventionen & Conv. Commits eingehalten, keine Regressions.
+Tests: Test vorhanden & grün
 
 
 
@@ -431,8 +436,6 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 
 | `bug-feature-analyzer` | Issue-Triage: Eingehende Bug-Meldungen und Feature-Requests analysieren und k... |
 
-| `claude-expert` | Absoluter Analyse-Experte für die Plattform Claude Code: Funktionsweise, Konf... |
-
 | `code-reviewer` | Clean Code Gatekeeper: Blast-Radius-Analyse, SOLID/DRY Prüfung, Code-Qualität... |
 
 | `data-engineer` | ETL/ELT-Pipelines, Schema-Migration (Datenebene), Data-Quality-Checks, Lineag... |
@@ -454,8 +457,6 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 | `explorer` | Read-only Codebase-Recherche, Dependency- und Impact-Mapping, Datei- und Symb... |
 
 | `feedback` | Projekt-Feedback standardisieren: Bugs, Features, Verbesserungen als GitHub I... |
-
-| `frontend-component-engineer` | Screen-Spec + Token-Contract → produktionsreife UI-Komponenten. |
 
 | `git` | Commits, Branches, Tags, Push/Pull und alle Git-Operationen |
 
@@ -528,18 +529,6 @@ Die Knowledge Engine ist aktiviert. Domäne: **internal-docs**.
 - **Gardening:** `knowledge-gardener` pflegt Links, Tags, Typos, Timestamps
 
 <!-- agent-meta:managed-end -->
-
-
-
-
-
-
-
-
-
-
-
-
 
 ## Eigene Notizen
 
@@ -635,7 +624,6 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `e2e-tester.md` → registriere als `e2e-tester`
    - `explorer.md` → registriere als `explorer`
    - `feedback.md` → registriere als `feedback`
-   - `frontend-component-engineer.md` → registriere als `frontend-component-engineer`
    - `git.md` → registriere als `git`
    - `ideation.md` → registriere als `ideation`
    - `intern-developer.md` → registriere als `intern-developer`
@@ -682,7 +670,6 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="e2e-tester", ...)
    define_subagent(name="explorer", ...)
    define_subagent(name="feedback", ...)
-   define_subagent(name="frontend-component-engineer", ...)
    define_subagent(name="git", ...)
    define_subagent(name="ideation", ...)
    define_subagent(name="intern-developer", ...)
