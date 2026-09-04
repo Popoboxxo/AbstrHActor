@@ -221,6 +221,8 @@ opencode.json
 .opencode/
 .claude/
 .gemini/
+.continue/
+.mammouth/
 
 
 graphify-out/

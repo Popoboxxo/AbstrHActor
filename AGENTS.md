@@ -139,7 +139,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
  Opencode->AGENTS.md |
  Gemini->AGENTS.md
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.96.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v0.101.0-beta.5` | DoD: `rapid-prototyping` | REQ-Trace: `false`
 
 
 ## Regeln
@@ -155,7 +155,8 @@ Kategorien für `docs/REQUIREMENTS.md`:
 ## Bekannte Grenzen
 
 - **Tiefenlimit (Punkt 1) ist modellbasiert, keine technische Barriere.** Eine passende Implementierung existiert (`validate_envelope(max_depth=...)` in `scripts/lib/delegation_syntax.py`), wird aber im aktiven Delegationspfad nirgends aufgerufen. Die Regel verlässt sich auf Modell-Gehorsam, nicht auf Enforcement.
-- **Singleton-Orchestrator (Punkt 4) wird nur über eine Selbstdeklaration der Agenten-Identität gestützt** (`#agent-meta:agent=<name>` in `.claude/hooks/orchestrator-guard.sh`), die im Hook-Quelltext selbst als "soft, self-reported convention, not a security boundary" dokumentiert ist. Jeder Agent kann sich technisch als privilegiert deklarieren.
+- **Singleton-Orchestrator (Punkt 4) wird nur über eine Selbstdeklaration der Agenten-Identität gestützt** (`#agent-meta:agent=<name>` in `.claude/hooks/orchestrator-guard.sh`), die im Hook-Quelltext selbst als "soft, self-reported convention, not a security boundary" dokumentiert ist. Jeder Agent kann sich technisch als privilegiert deklarieren. **Das ist eine bewusste Design-Grenze, kein behebbarer Bug:** kein Provider liefert im PreToolUse-Payload eine echte Agenten-Identität, der Hook kann die Behauptung also nicht verifizieren. Der Guard ist ein Konventions-Schutz gegen Versehen, kein Schutz gegen einen Agenten, der die Regel bewusst umgeht. Wer eine harte Grenze braucht, muss Git-Mutationen außerhalb des Agenten-Systems absichern (Branch-Protection, Pre-Receive-Hooks, Review-Pflicht) — zerstörerische Operationen (`push --force`, `reset --hard`, `clean -fd`, `branch -D`) bleiben deshalb ausdrücklich zustimmungspflichtig durch den Nutzer.
+- **Große Ergebnisse gehören in Dateien, nicht in den Return-Channel.** Der synchrone Tool-Result-Kanal hat ein undokumentiertes Größenlimit; überlange Antworten können ohne Fehlersignal beschnitten zurückkommen (agent-meta #514). Read-only-Rollen ohne `Write` (`Plan`, `Explore`, `code-reviewer`) sind davon strukturell betroffen. Daher: Artefakte ab ~1000 Zeilen (Pläne, Konzepte, Reviews) immer von einer schreibfähigen Rolle in eine Datei schreiben lassen und nur den Pfad zurückgeben. Empfangene Ergebnisse auf Vollständigkeit prüfen (fehlender Kopf/erste Abschnitte = Truncation), nicht blind weiterverarbeiten.
 
 
 
@@ -163,9 +164,36 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 Verwende Feature-Branches (`feat/`, `fix/`, `chore/`). Keine Code-Änderungen direkt auf `main` oder `master`.
 
+## Guard-Terminologie: Convention Boundary vs. Security Boundary
+
+Guards im System (Orchestrator-Guard, DoD-Push-Check, etc.) werden inkonsistent als
+"Konventions-Tool" und als "security boundary" bezeichnet — beide Aussagen sind korrekt,
+aber gegen unterschiedliche Bedrohungsmodelle:
+
+- **Convention boundary**: fail-closed gegen AKZIDENTIELLEN Missbrauch (Tippfehler,
+  vergessene Bestätigungen, naive Automatisierung). Nicht darauf ausgelegt, einen
+  gezielten Bypass-Versuch zu widerstehen (siehe Lücken unten, z.B. #592).
+- **Security boundary**: fail-closed gegen einen DELIBERATEN Umgehungsversuch.
+
+Diese Definition ist die zentrale Referenz — Hook-Header und andere Doku sollen sie
+verlinken (`.claude/rules/branch-guard.md#guard-terminologie-convention-boundary-vs-security-boundary`)
+statt sie ad hoc zu wiederholen.
+
+`orchestrator-guard.sh` ist primär eine **convention boundary** (siehe Lücken unten),
+mit einzelnen **security-boundary**-Eigenschaften für spezifische Fälle (z.B. das
+Destructive-Gate aus #516, das auch bei gültigem `git`-Sentinel blockt). `dod-push-check.sh`
+ist als **security boundary** gegen fehlendes/kaputtes `python3` fail-closed (#595).
+
 ## Bekannte Grenzen
 
-Die technische Durchsetzung (`orchestrator-guard.sh`) erkennt Git-Mutationen über eine Regex-/shlex-basierte Analyse des Bash-Befehls, kein vollständiger Shell-Parser. Bekannte Lücken: `eval "git commit ..."` wird nicht erkannt, direkte Schreibzugriffe auf `.git/` werden nicht geprüft, andere Git-Tools (`hub`, `gh repo ...`) sind nicht erfasst. Bewusster Trade-off, kein Bug (siehe Kommentar in `.claude/hooks/orchestrator-guard.sh:18-30`) — nur relevant für Nutzer, die sich vollständig auf den Schutz statt auf die Konvention verlassen.
+Die technische Durchsetzung (`orchestrator-guard.sh`) erkennt Git-Mutationen über eine tokenisierte Analyse des Bash-Befehls (gemeinsamer Tokenizer für Destructive- und Mutation-Gate, Issue #551), kein vollständiger Shell-Parser. Bekannte Lücken:
+
+1. `eval "git commit ..."` wird nicht erkannt.
+2. Direkte Schreibzugriffe auf `.git/` werden nicht geprüft.
+3. Andere Git-Tools (`hub`, `gh repo ...`) sind nicht erfasst.
+4. Command-Substitution und Indirektion (`$(...)`, Backticks, `xargs`, `eval`) können eine Git-Mutation am Tokenizer vorbeischleusen, weil der Hook den Befehl weder ausführt noch die Shell vollständig parst (Issue #592). Ein echter Shell-Interpreter wäre unverhältnismäßig für ein Konventions-Tool.
+
+Bewusster Trade-off, kein Bug (siehe Kommentar-Header in `.claude/hooks/orchestrator-guard.sh`) — nur relevant für Nutzer, die sich vollständig auf den Schutz statt auf die Konvention verlassen.
 
 
 
@@ -205,7 +233,7 @@ Issues referenzieren und am Ende mit passendem Keyword (`Fixes #123`, `Closes #1
 
 # Lifecycle-Tasks
 
-Beim Start prüfen: existiert `.opencode/pending-tasks.md`?
+Beim Start prüfen: existiert `.gemini/pending-tasks.md bzw. .opencode/pending-tasks.md`?
 Falls ja und enthält `- [ ]`: User fragen ob delegiert werden soll.
 Nach Erledigung: löschen. Datei nicht committen.
 
@@ -259,6 +287,7 @@ Regeln für den Umgang mit allen Git-Submodulen (`.agent-meta/`, `external/*/`, 
 | Skill | Wann |
 |---|---|
 | sync-interface | sync.py, Templates/Rules ändern |
+| admin-ui | Admin-Server/UI betreiben (Lifecycle, Token, Ports) |
 | architecture | Templates/Overrides/Placeholder ändern |
 | conventions | Vor Commits in agents/, config/, scripts/lib |
 | submodule-protection | .agent-meta/, external/, .gitmodules |

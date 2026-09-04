@@ -1,4 +1,4 @@
-agent-meta-version: 0.96.0
+agent-meta-version: 0.101.0-beta.5
 ai-providers:
 - Claude
 - Gemini
@@ -64,55 +64,32 @@ variables:
     (for serial/UART sensors) - paho-mqtt (for MQTT sensor bridge)
 
     '
-  PROJECT_STRUCTURE: |-
-    # Root
-    hacs.json                  # HACS manifest (name, homeassistant version, etc.)
-    custom_components/abstractor/
-      __init__.py          # async_setup_entry, async_unload_entry
-      manifest.json        # HA manifest (domain, version, requirements, iot_class)
-      const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum
-      config_flow.py       # ConfigFlow with unique ID, discovery steps
-      coordinator.py       # DataUpdateCoordinator — central polling
-      diagnostics.py       # Diagnostics support
-      filters.py           # Value filters (spike filter, monotonic guard)
-      frontend.py          # Frontend integration entry point
-      influx_exporter.py   # InfluxDB exporter
-      sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
-      snapshot.py          # Snapshot support
-      services.yaml        # Service definitions
-      strings.json         # Config flow translations (i18n)
-      icons.json           # Entity icon translations (mdi icons)
-      repository/
-        device_registry.py # Device registry (Repository pattern)
-      brand/
-        icon.png           # Brand icon for HACS UI (256x256)
-        logo.png           # Brand logo (optional)
-      translations/        # Translation catalogs
-      www/                 # Frontend static assets
-      # PLANNED / roadmap (do not exist yet):
-      bridge/              # AbstractBridge protocol + serial/mqtt/http bridges
-      sensor_types/        # SensorType enum + EntityDescription registry
-    tests/                 # 14 test files (root-level)
-      __init__.py
-      conftest.py          # Pytest fixtures (mock HA, mock bridges)
-      test_config_flow.py  # Config flow tests (required: 100% coverage)
-      test_coordinator.py
-      test_diagnostics.py
-      test_filters.py
-      test_frontend.py
-      test_influx_exporter.py
-      test_lifecycle.py
-      test_migration.py
-      test_reconciliation.py
-      test_sensor.py
-      test_services.py
-      test_snapshot.py
-    docs/
-      ARCHITECTURE.md      # High-level architecture docs
-      SENSOR_TYPES.md      # Supported sensor types and their interfaces
-    .github/
-      workflows/
-        validate.yaml      # HACS Action + Hassfest validation on push/PR
+  PROJECT_STRUCTURE: "# Root\nhacs.json                  # HACS manifest (name, homeassistant\
+    \ version, etc.)\ncustom_components/abstractor/\n  __init__.py          # async_setup_entry,\
+    \ async_unload_entry\n  manifest.json        # HA manifest (domain, version, requirements,\
+    \ iot_class)\n  const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum\n  config_flow.py\
+    \       # ConfigFlow with unique ID, discovery steps\n  coordinator.py       #\
+    \ DataUpdateCoordinator — central polling\n  diagnostics.py       # Diagnostics\
+    \ support\n  filters.py           # Value filters (spike filter, monotonic guard)\n\
+    \  frontend.py          # Frontend integration entry point\n  influx_exporter.py\
+    \   # InfluxDB exporter\n  sensor.py            # Sensor platform — CoordinatorEntity\
+    \ + EntityDescription\n  snapshot.py          # Snapshot support\n  services.yaml\
+    \        # Service definitions\n  strings.json         # Config flow translations\
+    \ (i18n)\n  icons.json           # Entity icon translations (mdi icons)\n  repository/\n\
+    \    device_registry.py # Device registry (Repository pattern)\n  brand/\n   \
+    \ icon.png           # Brand icon for HACS UI (256x256)\n    logo.png        \
+    \   # Brand logo (optional)\n  translations/        # Translation catalogs\n \
+    \ www/                 # Frontend static assets\n  # PLANNED / roadmap (do not\
+    \ exist yet):\n  bridge/              # AbstractBridge protocol + serial/mqtt/http\
+    \ bridges\n  sensor_types/        # SensorType enum + EntityDescription registry\n\
+    tests/                 # 14 test files (root-level)\n  __init__.py\n  conftest.py\
+    \          # Pytest fixtures (mock HA, mock bridges)\n  test_config_flow.py  #\
+    \ Config flow tests (required: 100% coverage)\n  test_coordinator.py\n  test_diagnostics.py\n\
+    \  test_filters.py\n  test_frontend.py\n  test_influx_exporter.py\n  test_lifecycle.py\n\
+    \  test_migration.py\n  test_reconciliation.py\n  test_sensor.py\n  test_services.py\n\
+    \  test_snapshot.py\ndocs/\n  ARCHITECTURE.md      # High-level architecture docs\n\
+    \  SENSOR_TYPES.md      # Supported sensor types and their interfaces\n.github/\n\
+    \  workflows/\n    validate.yaml      # HACS Action + Hassfest validation on push/PR"
   ENTRY_POINT_PATTERN: custom_components/abstractor/__init__.py
   KEY_PATTERNS: "- **Bridge Pattern**: Separates hardware communication (serial, MQTT,\
     \ HTTP)\n  from the sensor abstraction. Each bridge implementation translates\
@@ -198,28 +175,20 @@ variables:
     - Do not commit .agent-meta/ changes directly (use submodule workflow)'
   SE_MAX_DEPTH: 5
   SE_MAX_PARALLEL_CELLS: 3
-  ARCHITECTURE: |-
-    custom_components/abstractor/
-      __init__.py          # async_setup_entry, async_unload_entry
-      manifest.json        # HA manifest (domain, version, requirements, iot_class)
-      const.py             # DOMAIN, CONF_*
-      config_flow.py       # ConfigFlow with unique ID, discovery steps
-      coordinator.py       # DataUpdateCoordinator — central polling
-      diagnostics.py       # Diagnostics support
-      filters.py           # Spike filter / monotonic guard
-      frontend.py          # Frontend integration
-      influx_exporter.py   # InfluxDB exporter
-      sensor.py            # Sensor platform (CoordinatorEntity + EntityDescription)
-      snapshot.py          # Snapshot support
-      repository/
-        device_registry.py # DeviceRegistry (Repository pattern)
-      brand/               # HACS brand assets
-      translations/        # Translation catalogs
-      www/                 # Frontend static assets
-      # PLANNED / roadmap (do not exist yet):
-      bridge/              # AbstractBridge protocol + serial/mqtt/http implementations
-      sensor_types/        # SensorType enum + per-type implementations
-    tests/                 # 14 test files (root-level)
+  ARCHITECTURE: "custom_components/abstractor/\n  __init__.py          # async_setup_entry,\
+    \ async_unload_entry\n  manifest.json        # HA manifest (domain, version, requirements,\
+    \ iot_class)\n  const.py             # DOMAIN, CONF_*\n  config_flow.py      \
+    \ # ConfigFlow with unique ID, discovery steps\n  coordinator.py       # DataUpdateCoordinator\
+    \ — central polling\n  diagnostics.py       # Diagnostics support\n  filters.py\
+    \           # Spike filter / monotonic guard\n  frontend.py          # Frontend\
+    \ integration\n  influx_exporter.py   # InfluxDB exporter\n  sensor.py       \
+    \     # Sensor platform (CoordinatorEntity + EntityDescription)\n  snapshot.py\
+    \          # Snapshot support\n  repository/\n    device_registry.py # DeviceRegistry\
+    \ (Repository pattern)\n  brand/               # HACS brand assets\n  translations/\
+    \        # Translation catalogs\n  www/                 # Frontend static assets\n\
+    \  # PLANNED / roadmap (do not exist yet):\n  bridge/              # AbstractBridge\
+    \ protocol + serial/mqtt/http implementations\n  sensor_types/        # SensorType\
+    \ enum + per-type implementations\ntests/                 # 14 test files (root-level)"
   REQ_CATEGORIES: '- Core features: device discovery, sensor polling, config flow
     - Bridge implementations: serial, MQTT, HTTP - Sensor types: temperature, humidity,
     pressure, power, water - Non-functional: async performance, memory safety, HA
@@ -357,3 +326,5 @@ model-overrides:
 max-parallel-agents: 2
 debug-mode: false
 allow-committed-secrets: false
+# The active naming/versioning conventions preset, matched against config/conventions-presets.yaml. Individual overrides via 'conventions' block. Precedence: conventions > conventions-preset > 'default'.
+conventions-preset: default
