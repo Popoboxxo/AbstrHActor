@@ -417,8 +417,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     for stale_subentry_id in set(coordinator.subentry_data) - current_subentry_ids:
         coordinator.remove_subentry(stale_subentry_id)
 
+    stored_values = domain_data.get("stored_snapshot", {}).get("values", {})
     for subentry_id, subentry in entry.subentries.items():
-        coordinator.add_subentry(subentry_id, dict(subentry.data))
+        coordinator.add_subentry(
+            subentry_id,
+            dict(subentry.data),
+            initial_last_valid_state=stored_values.get(subentry_id),
+        )
     domain_data[entry.entry_id] = entry.data
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 

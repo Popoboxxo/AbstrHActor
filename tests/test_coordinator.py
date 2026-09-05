@@ -168,3 +168,30 @@ async def test_update_data_skips_push_when_value_is_none() -> None:
 
     assert data["subentry-1"] is None
     exporter.async_push.assert_not_awaited()
+
+
+async def test_add_subentry_seeds_pipeline_from_initial_last_valid_state() -> None:
+    """add_subentry passes initial_last_valid_state straight through to the
+    new pipeline — this is the seam __init__.py uses to restore the spike
+    guard from a persisted snapshot after any coordinator rebuild."""
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+
+    coordinator.add_subentry(
+        "subentry-1",
+        {"device_type": "energy", "source_entity_id": "sensor.x"},
+        initial_last_valid_state=456.7,
+    )
+
+    assert coordinator.pipelines["subentry-1"]._last_valid_state == 456.7
+
+
+async def test_add_subentry_without_seed_defaults_to_none() -> None:
+    """No prior value known (e.g. brand-new subentry) -> pipeline starts
+    unguarded, exactly as before this change."""
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+
+    coordinator.add_subentry(
+        "subentry-1", {"device_type": "power", "source_entity_id": "sensor.x"}
+    )
+
+    assert coordinator.pipelines["subentry-1"]._last_valid_state is None

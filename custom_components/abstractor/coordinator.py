@@ -79,12 +79,27 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
             return
         self.hass.async_create_task(self.async_request_refresh())
 
-    def add_subentry(self, subentry_id: str, subentry_data: dict) -> None:
-        """Add a subentry to central polling."""
+    def add_subentry(
+        self,
+        subentry_id: str,
+        subentry_data: dict,
+        initial_last_valid_state: float | None = None,
+    ) -> None:
+        """Add a subentry to central polling.
+
+        ``initial_last_valid_state`` seeds the new pipeline's spike-filter
+        guard, typically from the last value persisted in the snapshot Store
+        (see __init__.py). Without it, a coordinator rebuild — which happens
+        on every reload, including one triggered by editing an unrelated
+        subentry — would otherwise let one unguarded low reading through on
+        the very next poll (REQ-COMP-001).
+        """
         config = dict(subentry_data)
         config["device_type"] = config.get("device_type", "power")
         self.subentry_data[subentry_id] = config
-        self.pipelines[subentry_id] = AbstractorFilterPipeline(config)
+        self.pipelines[subentry_id] = AbstractorFilterPipeline(
+            config, initial_last_valid_state
+        )
 
     def remove_subentry(self, subentry_id: str) -> None:
         """Remove a subentry from central polling."""
