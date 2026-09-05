@@ -19,8 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Poll interval from the options flow is applied by the coordinator
 - Device registry wired into the sensor lifecycle (devices registered from
   config options)
-- Subentry-based device bundling: create Abstract sensors as subentries and
-  reconcile legacy flat entries on setup
+- Subentry-based device bundling foundation: create Abstract sensors as
+  subentries and reconcile legacy flat entries on setup. **The bundling UI
+  itself (grouping multiple sensors onto one shared device) is withheld
+  pending [GH#18](https://github.com/Popoboxxo/AbstrHActor/issues/18)** —
+  see [Known limitations](README.md#known-limitations).
 - Reconfigure flow for editing settings and moving a sensor to another device
 
 ### Fixed
