@@ -531,8 +531,6 @@ Die Knowledge Engine ist aktiviert. Domäne: **internal-docs**.
 
 Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird von `agent-meta` nicht überschrieben!
 
-<!-- agent-meta:managed-begin -->` and `<!-- agent-meta:managed-end -->` is generated — never edited by hand. Project-specific tweaks belong in `.meta-config/project.yaml` or in the manual notes section below.
-
 ### Active agents and why
 
 The `roles:` list in `.meta-config/project.yaml` enables the core agents. The most relevant for this integration:
@@ -589,13 +587,6 @@ Typical flow for an Abstractor task:
 - Directory table omits the 5 ReqogniLoom external agents although they are materialized — table vs. bootstrap inconsistency
 - 4 HA platform-config placeholders (`notify_group`, `notify_admin_group`, `influxdb_bucket`, `influxdb_org`) are empty — not needed for this repo, but they produce sync warnings
 - `external/ReqogniLoom` checkout pin `a05f6d56` failed in the last sync (fix: `git checkout a05f6d56` inside the submodule)
-
-
-
-
-## Eigene Notizen
-
-Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird von `agent-meta` nicht überschrieben!
 
 <!-- agent-meta:bootstrap-begin -->
 
