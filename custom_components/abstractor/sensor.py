@@ -41,7 +41,14 @@ async def async_setup_entry(
     coordinator: AbstractorDataUpdateCoordinator = hass.data[DOMAIN]["coordinator"]
 
     for subentry_id, subentry in entry.subentries.items():
-        device_type = subentry.data.get(CONF_DEVICE_TYPE, "")
+        device_type = subentry.data.get(CONF_DEVICE_TYPE)
+        if not device_type:
+            _LOGGER.warning(
+                "Subentry %s has no device_type configured; defaulting to "
+                "'power'",
+                subentry_id,
+            )
+            device_type = "power"
         # Identity (unique_id) is derived from subentry.data ONLY. subentry.data
         # is what the create/reconfigure flow writes atomically each time (see
         # config_flow.py); deriving unique_id from anything else would risk

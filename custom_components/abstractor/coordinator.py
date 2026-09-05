@@ -95,7 +95,13 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         the very next poll (REQ-COMP-001).
         """
         config = dict(subentry_data)
-        config["device_type"] = config.get("device_type", "power")
+        if not config.get("device_type"):
+            _LOGGER.warning(
+                "Subentry %s has no device_type configured; defaulting to "
+                "'power' for polling",
+                subentry_id,
+            )
+            config["device_type"] = "power"
         self.subentry_data[subentry_id] = config
         self.pipelines[subentry_id] = AbstractorFilterPipeline(
             config, initial_last_valid_state

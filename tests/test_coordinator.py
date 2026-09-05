@@ -195,3 +195,18 @@ async def test_add_subentry_without_seed_defaults_to_none() -> None:
     )
 
     assert coordinator.pipelines["subentry-1"]._last_valid_state is None
+
+
+def test_add_subentry_logs_warning_when_device_type_missing(caplog) -> None:
+    """A corrupted/legacy subentry with no device_type still defaults to
+    'power' for polling, but must not do so silently."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        coordinator = AbstractorDataUpdateCoordinator(Mock())
+
+        coordinator.add_subentry("subentry-1", {"source_entity_id": "sensor.x"})
+
+        assert coordinator.subentry_data["subentry-1"]["device_type"] == "power"
+        assert "device_type" in caplog.text
+        assert "subentry-1" in caplog.text
