@@ -12,7 +12,7 @@
 
 - **Runtime:** Python 3.12+
 - **Sprache:** Python
-- **Key-Dependencies:** - homeassistant >= 2025.1 - aiohttp (HA internal) - pyserial (for serial/UART sensors) - paho-mqtt (for MQTT sensor bridge)
+- **Key-Dependencies:** - homeassistant >= 2025.1 - aiohttp (HA internal) - voluptuous (config flow schemas)
 
 
 ## Architektur
@@ -74,29 +74,26 @@ custom_components/abstractor/__init__.py
 ```
 
 **Besondere Patterns:**
-- **Bridge Pattern**: Separates hardware communication (serial, MQTT, HTTP)
-  from the sensor abstraction. Each bridge implementation translates between
-  raw hardware protocols and a unified `AbstractSensor` interface.
-- **Strategy Pattern**: Each sensor type (temperature, power, water, etc.)
-  implements a common `AbstractSensor` base class, allowing polymorphic
-  sensor access from automations and dashboards.
-- **Repository Pattern**: A central `DeviceRegistry` manages all discovered
-  devices, handles deduplication, and provides lookup by device ID, type,
-  or location.
-- **Adapter Pattern (HA native)**: Leverages Home Assistant's own entity
-  registry to expose abstract sensors as first-class HA entities with
-  proper device_class, state_class, and unit_of_measurement.
-- **DataUpdateCoordinator (HA)**: Central polling coordinator shared by all
-  entities. Single `_async_update_data` call fetches all device data once,
-  then dispatches to entities via CoordinatorEntity. Avoids N parallel polls.
-- **EntityDescription (declarative)**: Sensor types defined as dataclass
-  lists with `key`, `value_fn`, `device_class`, `state_class`, etc. No
-  repetitive boilerplate per entity.
-- **Config Flow with Unique ID**: Every config entry has a stable unique_id
-  (serial/MAC, never IP). Supports discovery (USB, DHCP, MQTT) and reauth.
-- **Spike Filter / Monotonic Guard**: Energy and water sensors include
-  monotonically-increasing guards to prevent counter resets from corrupting
-  utility meter totals — battle-proven from production HA deployment.
+- **Singleton root + subentries**: one root ConfigEntry (unique_id ROOT_UNIQUE_ID)
+  holds every Abstract sensor as a ConfigSubentry, created/edited through
+  ConfigSubentryFlow rather than per-sensor config entries.
+- **DataUpdateCoordinator (HA)**: one shared coordinator polls all subentries'
+  sources every poll interval; a single _async_update_data call updates every
+  sensor's cached value, avoiding N parallel polls.
+- **Filter pipeline (AbstractorFilterPipeline)**: per-subentry spike filter,
+  invert, fail-soft/fail-closed, net-subtract, and REQ-COMP-004 fallback-source
+  logic, applied per poll in coordinator.py.
+- **Stable identity via CONF_LEGACY_UNIQUE_ID**: every subentry's unique_id is
+  pinned at creation (auto-generated, or explicitly set for migrated sensors)
+  and never re-derived from source entity ids afterward, so a later hardware
+  swap via reconfigure cannot orphan the entity or its recorder history.
+- **In-memory DeviceRegistry**: a lightweight write-side device registry
+  (custom_components/abstractor/repository/device_registry.py) records
+  device metadata as sensors are created; HA's own device registry (via
+  DeviceInfo) is the actual source of truth for entity/device grouping.
+- **Config Flow with a singleton root unique_id**: the root entry uses a
+  fixed unique_id (ROOT_UNIQUE_ID); there is currently no discovery step
+  (USB/DHCP/MQTT) or reauth flow.
 - **HACS Delivery**: GitHub releases with semantic versioning. `hacs.json`
   with min HA version. `brand/` directory with icon. GitHub Actions for
   HACS Action + Hassfest validation on every push/PR.
