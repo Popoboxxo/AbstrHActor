@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   user stay disabled
 - Device group is preserved when a sensor is reconfigured
 - Subentry flow works on both HA 2025.3.0 and 2026.8.0
+- **Migration foundation:** Four critical bugs found and fixed during the
+  subentry migration (coordinator leak, entity registry corruption, state
+  persistence, and unique_id stability) before this release went live
 
 ### Changed
 
