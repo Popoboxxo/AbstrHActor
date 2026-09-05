@@ -47,6 +47,9 @@
           "poll_interval": "Interval in seconds."
         }
       }
+    },
+    "error": {
+      "invalid_influx_host": "InfluxDB host must start with http:// or https://"
     }
   },
   "config_subentries": {

@@ -823,6 +823,79 @@ async def test_options_flow_custom_interval_preserves_other_submitted_fields(
     assert root_entry.options[CONF_POLL_INTERVAL] == 12
 
 
+async def test_options_flow_rejects_influx_host_without_scheme(hass: HomeAssistant) -> None:
+    """[SEC-1] CONF_INFLUX_HOST must be rejected if it isn't http(s):// —
+    a bare host/IP with no scheme is exactly the shape of an accidental (or
+    malicious) internal-network SSRF target slipped into a free-text field."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: str(DEFAULT_POLL_INTERVAL),
+            CONF_INFLUX_HOST: "169.254.169.254",
+            CONF_INFLUX_TOKEN: "",
+            CONF_INFLUX_ORG: "",
+            CONF_INFLUX_BUCKET: "",
+            CONF_DEVICE_NAME: DEFAULT_DEVICE_NAME,
+            CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
+            CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
+        },
+    )
+
+    assert result2["type"] == "form"
+    assert result2["errors"]["base"] == "invalid_influx_host"
+
+
+async def test_options_flow_accepts_influx_host_with_https_scheme(hass: HomeAssistant) -> None:
+    """A properly-schemed host is accepted, matching today's behavior."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: str(DEFAULT_POLL_INTERVAL),
+            CONF_INFLUX_HOST: "https://influx.local:8086",
+            CONF_INFLUX_TOKEN: "",
+            CONF_INFLUX_ORG: "",
+            CONF_INFLUX_BUCKET: "",
+            CONF_DEVICE_NAME: DEFAULT_DEVICE_NAME,
+            CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
+            CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
+        },
+    )
+
+    assert result2["type"] == "create_entry"
+    assert result2["data"][CONF_INFLUX_HOST] == "https://influx.local:8086"
+
+
+async def test_options_flow_accepts_empty_influx_host(hass: HomeAssistant) -> None:
+    """An empty host (Influx export disabled) is not a validation error."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: str(DEFAULT_POLL_INTERVAL),
+            CONF_INFLUX_HOST: "",
+            CONF_INFLUX_TOKEN: "",
+            CONF_INFLUX_ORG: "",
+            CONF_INFLUX_BUCKET: "",
+            CONF_DEVICE_NAME: DEFAULT_DEVICE_NAME,
+            CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
+            CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
+        },
+    )
+
+    assert result2["type"] == "create_entry"
+
+
 def test_subentry_flow_get_entry_falls_back_on_old_ha() -> None:
     """On HA versions before the `_get_entry` rename, the subentry flow
     resolves its config entry through `_get_reconfigure_entry` instead."""

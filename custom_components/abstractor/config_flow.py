@@ -130,6 +130,13 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             submitted = dict(user_input)
+            influx_host = submitted.get(CONF_INFLUX_HOST, "")
+            if influx_host and not influx_host.startswith(("http://", "https://")):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self._init_schema(current, interval_value),
+                    errors={"base": "invalid_influx_host"},
+                )
             interval_value = submitted[CONF_POLL_INTERVAL]
             if interval_value == "custom":
                 self._pending_options = {
@@ -145,51 +152,57 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_POLL_INTERVAL, default=interval_value
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                *(str(value) for value in POLL_INTERVAL_PRESETS),
-                                "custom",
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
+            data_schema=self._init_schema(current, interval_value),
+        )
+
+    @staticmethod
+    def _init_schema(current: dict[str, Any], interval_value: str) -> vol.Schema:
+        """Build the main options-flow schema (shared by the initial render
+        and the re-render-with-errors path after a validation failure)."""
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_POLL_INTERVAL, default=interval_value
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            *(str(value) for value in POLL_INTERVAL_PRESETS),
+                            "custom",
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD
+                    )
+                ),
+                vol.Optional(
+                    CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_DEVICE_NAME,
+                    default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_DEVICE_MANUFACTURER,
+                    default=current.get(
+                        CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
                     ),
-                    vol.Optional(
-                        CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_DEVICE_NAME,
-                        default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_DEVICE_MANUFACTURER,
-                        default=current.get(
-                            CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
-                        ),
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_DEVICE_MODEL,
-                        default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
-                    ): selector.TextSelector(),
-                }
-            ),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_DEVICE_MODEL,
+                    default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
+                ): selector.TextSelector(),
+            }
         )
 
     async def async_step_poll_interval(
