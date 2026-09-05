@@ -911,5 +911,6 @@ def test_subentry_flow_get_entry_falls_back_on_old_ha() -> None:
         ConfigSubentryFlow,
         "_get_entry",
         property(lambda self: (_ for _ in ()).throw(AttributeError)),
+        create=True,
     ):
         assert flow._get_subentry_config_entry() == "resolved-entry"
