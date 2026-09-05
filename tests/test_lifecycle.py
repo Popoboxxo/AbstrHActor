@@ -27,18 +27,26 @@ accumulate.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.abstractor.const import (
     CONF_DEVICE_TYPE,
+    CONF_INFLUX_BUCKET,
+    CONF_INFLUX_HOST,
+    CONF_INFLUX_ORG,
+    CONF_INFLUX_TOKEN,
+    CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     DOMAIN,
     SERVICE_EXPORT_DATA,
     SERVICE_IMPORT_DATA,
     SUBENTRY_TYPE_SENSOR,
 )
+from custom_components.abstractor.influx_exporter import InfluxExporter
 
 
 async def _setup_root_with_subentries(
@@ -154,3 +162,119 @@ async def test_full_removal_after_a_single_subentry_removal_still_tears_down(
     assert hass.data[DOMAIN].get("registry") is None
     assert not hass.services.has_service(DOMAIN, SERVICE_EXPORT_DATA)
     assert not hass.services.has_service(DOMAIN, SERVICE_IMPORT_DATA)
+
+
+async def _setup_root_with_options(
+    hass: HomeAssistant, options: dict | None = None
+) -> MockConfigEntry:
+    """Create and load the singleton root entry with the given options."""
+    root_entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="abstractor_root",
+        data={},
+        options=options or {},
+    )
+    root_entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(root_entry.entry_id)
+    await hass.async_block_till_done()
+    return root_entry
+
+
+_INFLUX_OPTIONS = {
+    CONF_INFLUX_HOST: "http://influx.local:8086",
+    CONF_INFLUX_TOKEN: "tok-123",
+    CONF_INFLUX_ORG: "energy",
+    CONF_INFLUX_BUCKET: "abstractor",
+}
+
+
+async def test_setup_attaches_exporter_when_credentials_configured(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-DATA-002] With host+token options set, the coordinator carries a
+    real InfluxExporter after setup."""
+    root_entry = await _setup_root_with_options(hass, _INFLUX_OPTIONS)
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert isinstance(coordinator.influx_exporter, InfluxExporter)
+    assert coordinator.influx_exporter._host == "http://influx.local:8086"
+    assert coordinator.influx_exporter._bucket == "abstractor"
+    assert root_entry.data == {}
+
+
+async def test_setup_leaves_exporter_none_without_credentials(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-DATA-002] Without host+token the exporter stays None — no exporter
+    object is created for an empty configuration."""
+    await _setup_root_with_options(hass, {})
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.influx_exporter is None
+
+
+async def test_setup_applies_poll_interval_from_options(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] coordinator.update_interval reflects the option, not the
+    hardcoded default."""
+    await _setup_root_with_options(hass, {CONF_POLL_INTERVAL: 7})
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.update_interval == timedelta(seconds=7)
+
+
+async def test_options_change_reload_rebuilds_exporter_and_interval(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-CORE-007] An options change (reload) rebuilds the exporter from
+    the new options and re-applies the poll interval."""
+    root_entry = await _setup_root_with_options(hass, _INFLUX_OPTIONS)
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    first_exporter = coordinator.influx_exporter
+    assert isinstance(first_exporter, InfluxExporter)
+
+    hass.config_entries.async_update_entry(
+        root_entry,
+        options={
+            **dict(_INFLUX_OPTIONS),
+            CONF_INFLUX_HOST: "http://influx2.local:8086",
+            CONF_POLL_INTERVAL: 15,
+        },
+    )
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.influx_exporter is not first_exporter
+    assert isinstance(coordinator.influx_exporter, InfluxExporter)
+    assert coordinator.influx_exporter._host == "http://influx2.local:8086"
+    assert coordinator.update_interval == timedelta(seconds=15)
+
+
+async def test_options_change_without_credentials_clears_exporter(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-DATA-002] Reloading with credentials removed rebuilds to None."""
+    root_entry = await _setup_root_with_options(hass, _INFLUX_OPTIONS)
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert isinstance(coordinator.influx_exporter, InfluxExporter)
+
+    hass.config_entries.async_update_entry(root_entry, options={})
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.influx_exporter is None
+
+
+async def test_unload_clears_exporter(hass: HomeAssistant) -> None:
+    """[REQ-DATA-002] Unloading the entry clears the exporter from the
+    coordinator alongside the existing teardown."""
+    root_entry = await _setup_root_with_options(hass, _INFLUX_OPTIONS)
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert isinstance(coordinator.influx_exporter, InfluxExporter)
+
+    assert await hass.config_entries.async_unload(root_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert coordinator.influx_exporter is None

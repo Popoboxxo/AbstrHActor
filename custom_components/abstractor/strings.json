@@ -11,6 +11,44 @@
       "source_required": "Select at least one source entity."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Abstractor options",
+        "description": "Configure polling, InfluxDB export, and device presentation.",
+        "data": {
+          "poll_interval": "Polling interval",
+          "influx_host": "InfluxDB host",
+          "influx_token": "InfluxDB token",
+          "influx_org": "InfluxDB organization",
+          "influx_bucket": "InfluxDB bucket",
+          "device_name": "Device name",
+          "device_manufacturer": "Device manufacturer",
+          "device_model": "Device model"
+        },
+        "data_description": {
+          "poll_interval": "Choose a preset or select custom for a bounded interval.",
+          "influx_host": "InfluxDB base URL. Export is enabled only with a token.",
+          "influx_token": "InfluxDB API token. It is masked in the UI and diagnostics.",
+          "influx_org": "InfluxDB organization.",
+          "influx_bucket": "InfluxDB bucket.",
+          "device_name": "Device name, with {device_type} replaced by the sensor type.",
+          "device_manufacturer": "Manufacturer shown in Home Assistant device details.",
+          "device_model": "Model shown in Home Assistant device details."
+        }
+      },
+      "poll_interval": {
+        "title": "Custom polling interval",
+        "description": "Choose a value between 1 and 3600 seconds.",
+        "data": {
+          "poll_interval": "Polling interval"
+        },
+        "data_description": {
+          "poll_interval": "Interval in seconds."
+        }
+      }
+    }
+  },
   "config_subentries": {
     "sensor": {
       "initiate_flow": {

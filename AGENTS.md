@@ -18,50 +18,54 @@
 ## Architektur
 
 ```
-# Root — HACS requirements hacs.json              # HACS manifest (name, homeassistant version, etc.) custom_components/abstractor/
+# Root
+hacs.json                  # HACS manifest (name, homeassistant version, etc.)
+custom_components/abstractor/
   __init__.py          # async_setup_entry, async_unload_entry
   manifest.json        # HA manifest (domain, version, requirements, iot_class)
   const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum
   config_flow.py       # ConfigFlow with unique ID, discovery steps
+  coordinator.py       # DataUpdateCoordinator — central polling
+  diagnostics.py       # Diagnostics support
+  filters.py           # Value filters (spike filter, monotonic guard)
+  frontend.py          # Frontend integration entry point
+  influx_exporter.py   # InfluxDB exporter
+  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
+  snapshot.py          # Snapshot support
+  services.yaml        # Service definitions
   strings.json         # Config flow translations (i18n)
   icons.json           # Entity icon translations (mdi icons)
-  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
-  binary_sensor.py     # Binary sensor platform
-  switch.py            # Switch/actuator platform
-  coordinator.py       # DataUpdateCoordinator — central polling
-  device.py            # Abstract device representation
+  repository/
+    device_registry.py # Device registry (Repository pattern)
   brand/
     icon.png           # Brand icon for HACS UI (256x256)
     logo.png           # Brand logo (optional)
-  bridge/
-    __init__.py        # AbstractBridge protocol
-    serial_bridge.py   # Serial/UART bridge implementation
-    mqtt_bridge.py     # MQTT bridge implementation
-    http_bridge.py     # HTTP/REST bridge implementation
-  sensor_types/
-    __init__.py        # SensorType enum + EntityDescription registry
-    temperature.py     # Temperature sensor implementation
-    humidity.py        # Humidity sensor implementation
-    pressure.py        # Pressure sensor implementation
-    power.py           # Power/energy sensor implementation
-    water.py           # Water flow/consumption sensor implementation
-  repository/
-    __init__.py        # Device registry (Repository pattern)
-    device_registry.py # In-memory device registry + discovery
-  tests/
-    __init__.py
-    test_config_flow.py# Config flow tests (required: 100% coverage)
-    test_sensor.py     # Sensor unit tests
-    test_bridge.py     # Bridge implementation tests
-    test_device.py     # Device abstraction tests
-    conftest.py        # Pytest fixtures (mock HA, mock bridges)
+  translations/        # Translation catalogs
+  www/                 # Frontend static assets
+  # PLANNED / roadmap (do not exist yet):
+  bridge/              # AbstractBridge protocol + serial/mqtt/http bridges
+  sensor_types/        # SensorType enum + EntityDescription registry
+tests/                 # 14 test files (root-level)
+  __init__.py
+  conftest.py          # Pytest fixtures (mock HA, mock bridges)
+  test_config_flow.py  # Config flow tests (required: 100% coverage)
+  test_coordinator.py
+  test_diagnostics.py
+  test_filters.py
+  test_frontend.py
+  test_influx_exporter.py
+  test_lifecycle.py
+  test_migration.py
+  test_reconciliation.py
+  test_sensor.py
+  test_services.py
+  test_snapshot.py
 docs/
   ARCHITECTURE.md      # High-level architecture docs
   SENSOR_TYPES.md      # Supported sensor types and their interfaces
-requirements.txt       # PyPI dependencies requirements_test.txt  # Test dependencies (pytest, pytest-asyncio, pytest-cov) .github/
+.github/
   workflows/
     validate.yaml      # HACS Action + Hassfest validation on push/PR
-
 ```
 
 **Entry-Point:**
@@ -135,7 +139,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
  Opencode->AGENTS.md |
  Gemini->AGENTS.md
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.100.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v0.101.0-beta.5` | DoD: `rapid-prototyping` | REQ-Trace: `false`
 
 
 ## Regeln
@@ -160,9 +164,36 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 Verwende Feature-Branches (`feat/`, `fix/`, `chore/`). Keine Code-Änderungen direkt auf `main` oder `master`.
 
+## Guard-Terminologie: Convention Boundary vs. Security Boundary
+
+Guards im System (Orchestrator-Guard, DoD-Push-Check, etc.) werden inkonsistent als
+"Konventions-Tool" und als "security boundary" bezeichnet — beide Aussagen sind korrekt,
+aber gegen unterschiedliche Bedrohungsmodelle:
+
+- **Convention boundary**: fail-closed gegen AKZIDENTIELLEN Missbrauch (Tippfehler,
+  vergessene Bestätigungen, naive Automatisierung). Nicht darauf ausgelegt, einen
+  gezielten Bypass-Versuch zu widerstehen (siehe Lücken unten, z.B. #592).
+- **Security boundary**: fail-closed gegen einen DELIBERATEN Umgehungsversuch.
+
+Diese Definition ist die zentrale Referenz — Hook-Header und andere Doku sollen sie
+verlinken (`.claude/rules/branch-guard.md#guard-terminologie-convention-boundary-vs-security-boundary`)
+statt sie ad hoc zu wiederholen.
+
+`orchestrator-guard.sh` ist primär eine **convention boundary** (siehe Lücken unten),
+mit einzelnen **security-boundary**-Eigenschaften für spezifische Fälle (z.B. das
+Destructive-Gate aus #516, das auch bei gültigem `git`-Sentinel blockt). `dod-push-check.sh`
+ist als **security boundary** gegen fehlendes/kaputtes `python3` fail-closed (#595).
+
 ## Bekannte Grenzen
 
-Die technische Durchsetzung (`orchestrator-guard.sh`) erkennt Git-Mutationen über eine Regex-/shlex-basierte Analyse des Bash-Befehls, kein vollständiger Shell-Parser. Bekannte Lücken: `eval "git commit ..."` wird nicht erkannt, direkte Schreibzugriffe auf `.git/` werden nicht geprüft, andere Git-Tools (`hub`, `gh repo ...`) sind nicht erfasst. Bewusster Trade-off, kein Bug (siehe Kommentar in `.claude/hooks/orchestrator-guard.sh:18-30`) — nur relevant für Nutzer, die sich vollständig auf den Schutz statt auf die Konvention verlassen.
+Die technische Durchsetzung (`orchestrator-guard.sh`) erkennt Git-Mutationen über eine tokenisierte Analyse des Bash-Befehls (gemeinsamer Tokenizer für Destructive- und Mutation-Gate, Issue #551), kein vollständiger Shell-Parser. Bekannte Lücken:
+
+1. `eval "git commit ..."` wird nicht erkannt.
+2. Direkte Schreibzugriffe auf `.git/` werden nicht geprüft.
+3. Andere Git-Tools (`hub`, `gh repo ...`) sind nicht erfasst.
+4. Command-Substitution und Indirektion (`$(...)`, Backticks, `xargs`, `eval`) können eine Git-Mutation am Tokenizer vorbeischleusen, weil der Hook den Befehl weder ausführt noch die Shell vollständig parst (Issue #592). Ein echter Shell-Interpreter wäre unverhältnismäßig für ein Konventions-Tool.
+
+Bewusster Trade-off, kein Bug (siehe Kommentar-Header in `.claude/hooks/orchestrator-guard.sh`) — nur relevant für Nutzer, die sich vollständig auf den Schutz statt auf die Konvention verlassen.
 
 
 
@@ -178,6 +209,7 @@ Format: `<type>: <beschreibung>` (Bsp: `feat: ...`)
 # Definition of Done (DoD)
 
 Pflicht: Code komplett, Konventionen & Conv. Commits eingehalten, keine Regressions.
+Tests: Test vorhanden & grün
 
 
 
@@ -201,7 +233,7 @@ Issues referenzieren und am Ende mit passendem Keyword (`Fixes #123`, `Closes #1
 
 # Lifecycle-Tasks
 
-Beim Start prüfen: existiert `.opencode/pending-tasks.md`?
+Beim Start prüfen: existiert `.gemini/pending-tasks.md bzw. .opencode/pending-tasks.md`?
 Falls ja und enthält `- [ ]`: User fragen ob delegiert werden soll.
 Nach Erledigung: löschen. Datei nicht committen.
 
@@ -255,6 +287,7 @@ Regeln für den Umgang mit allen Git-Submodulen (`.agent-meta/`, `external/*/`, 
 | Skill | Wann |
 |---|---|
 | sync-interface | sync.py, Templates/Rules ändern |
+| admin-ui | Admin-Server/UI betreiben (Lifecycle, Token, Ports) |
 | architecture | Templates/Overrides/Placeholder ändern |
 | conventions | Vor Commits in agents/, config/, scripts/lib |
 | submodule-protection | .agent-meta/, external/, .gitmodules |
@@ -403,8 +436,6 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 
 | `bug-feature-analyzer` | Issue-Triage: Eingehende Bug-Meldungen und Feature-Requests analysieren und k... |
 
-| `claude-expert` | Absoluter Analyse-Experte für die Plattform Claude Code: Funktionsweise, Konf... |
-
 | `code-reviewer` | Clean Code Gatekeeper: Blast-Radius-Analyse, SOLID/DRY Prüfung, Code-Qualität... |
 
 | `data-engineer` | ETL/ELT-Pipelines, Schema-Migration (Datenebene), Data-Quality-Checks, Lineag... |
@@ -498,14 +529,6 @@ Die Knowledge Engine ist aktiviert. Domäne: **internal-docs**.
 - **Gardening:** `knowledge-gardener` pflegt Links, Tags, Typos, Timestamps
 
 <!-- agent-meta:managed-end -->
-
-
-
-
-
-
-
-
 
 ## Eigene Notizen
 
