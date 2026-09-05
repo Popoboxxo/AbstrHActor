@@ -136,7 +136,11 @@ variables:
 
     pip install -e . && python3 -m script.hassfest --integration-path custom_components/abstractor'
   TEST_COMMAND: pytest tests/ -v --cov=custom_components/abstractor --cov-report=term-missing
-  TEST_COMMANDS: pytest tests/ -v --cov=custom_components/abstractor --cov-report=term-missing
+  TEST_COMMANDS: |-
+    pytest tests/ -v --cov=custom_components/abstractor --cov-report=term-missing
+    # E2E gegen geteilte HA-Testinstanz (Etikette: /home/hermes/ha-test/README.md)
+    /home/hermes/ha-test/bin/sync /home/hermes/repos/AbstrHActor
+    /home/hermes/ha-test/bin/ha GET /api/states
   DEV_STACK_START: '# Start Home Assistant dev instance with custom component linked
     hass -c config/ --debug # Or via Docker with volume mount: # docker compose -f
     config/docker-compose.yml up -d
@@ -204,12 +208,10 @@ variables:
     ConfigFlow with unique IDs, and 100% test coverage for config flow.
 
     '
-  PROJECT_CONTEXT: 'The user runs a mixed Home Assistant environment with Zigbee (Z2M),
-    Tasmota, Shelly, Zendure, and custom serial sensors. Current abstraction uses
-    YAML template sensors — this integration will replace those with a proper Python
-    custom_component, adding type safety, testability, and HA-native entity management.
+  PROJECT_CONTEXT: |-
+    The user runs a mixed Home Assistant environment with Zigbee (Z2M), Tasmota, Shelly, Zendure, and custom serial sensors. Current abstraction uses YAML template sensors — this integration will replace those with a proper Python custom_component, adding type safety, testability, and HA-native entity management.
 
-    '
+    Geteilte HA-Testinstanz (repo-agnostisch, mehrere Plugin-Repos): /home/hermes/ha-test — Headless Home Assistant (Docker), http://127.0.0.1:8123 (nur localhost), Token: /home/hermes/ha-test/.ha-state/token.json (auto-refresh). Single Source of Truth (Endpunkte, Config-Flows, Storage-Details): /home/hermes/ha-test/README.md. Etikette: (1) bin/sync <repo-dir> kopiert custom_components/* und startet HA neu (~10–30 s) — nur die eigene Domain syncen, dazu koordinieren; Registry/Config-Entries anderer Domains überleben den Neustart. (2) bin/reset löscht ALLE Daten aller Plugins (danach bin/provision + Re-Sync) — nur nach Abstimmung. (3) unique_ids stabil halten, NIE ändern — die geteilte Registry akkumuliert. (4) bin/set-language de|en betrifft die GANZE Instanz (friendly_names aller Plugins) — nur koordiniert; Erst-Registrierung der Entities mit korrekter Systemsprache (obj_id-Namen entstehen nur dabei aus dem englischen Anzeigenamen). (5) Tokens (.ha-state/) niemals committen oder kopieren.
   COMMUNICATION_LANGUAGE: English
   USER_INPUT_LANGUAGE: English
   DOCS_LANGUAGE: English
