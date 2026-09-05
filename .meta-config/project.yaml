@@ -281,6 +281,15 @@ tier-preset: Normal
 se-focus: false
 quality-pipelines:
   overrides:
+    feature-lifecycle:
+      stages:
+        implement:
+          plan-driven:
+            fallback_agent: developer
+            allowed_agents:
+            - junior-developer
+            - developer
+            - senior-developer
     se-cascade:
       enabled: false
     concept-development:
