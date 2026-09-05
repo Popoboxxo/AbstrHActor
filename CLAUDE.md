@@ -148,7 +148,7 @@ pytest tests/ -v --cov=custom_components/abstractor --cov-report=term-missing
 
 Kategorien für `docs/REQUIREMENTS.md`:
 
-- Core features: device discovery, sensor polling, config flow - Bridge implementations: serial, MQTT, HTTP - Sensor types: temperature, humidity, pressure, power, water - Non-functional: async performance, memory safety, HA core compliance
+- Core features: device discovery, sensor polling, config flow - Device Bundling: subentry-based sensor creation, legacy-entry migration - Sensor types: power, energy, water - Non-functional: async performance, memory safety, HA core compliance
 
 
 

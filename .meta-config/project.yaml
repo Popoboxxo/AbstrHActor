@@ -187,9 +187,9 @@ variables:
     \ protocol + serial/mqtt/http implementations\n  sensor_types/        # SensorType\
     \ enum + per-type implementations\ntests/                 # 14 test files (root-level)"
   REQ_CATEGORIES: '- Core features: device discovery, sensor polling, config flow
-    - Bridge implementations: serial, MQTT, HTTP - Sensor types: temperature, humidity,
-    pressure, power, water - Non-functional: async performance, memory safety, HA
-    core compliance
+    - Device Bundling: subentry-based sensor creation, legacy-entry migration -
+    Sensor types: power, energy, water - Non-functional: async performance, memory
+    safety, HA core compliance
 
     '
   PROJECT_GOAL: 'Build a production-grade Home Assistant custom_component that decouples
