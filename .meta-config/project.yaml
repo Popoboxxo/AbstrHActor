@@ -237,9 +237,7 @@ variables:
   HACS_CATEGORY: integration
 orchestrator:
   enabled: true
-  provider-overrides:
-    Claude:
-      mode: main-chat
+  mode: main-chat
   handoff:
     protocol: none
 knowledge-engine:
@@ -322,9 +320,10 @@ provider-options:
   Gemini: {}
   Mammouth: {}
   Opencode: {}
-model-overrides:
-  Opencode:
-    senior-developer: opencode-go/gpt-5.6-luna
+model-inherit-main-chat:
+  Claude: true
+  Gemini: true
+  Opencode: true
 max-parallel-agents: 2
 debug-mode: false
 allow-committed-secrets: false

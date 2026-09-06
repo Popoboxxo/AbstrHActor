@@ -307,15 +307,35 @@ Harte MCP-Tool-Verbote: siehe `mcp-guardrails.md` (always-on).
 
 
 
-# CRITICAL GATE
-MAIN CHAT darf nicht selbst editieren. ALLES -> `orchestrator`. Keine Ausnahmen.
+# Main-Chat Mode
+Main Chat ist Router + Worker. Kein Orchestrator-Subagent. Du bist der Orchestrator!
+
+## Intent Routing
+> Parallel ist rein informativ — kein Runtime-Enforcement, nur CI-Konsistenzcheck bei required/recommended-Tier-Abdeckung.
+
+**Tiers** (nicht gelistet = optional): recommended: `bug-feature-analyzer`, `code-reviewer`, `documenter`, `planner`, `requirements`, `tester`, `validator` | required: `developer`, `feedback`, `git`, `log-analyzer`, `orchestrator`
+
+| Intent / Keywords | Agent | Tier | Parallel |
+|-------------------|-------|------|----------|
+| Dokumentation, README, Docs, Doku | → Pipeline: `docs-update` | pipeline | no |
+| Feature implementieren, Feature bauen, neues Feature, Funktion bauen, Feature Lifecycle, komplexes Feature, Feature Pipeline | → Pipeline: `feature-lifecycle` | pipeline | no |
+| Bug fixen, Bug beheben, Triage, schneller Fix, Hotfix | → Pipeline: `quick-fix` | pipeline | no |
+
+
+Volle Stage-Details (Agent/Modus je Stage, Loop/Fallback/Approval-Gate) einer gematchten Pipeline bei Bedarf: `Read {{PIPELINE_DETAILS_DIR}}/<pipeline-name>.md`.
+
+## A2A Delegation
+
+
+## Plan Delegation
+Plan vorhanden (`plan-*.md` oder Knowledge-Wiki Plan-Seite) -> Pipeline `feature-lifecycle` mit `payload.plan_ref`, statt neuen Lifecycle blind zu starten.
 
 ## Git Delegation
 Git Mutationen (commit, push, add etc) -> `git` Agent. Read-only (status, log) im Main Chat ok.
+Ausnahme auf User-Wunsch erlaubt.
 
 Native Extensions (Skills/Hooks) erlaubt, ignorieren nicht Branch-Guard/DoD.
 
-Anti-Recursion: Worker dürfen nicht an `orchestrator` zurück delegieren.
 
 
 
@@ -637,7 +657,6 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    - `knowledge-querier.md` → registriere als `knowledge-querier`
    - `log-analyzer.md` → registriere als `log-analyzer`
    - `meta-feedback.md` → registriere als `meta-feedback`
-   - `orchestrator.md` → registriere als `orchestrator`
    - `performance-optimizer.md` → registriere als `performance-optimizer`
    - `planner.md` → registriere als `planner`
    - `quality-auditor.md` → registriere als `quality-auditor`
@@ -683,7 +702,6 @@ Gemini/Antigravity benötigt eine einmalige Agent-Registrierung pro Session.
    define_subagent(name="knowledge-querier", ...)
    define_subagent(name="log-analyzer", ...)
    define_subagent(name="meta-feedback", ...)
-   define_subagent(name="orchestrator", ...)
    define_subagent(name="performance-optimizer", ...)
    define_subagent(name="planner", ...)
    define_subagent(name="quality-auditor", ...)
