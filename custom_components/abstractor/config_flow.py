@@ -111,19 +111,24 @@ class RegistryCapabilities:
         return self.owv_model != "single-owner"
 
 
-def _detect_ownership_model(device: dr.DeviceEntry) -> str:
-    """Return ``"single-owner"`` or ``"union"`` for a device registry entry.
+def _detect_ownership_model(device_cls: type[dr.DeviceEntry]) -> str:
+    """Return ``"single-owner"`` or ``"union"`` for the DeviceEntry class.
+
+    Inspects the ``DeviceEntry`` class directly (never an instance), so no
+    registry dataclass is ever constructed — their constructor signatures vary
+    across HA versions (newer releases require ``config_entry_id``), and
+    instantiating one is both unnecessary and brittle.
 
     Feature detection, not an HA version pin. The new owner fields
     (``config_entry_id``/``config_subentry_id``) only exist on a runtime that
     has adopted the single-owner model; a runtime that still only carries the
-    union fields is treated as union-compatible. A device object caught
+    union fields is treated as union-compatible. A device class caught
     between the two models (e.g. a compatibility shim that reports a singular
     owner value while still carrying union collection fields) is only treated
     as single-owner when the singular fields are genuinely present.
     """
-    has_owner = hasattr(dr.DeviceEntry, "config_entry_id")
-    has_subentry_owner = hasattr(dr.DeviceEntry, "config_subentry_id")
+    has_owner = hasattr(device_cls, "config_entry_id")
+    has_subentry_owner = hasattr(device_cls, "config_subentry_id")
     if has_owner and has_subentry_owner:
         return "single-owner"
     return "union"
@@ -152,11 +157,11 @@ def _registry_capabilities(hass: HomeAssistant) -> RegistryCapabilities:
                 return name
         return None
 
-    # A runtime device entry is needed only to classify the ownership model;
-    # where the installed DeviceEntry lacks the singular owner fields it is
-    # union-compatible.
-    dummy = dr.DeviceEntry(id="__cap_probe__")
-    owv_model = _detect_ownership_model(dummy)
+    # The ownership model is classified from the DeviceEntry class itself
+    # (never an instance): where the installed DeviceEntry class lacks the
+    # singular owner fields it is union-compatible, and no registry dataclass
+    # is ever constructed.
+    owv_model = _detect_ownership_model(dr.DeviceEntry)
 
     return RegistryCapabilities(
         owv_model=owv_model,

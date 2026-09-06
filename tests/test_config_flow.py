@@ -2338,7 +2338,7 @@ async def test_subentry_reconfigure_detach_without_remove_kwargs_conflicts(
 
 def test_detect_ownership_model_union() -> None:
     """The installed runtime (2026.2.3) only exposes the union owner fields."""
-    assert _detect_ownership_model(dr.DeviceEntry(id="probe")) == "union"
+    assert _detect_ownership_model(dr.DeviceEntry) == "union"
 
 
 def test_detect_ownership_model_single_owner() -> None:
@@ -2347,7 +2347,7 @@ def test_detect_ownership_model_single_owner() -> None:
         patch.object(dr.DeviceEntry, "config_entry_id", None, create=True),
         patch.object(dr.DeviceEntry, "config_subentry_id", None, create=True),
     ):
-        assert _detect_ownership_model(dr.DeviceEntry(id="probe")) == "single-owner"
+        assert _detect_ownership_model(dr.DeviceEntry) == "single-owner"
 
 
 def test_registry_capabilities_falls_back_to_new_config_kwargs(
