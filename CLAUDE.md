@@ -163,7 +163,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 > **AI ROUTING:** Claude -> CLAUDE.md | Gemini, Opencode -> AGENTS.md
 
-Generiert von agent-meta v0.101.0-beta.5 — `2026-09-05`
+Generiert von agent-meta v0.101.0-beta.5 — `2026-09-06`
 DoD-Preset: **rapid-prototyping** | REQ-Traceability: false | Tests: true | Codebase-Overview: false | Security-Audit: false
 > **Einstiegspunkt:** Du bist im `main-chat` Modus. Du agierst direkt als Router und Worker (siehe `use-orchestrator.md`).
 
