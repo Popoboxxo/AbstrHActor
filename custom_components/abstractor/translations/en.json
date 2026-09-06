@@ -55,6 +55,9 @@
         "reconfigure": "Reconfigure Abstract sensor"
       },
       "entry_type": "Abstract sensor",
+      "error": {
+        "device_mapping_conflict": "This device is owned by another Abstractor sensor. Bundling is blocked because Home Assistant could delete that sensor and its recorder history. Choose a device owned by this sensor or create a separate device."
+      },
       "step": {
         "user": {
           "title": "Add Abstract sensor",
@@ -88,9 +91,6 @@
             "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
             "target_device_id": "Add this sensor to an existing Abstractor device.",
             "create_new_device": "Detach this sensor from its current device and create a separate device."
-          },
-          "errors": {
-            "device_mapping_conflict": "This device is owned by another Abstractor sensor. Bundling is blocked because Home Assistant could delete that sensor and its recorder history. Choose a device owned by this sensor or create a separate device."
           }
         },
         "reconfigure": {
@@ -125,9 +125,6 @@
             "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
             "target_device_id": "Add this sensor to an existing Abstractor device.",
             "create_new_device": "Detach this sensor from its current device and create a separate device."
-          },
-          "errors": {
-            "device_mapping_conflict": "This device is owned by another Abstractor sensor. Bundling is blocked because Home Assistant could delete that sensor and its recorder history. Choose a device owned by this sensor or create a separate device."
           }
         }
       }
