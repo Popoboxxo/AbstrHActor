@@ -94,13 +94,14 @@ def test_add_power_device_creates_live_entity(logged_in_page, hass_base_url):
 
     page.goto(f"{hass_base_url}/config/entities")
     page.wait_for_load_state("networkidle")
-    # The old placeholder-based selector ('input[placeholder="Search"]:visible')
-    # is fragile: "Search" is a shared placeholder across config-flow dialogs
-    # and its placeholder/rendering differs across HA versions, which caused
-    # the 60s `.fill()` timeout. Use a role-based searchbox instead, scoped to
-    # the LAST visible match to dodge any lingering hidden searchbox from an
-    # earlier dialog layer, waiting explicitly before filling.
-    search_box = page.get_by_role("searchbox").last
+    # The search box on this page is not a plain <input> but a custom
+    # <ha-input-search> web component (hass-tabs-subpage-data-table) whose
+    # inner <input type="search"> lives in its shadow DOM; a role="searchbox"
+    # or placeholder-based locator resolves to zero on newer HA — which is
+    # exactly what caused the 60s `.fill()` timeout. Target the real inner
+    # input of the page's single <ha-input-search>, waiting explicitly before
+    # filling.
+    search_box = page.locator("ha-input-search input[type='search']").last
     search_box.wait_for(state="visible", timeout=15000)
     search_box.fill("Power")
     assert page.get_by_text(re.compile("abstractor", re.I)).count() > 0, (
