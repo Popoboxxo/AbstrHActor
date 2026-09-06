@@ -95,3 +95,25 @@ def test_fallback_source_ignored_when_condition_not_met() -> None:
     )
 
     assert result is None
+
+
+def test_pipeline_seeds_last_valid_state_from_constructor() -> None:
+    """A pipeline built with a known prior value rejects an immediate spike
+    on its very FIRST process() call — proving the seed takes effect before
+    any value has flowed through this pipeline instance."""
+    pipeline = AbstractorFilterPipeline(
+        {"spike_filter": True}, initial_last_valid_state=100.0
+    )
+
+    result = pipeline.process("40")
+
+    assert result == 100.0
+    assert pipeline.last_event == "spike rejected"
+
+
+def test_pipeline_without_seed_defaults_to_none() -> None:
+    """No initial_last_valid_state given -> starts at None as before
+    (backward-compatible default, matches every existing call site)."""
+    pipeline = AbstractorFilterPipeline({"spike_filter": True})
+
+    assert pipeline._last_valid_state is None

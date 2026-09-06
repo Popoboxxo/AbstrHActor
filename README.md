@@ -34,11 +34,12 @@ an entry while preserving its registry identity and recorder history.
 - **Export / Import services** — versioned snapshot of all mappings and values
   for backup and restore.
 - **Diagnostics** — native HA diagnostics for support and debugging.
-- **Device registry integration** — each abstract sensor appears as its own
-  logical device in the HA device registry (device name is configurable at
-  setup; clustering multiple abstract sensors under one shared device, and
-  customizing manufacturer/model, is not implemented yet — tracked as a
-  follow-up).
+- **Device registry integration**: each Abstract sensor appears as a logical
+  device in the HA device registry, with a configurable name, manufacturer,
+  and model (via Options). Clustering multiple Abstract sensors under one
+  shared device is not yet supported by a safe UI path — see
+  [Known limitations](#known-limitations) and
+  [GH#18](https://github.com/Popoboxxo/AbstrHActor/issues/18).
 
 ## Architecture
 
@@ -224,9 +225,11 @@ docker compose -f docker-compose.test.yml --profile lint run --rm lint
 - **No conditional cross-entity fallback.** Conditional fallback expressions
   (e.g. "use sensor B only while charger C is idle") are not modeled yet;
   inversion and per-entry fallback behavior are supported.
-- **InfluxDB push is scaffolded only.** The `InfluxExporter` class exists for
-  the optional telemetry push, but it is not yet wired into the Config Flow or
-  activated in the coordinator.
+- **InfluxDB export is live** (since 1.1.0-rc.1): configure `influx_host` and
+  `influx_token` in the integration's Options to push every poll's aggregated
+  value to InfluxDB v2's `/api/v2/write` endpoint. Leave `influx_host` empty
+  to disable it entirely (the default). The host must start with `http://` or
+  `https://`.
 
 ## Requirements
 

@@ -46,6 +46,9 @@
           "poll_interval": "Interval in seconds."
         }
       }
+    },
+    "error": {
+      "invalid_influx_host": "InfluxDB host must start with http:// or https://"
     }
   },
   "config_subentries": {
@@ -81,7 +84,7 @@
             "device_type": "Power, energy, or water abstraction layer.",
             "source_entity_id": "Single hardware sensor to abstract.",
             "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
-            "legacy_unique_id": "Reuse the unique_id of a migrated YAML template sensor so recorder history keeps counting.",
+            "legacy_unique_id": "Manually reuse a specific unique_id (e.g. from a migrated YAML template sensor). Leave blank to have one generated automatically — either way, this sensor's identity will never change again, even if you later swap its source hardware.",
             "spike_filter": "Reject drops below the last valid value (recommended for energy and water counters).",
             "invert": "Multiply the value by -1 (e.g. net flow: load minus feed-in).",
             "fallback_zero": "Report 0 instead of unavailable when no source delivers a value.",

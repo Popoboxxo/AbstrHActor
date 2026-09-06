@@ -230,3 +230,32 @@ def test_register_device_skipped_when_registry_absent() -> None:
 
     assert sensor.device_info["manufacturer"] == "Abstractor"
     registry.register_device.assert_not_called()
+
+
+async def test_missing_device_type_defaults_to_power_with_warning(caplog) -> None:
+    """[ARCH-5] sensor.py must default a missing device_type the same way
+    coordinator.py does ('power', not ''), and must log a warning — a
+    corrupted/legacy subentry should be visible, not silently mismapped."""
+    import logging
+
+    entry = Mock()
+    entry.entry_id = "entry-1"
+    subentry = Mock()
+    subentry.data = {CONF_SOURCE_ENTITY_ID: "sensor.original"}  # no CONF_DEVICE_TYPE
+    entry.subentries = {"subentry-1": subentry}
+    hass = Mock()
+    coordinator = Mock()
+    hass.data = {DOMAIN: {"coordinator": coordinator}}
+    coordinator.hass = hass
+    added = []
+    async_add_entities = Mock(
+        side_effect=lambda entities, config_subentry_id=None: added.extend(entities)
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await async_setup_entry(hass, entry, async_add_entities)
+
+        assert added[0]._device_type == "power"
+        assert added[0].device_class == "power"
+        assert "device_type" in caplog.text
+        assert "subentry-1" in caplog.text

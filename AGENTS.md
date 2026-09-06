@@ -12,7 +12,7 @@
 
 - **Runtime:** Python 3.12+
 - **Sprache:** Python
-- **Key-Dependencies:** - homeassistant >= 2025.1 - aiohttp (HA internal) - pyserial (for serial/UART sensors) - paho-mqtt (for MQTT sensor bridge)
+- **Key-Dependencies:** - homeassistant >= 2025.1 - aiohttp (HA internal) - voluptuous (config flow schemas)
 
 
 ## Architektur
@@ -74,29 +74,26 @@ custom_components/abstractor/__init__.py
 ```
 
 **Besondere Patterns:**
-- **Bridge Pattern**: Separates hardware communication (serial, MQTT, HTTP)
-  from the sensor abstraction. Each bridge implementation translates between
-  raw hardware protocols and a unified `AbstractSensor` interface.
-- **Strategy Pattern**: Each sensor type (temperature, power, water, etc.)
-  implements a common `AbstractSensor` base class, allowing polymorphic
-  sensor access from automations and dashboards.
-- **Repository Pattern**: A central `DeviceRegistry` manages all discovered
-  devices, handles deduplication, and provides lookup by device ID, type,
-  or location.
-- **Adapter Pattern (HA native)**: Leverages Home Assistant's own entity
-  registry to expose abstract sensors as first-class HA entities with
-  proper device_class, state_class, and unit_of_measurement.
-- **DataUpdateCoordinator (HA)**: Central polling coordinator shared by all
-  entities. Single `_async_update_data` call fetches all device data once,
-  then dispatches to entities via CoordinatorEntity. Avoids N parallel polls.
-- **EntityDescription (declarative)**: Sensor types defined as dataclass
-  lists with `key`, `value_fn`, `device_class`, `state_class`, etc. No
-  repetitive boilerplate per entity.
-- **Config Flow with Unique ID**: Every config entry has a stable unique_id
-  (serial/MAC, never IP). Supports discovery (USB, DHCP, MQTT) and reauth.
-- **Spike Filter / Monotonic Guard**: Energy and water sensors include
-  monotonically-increasing guards to prevent counter resets from corrupting
-  utility meter totals — battle-proven from production HA deployment.
+- **Singleton root + subentries**: one root ConfigEntry (unique_id ROOT_UNIQUE_ID)
+  holds every Abstract sensor as a ConfigSubentry, created/edited through
+  ConfigSubentryFlow rather than per-sensor config entries.
+- **DataUpdateCoordinator (HA)**: one shared coordinator polls all subentries'
+  sources every poll interval; a single _async_update_data call updates every
+  sensor's cached value, avoiding N parallel polls.
+- **Filter pipeline (AbstractorFilterPipeline)**: per-subentry spike filter,
+  invert, fail-soft/fail-closed, net-subtract, and REQ-COMP-004 fallback-source
+  logic, applied per poll in coordinator.py.
+- **Stable identity via CONF_LEGACY_UNIQUE_ID**: every subentry's unique_id is
+  pinned at creation (auto-generated, or explicitly set for migrated sensors)
+  and never re-derived from source entity ids afterward, so a later hardware
+  swap via reconfigure cannot orphan the entity or its recorder history.
+- **In-memory DeviceRegistry**: a lightweight write-side device registry
+  (custom_components/abstractor/repository/device_registry.py) records
+  device metadata as sensors are created; HA's own device registry (via
+  DeviceInfo) is the actual source of truth for entity/device grouping.
+- **Config Flow with a singleton root unique_id**: the root entry uses a
+  fixed unique_id (ROOT_UNIQUE_ID); there is currently no discovery step
+  (USB/DHCP/MQTT) or reauth flow.
 - **HACS Delivery**: GitHub releases with semantic versioning. `hacs.json`
   with min HA version. `brand/` directory with icon. GitHub Actions for
   HACS Action + Hassfest validation on every push/PR.
@@ -129,7 +126,7 @@ pytest tests/ -v --cov=custom_components/abstractor --cov-report=term-missing
 
 Kategorien für `docs/REQUIREMENTS.md`:
 
-- Core features: device discovery, sensor polling, config flow - Bridge implementations: serial, MQTT, HTTP - Sensor types: temperature, humidity, pressure, power, water - Non-functional: async performance, memory safety, HA core compliance
+- Core features: device discovery, sensor polling, config flow - Device Bundling: subentry-based sensor creation, legacy-entry migration - Sensor types: power, energy, water - Non-functional: async performance, memory safety, HA core compliance
 
 
 
@@ -549,72 +546,6 @@ Die Knowledge Engine ist aktiviert. Domäne: **internal-docs**.
 - **Gardening:** `knowledge-gardener` pflegt Links, Tags, Typos, Timestamps
 
 <!-- agent-meta:managed-end -->
-
-## Eigene Notizen
-
-Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird von `agent-meta` nicht überschrieben!
-
-<!-- agent-meta:managed-begin -->` and `<!-- agent-meta:managed-end -->` is generated — never edited by hand. Project-specific tweaks belong in `.meta-config/project.yaml` or in the manual notes section below.
-
-### Active agents and why
-
-The `roles:` list in `.meta-config/project.yaml` enables the core agents. The most relevant for this integration:
-
-| Agent | Why it is active here |
-|---|---|
-| `orchestrator` | Single entry point for all dev tasks (singleton — spawned by `main_chat` only) |
-| `agent-meta-manager` | Upgrade/sync/feedback lifecycle of this framework itself |
-| `developer` | Feature implementation of the custom_component |
-| `senior-developer` | Architecture decisions (Bridge/Strategy/Repository patterns, config flow) |
-| `tester` | TDD and the mandatory 100 % config-flow test coverage |
-| `validator` | DoD + REQ traceability gate before merge |
-| `code-reviewer` | Clean-code / blast-radius gate |
-| `git` | All commit/branch/tag operations (main chat stays read-only) |
-| `release` | Semantic versioning, changelog, GitHub/HACS release |
-| `documenter` | CODEBASE_OVERVIEW + docs maintenance |
-| `explorer` | Read-only codebase research and impact mapping |
-| `meta-feedback` | Channels agent-meta improvements back upstream |
-
-External ReqogniLoom agents (`change-manager`, `requirements-architect`, `risk-analyst`, `quality-auditor`, `test-engineer`) are enabled via `external-skills:` and materialized into all three platform agent directories — they back the requirements/traceability workflow through the ReqogniLoom MCP server.
-
-### Orchestrator delegation for this domain
-
-Typical flow for an Abstractor task:
-
-1. `main_chat` → `orchestrator` (the only allowed spawner, A2A gate #4)
-2. `orchestrator` decomposes: research (`explorer`) → requirements (`requirements-architect`) → implementation (`developer`/`senior-developer`) → tests (`tester`) → review (`code-reviewer`) → validation (`validator`) → commit (`git`)
-3. Workers return structured output (STATUS/RESULT/ARTIFACTS); no re-delegation back to `orchestrator` (A2A gate #5)
-4. HA-specific context comes from the managed rules (MCP `GetLiveContext`, entity CSV, notifications) — strictly read-only; device control stays in HA
-
-### Pipeline preferences
-
-- **standard-feature:** feature branch `feat/` → TDD → developer+tester → validator → PR (used for new sensor types, bridge backends, config-flow steps)
-- **quick-fix:** `junior-developer` for ≤ 2-file fixes without architecture impact; branch `fix/` → `git` commit
-- **docs-update:** `documenter`/`technical-writer` for docs, diagrams, README — no code path
-- Preset: DoD `rapid-prototyping`, tier `Normal`; quality pipelines (`se-cascade`, `bugfix`, `refactor`, `concept-development`) are overridden off
-
-### How agent-meta sync works in this repo
-
-- Framework lives in the git submodule `.agent-meta` (pinned to v0.91.3), wired via `.gitmodules`
-- Single source of truth: `.meta-config/project.yaml` (version, roles, variables, external skills, MCP)
-- `py .agent-meta/scripts/sync.py --config .meta-config/project.yaml` regenerates:
-  - the managed blocks in `AGENTS.md` / `CLAUDE.md`
-  - `.claude/`, `.gemini/`, `.opencode/` agent prompts, rules, commands, skills
-  - opencode.json permission isolation (`.claude/**`, `**/CLAUDE.md`, `.gemini/**` denied)
-- `update-meta` re-syncs at the current version; `upgrade-meta` bumps the submodule to a new tag
-- Submodule protection: never edit `.agent-meta/` directly in this repo; framework changes go to the `agent-meta` repository
-- After any sync: check `sync.log` for `[WARN]`, then run `consistency-check.py --changed` to catch frontmatter/placeholder drift
-
-### Known agent-meta health items (as of 2026-08-02)
-
-- `.claude/agents/` is missing `orchestrator.md` (41 files vs. 42 in `.gemini`/`.opencode`) — re-sync to restore
-- `claude-expert` is listed in `roles:` and the directory table but has no agent file in any platform — stale role reference
-- Directory table omits the 5 ReqogniLoom external agents although they are materialized — table vs. bootstrap inconsistency
-- 4 HA platform-config placeholders (`notify_group`, `notify_admin_group`, `influxdb_bucket`, `influxdb_org`) are empty — not needed for this repo, but they produce sync warnings
-- `external/ReqogniLoom` checkout pin `a05f6d56` failed in the last sync (fix: `git checkout a05f6d56` inside the submodule)
-
-
-
 
 ## Eigene Notizen
 

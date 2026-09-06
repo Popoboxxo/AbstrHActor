@@ -9,9 +9,11 @@ _LOGGER = logging.getLogger(__name__)
 
 class AbstractorFilterPipeline:
     """Processes states through configured filters."""
-    def __init__(self, config: dict[str, Any]):
+    def __init__(
+        self, config: dict[str, Any], initial_last_valid_state: float | None = None
+    ):
         self.config = config
-        self._last_valid_state: float | None = None
+        self._last_valid_state: float | None = initial_last_valid_state
         self.last_event: str | None = None
 
     def process(self, raw_state: str | None) -> float | None:

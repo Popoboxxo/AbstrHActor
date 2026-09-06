@@ -40,3 +40,21 @@ The following remain outside this MVP: automatic YAML migration, conditional
 cross-entity fallback expressions, native replacement for Utility Meter, and
 water-package migration, as listed in the source requirements' out-of-scope
 section.
+
+## REQ-CORE-008 (Device Bundling) — bridges to REQ-* scheme
+
+This requirement was added after this document's original FA-*/NFA-* scheme
+was established (against `LASTENHEFT_ABSTRAKTIONS_INTEGRATION.md`) and has no
+FA-*/NFA-* equivalent. See `docs/REQUIREMENTS.md`, section 2 (Core Features),
+REQ-CORE-008, for the full description.
+
+Tracked issues:
+
+- [GH#18](https://github.com/Popoboxxo/AbstrHActor/issues/18) — device
+  bundling via shared subentry device identifiers is not supported by Home
+  Assistant's current device model; the bundling UI is withheld pending a
+  non-destructive fix.
+- [GH#19](https://github.com/Popoboxxo/AbstrHActor/issues/19) — REQ-CORE-001
+  regression for non-migrated sensors (a reconfigure could change a
+  newly-created sensor's `unique_id`). Fixed on this branch by Task 2 of
+  `docs/superpowers/plans/2026-09-04-system-audit-remediation.md`.

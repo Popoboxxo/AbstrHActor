@@ -53,11 +53,11 @@ RUN apt-get update \
 # -----------------------------------------------------------------------------
 RUN pip install --no-cache-dir \
         "homeassistant==${HOMEASSISTANT_VERSION}" \
-        "pytest-homeassistant-custom-component" \
-        "pytest-cov" \
-        "pytest-asyncio" \
-        "ruff" \
-        "mypy"
+        "pytest-homeassistant-custom-component==0.13.316" \
+        "pytest-cov==6.0.0" \
+        "pytest-asyncio==0.25.3" \
+        "ruff==0.16.6" \
+        "mypy==2.3.1"
 
 # -----------------------------------------------------------------------------
 # Project sources (frequently changed -> copied last)
