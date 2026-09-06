@@ -1,3 +1,6 @@
+# Superpowers subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -257,6 +260,7 @@ sync.log
 .meta-config/context-hashes.json
 .meta-config/generated/
 AGENTS.md.sync-backup-*
+CLAUDE.md.sync-backup-*
 sync.log
 
 # Home Assistant demo instance runtime state (docker/docker-compose.demo.yml)

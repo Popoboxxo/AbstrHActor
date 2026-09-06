@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -255,6 +256,13 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             submitted = dict(user_input)
+            influx_host = submitted.get(CONF_INFLUX_HOST, "")
+            if influx_host and not influx_host.startswith(("http://", "https://")):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self._init_schema(current, interval_value),
+                    errors={"base": "invalid_influx_host"},
+                )
             interval_value = submitted[CONF_POLL_INTERVAL]
             if interval_value == "custom":
                 self._pending_options = {
@@ -270,51 +278,57 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_POLL_INTERVAL, default=interval_value
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                *(str(value) for value in POLL_INTERVAL_PRESETS),
-                                "custom",
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
+            data_schema=self._init_schema(current, interval_value),
+        )
+
+    @staticmethod
+    def _init_schema(current: dict[str, Any], interval_value: str) -> vol.Schema:
+        """Build the main options-flow schema (shared by the initial render
+        and the re-render-with-errors path after a validation failure)."""
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_POLL_INTERVAL, default=interval_value
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            *(str(value) for value in POLL_INTERVAL_PRESETS),
+                            "custom",
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD
+                    )
+                ),
+                vol.Optional(
+                    CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_DEVICE_NAME,
+                    default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_DEVICE_MANUFACTURER,
+                    default=current.get(
+                        CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
                     ),
-                    vol.Optional(
-                        CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_DEVICE_NAME,
-                        default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_DEVICE_MANUFACTURER,
-                        default=current.get(
-                            CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
-                        ),
-                    ): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_DEVICE_MODEL,
-                        default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
-                    ): selector.TextSelector(),
-                }
-            ),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_DEVICE_MODEL,
+                    default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
+                ): selector.TextSelector(),
+            }
         )
 
     async def async_step_poll_interval(
@@ -379,7 +393,21 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     return self.async_show_form(
                         step_id="user", data_schema=self._schema(), errors=errors
                     )
-
+                if not user_input.get(CONF_LEGACY_UNIQUE_ID):
+                    # No stable identity was typed in manually — generate one
+                    # now, at creation time only. This is what closes GH#19:
+                    # without it, a brand-new sensor's unique_id is derived
+                    # from its source entity ids (see sensor.py) and changes
+                    # the moment the user reconfigures it onto different
+                    # hardware, orphaning the entity and its recorder
+                    # history. _normalize()/sensor.py already treat a set
+                    # legacy_unique_id as permanent and winning over any
+                    # later source change — this just makes sure one always
+                    # exists from the start.
+                    user_input = {
+                        **user_input,
+                        CONF_LEGACY_UNIQUE_ID: f"abstractor_{uuid.uuid4().hex}",
+                    }
                 data = self._normalize(user_input, sources)
                 device_type = data[CONF_DEVICE_TYPE]
                 return self.async_create_entry(
