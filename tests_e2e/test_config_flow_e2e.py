@@ -94,10 +94,15 @@ def test_add_power_device_creates_live_entity(logged_in_page, hass_base_url):
 
     page.goto(f"{hass_base_url}/config/entities")
     page.wait_for_load_state("networkidle")
-    # A stray hidden "Search" input from a previous dialog layer can still
-    # be in the DOM here, and .first can resolve to it instead of the real,
-    # visible entities-page search box — filter for :visible explicitly.
-    page.locator('input[placeholder="Search"]:visible').fill("Power")
+    # The old placeholder-based selector ('input[placeholder="Search"]:visible')
+    # is fragile: "Search" is a shared placeholder across config-flow dialogs
+    # and its placeholder/rendering differs across HA versions, which caused
+    # the 60s `.fill()` timeout. Use a role-based searchbox instead, scoped to
+    # the LAST visible match to dodge any lingering hidden searchbox from an
+    # earlier dialog layer, waiting explicitly before filling.
+    search_box = page.get_by_role("searchbox").last
+    search_box.wait_for(state="visible", timeout=15000)
+    search_box.fill("Power")
     assert page.get_by_text(re.compile("abstractor", re.I)).count() > 0, (
         "expected at least one abstractor entity to show up in the entities list "
         "after completing the config flow"
