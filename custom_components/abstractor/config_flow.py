@@ -257,7 +257,9 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             submitted = dict(user_input)
             influx_host = submitted.get(CONF_INFLUX_HOST, "")
-            if influx_host and not influx_host.startswith(("http://", "https://")):
+            if influx_host and not influx_host.lower().startswith(
+                ("http://", "https://")
+            ):
                 return self.async_show_form(
                     step_id="init",
                     data_schema=self._init_schema(current, interval_value),

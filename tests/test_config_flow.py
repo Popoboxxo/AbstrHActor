@@ -1020,6 +1020,32 @@ async def test_options_flow_accepts_influx_host_with_https_scheme(hass: HomeAssi
     assert result2["data"][CONF_INFLUX_HOST] == "https://influx.local:8086"
 
 
+async def test_options_flow_accepts_influx_host_with_mixed_case_scheme(
+    hass: HomeAssistant,
+) -> None:
+    """A scheme check that is case-insensitive: Http:// is accepted, not rejected."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: str(DEFAULT_POLL_INTERVAL),
+            CONF_INFLUX_HOST: "Http://influx.local:8086",
+            CONF_INFLUX_TOKEN: "",
+            CONF_INFLUX_ORG: "",
+            CONF_INFLUX_BUCKET: "",
+            CONF_DEVICE_NAME: DEFAULT_DEVICE_NAME,
+            CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
+            CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
+        },
+    )
+
+    assert result2["type"] == "create_entry"
+    assert result2["data"][CONF_INFLUX_HOST] == "Http://influx.local:8086"
+
+
 async def test_options_flow_accepts_empty_influx_host(hass: HomeAssistant) -> None:
     """An empty host (Influx export disabled) is not a validation error."""
     root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
