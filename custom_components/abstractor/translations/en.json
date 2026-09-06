@@ -55,6 +55,9 @@
         "reconfigure": "Reconfigure Abstract sensor"
       },
       "entry_type": "Abstract sensor",
+      "error": {
+        "device_mapping_conflict": "This device is owned by another Abstractor sensor. Bundling is blocked because Home Assistant could delete that sensor and its recorder history. Choose a device owned by this sensor or create a separate device."
+      },
       "step": {
         "user": {
           "title": "Add Abstract sensor",
@@ -70,7 +73,9 @@
             "net_subtract_entity_id": "Subtract entity (net flow)",
             "fallback_source_entity_id": "Fallback source entity",
             "fallback_condition_entity_id": "Fallback condition entity",
-            "fallback_condition_state": "Fallback condition state"
+            "fallback_condition_state": "Fallback condition state",
+            "target_device_id": "Target device",
+            "create_new_device": "Create a separate device"
           },
           "data_description": {
             "device_type": "Power, energy, or water abstraction layer.",
@@ -83,7 +88,9 @@
             "net_subtract_entity_id": "Subtracted from the aggregate after summing, e.g. charge minus discharge.",
             "fallback_source_entity_id": "Alternate hardware source used when the primary is unavailable and the condition below is met.",
             "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
-            "fallback_condition_state": "State the condition entity must match for the fallback to activate."
+            "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
+            "target_device_id": "Add this sensor to an existing Abstractor device.",
+            "create_new_device": "Detach this sensor from its current device and create a separate device."
           }
         },
         "reconfigure": {
@@ -100,7 +107,9 @@
             "net_subtract_entity_id": "Subtract entity (net flow)",
             "fallback_source_entity_id": "Fallback source entity",
             "fallback_condition_entity_id": "Fallback condition entity",
-            "fallback_condition_state": "Fallback condition state"
+            "fallback_condition_state": "Fallback condition state",
+            "target_device_id": "Target device",
+            "create_new_device": "Create a separate device"
           },
           "data_description": {
             "device_type": "Power, energy, or water abstraction layer.",
@@ -113,7 +122,9 @@
             "net_subtract_entity_id": "Subtracted from the aggregate after summing, e.g. charge minus discharge.",
             "fallback_source_entity_id": "Alternate hardware source used when the primary is unavailable and the condition below is met.",
             "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
-            "fallback_condition_state": "State the condition entity must match for the fallback to activate."
+            "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
+            "target_device_id": "Add this sensor to an existing Abstractor device.",
+            "create_new_device": "Detach this sensor from its current device and create a separate device."
           }
         }
       }

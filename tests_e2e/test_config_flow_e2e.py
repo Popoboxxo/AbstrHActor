@@ -94,10 +94,17 @@ def test_add_power_device_creates_live_entity(logged_in_page, hass_base_url):
 
     page.goto(f"{hass_base_url}/config/entities")
     page.wait_for_load_state("networkidle")
-    # A stray hidden "Search" input from a previous dialog layer can still
-    # be in the DOM here, and .first can resolve to it instead of the real,
-    # visible entities-page search box — filter for :visible explicitly.
-    page.locator('input[placeholder="Search"]:visible').fill("Power")
+    # The search box on this page is a custom <ha-input-search> web component
+    # (hass-tabs-subpage-data-table) wrapping an <ha-input> whose inner <wa-input>
+    # renders the actual <input type="text"> (ha-input-search never sets `type`,
+    # so ha-input's default "text" wins — not "search"); a role="searchbox" or
+    # placeholder-based locator resolves to zero, which caused the 60s
+    # `.fill()` timeout. Playwright pierces the open shadow DOM automatically,
+    # so target the inner <input> of the page's only <ha-input-search>, waiting
+    # explicitly before filling.
+    search_box = page.locator("ha-input-search input").last
+    search_box.wait_for(state="visible", timeout=15000)
+    search_box.fill("Power")
     assert page.get_by_text(re.compile("abstractor", re.I)).count() > 0, (
         "expected at least one abstractor entity to show up in the entities list "
         "after completing the config flow"
