@@ -1,7 +1,7 @@
 """Test the Abstractor config flow."""
 
-import re
 import inspect
+import re
 from typing import Any
 from unittest.mock import patch
 
