@@ -5,11 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.1.0-rc.1] — 2026-08-16
-
-> **Test release (pre-release).** Contains the audit-UI-config surface and
-> accumulated fixes since v1.0.0. Not offered automatically by HACS; opt in
-> via HACS pre-release settings to test.
+## [1.1.0] — 2026-09-07
 
 ### Added
 
@@ -19,12 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Poll interval from the options flow is applied by the coordinator
 - Device registry wired into the sensor lifecycle (devices registered from
   config options)
-- Subentry-based device bundling foundation: create Abstract sensors as
-  subentries and reconcile legacy flat entries on setup. **The bundling UI
-  itself (grouping multiple sensors onto one shared device) is withheld
-  pending [GH#18](https://github.com/Popoboxxo/AbstrHActor/issues/18)** —
-  see [Known limitations](README.md#known-limitations).
+- Subentry-based device bundling: sensors can now be mapped onto a shared
+  device from the reconfigure flow, with safe detach/re-attach handling that
+  protects other devices' entity history —
+  [GH#18](https://github.com/Popoboxxo/AbstrHActor/issues/18)
 - Reconfigure flow for editing settings and moving a sensor to another device
+- Sidebar panel action hub: export and import snapshots as JSON files
+  directly from the panel, jump to a device's native Home Assistant page to
+  edit it, and add a new sensor — without leaving the panel
 
 ### Fixed
 
@@ -39,6 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Migration foundation:** Four critical bugs found and fixed during the
   subentry migration (coordinator leak, entity registry corruption, state
   persistence, and unique_id stability) before this release went live
+- InfluxDB host is now validated everywhere: an `http(s)://` scheme is
+  required, and the scheme check is case-insensitive
+- New sensors get a stable identity at creation time instead of it drifting
+  on first reconfigure — [GH#19](https://github.com/Popoboxxo/AbstrHActor/issues/19)
+- Spike-filter guard for energy/water sensors is restored from its persisted
+  snapshot after a restart instead of resetting, preventing false utility
+  meter spikes
+- Diagnostics no longer mix up pipeline configuration between subentries
+- A sensor with a missing device type now logs a warning and falls back
+  safely instead of behaving inconsistently
 
 ### Changed
 
