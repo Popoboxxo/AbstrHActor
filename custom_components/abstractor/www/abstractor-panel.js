@@ -1,9 +1,11 @@
 // abstractor-panel.js — Abstractor sidebar panel.
 // Registers the <abstractor-panel> custom element. Read-only overview across
-// all Abstractor devices; configuration itself stays on the standard HA
-// Config Flow (Settings > Devices & Services) — this panel does not
-// duplicate it. Dependency-free: no Lit, no build step, just the Web
-// Components APIs Home Assistant's own frontend already relies on.
+// all Abstractor devices, plus a thin action hub (export/import/edit/add)
+// that deep-links into HA's native surfaces instead of duplicating them
+// (see docs/plan-panel-action-hub.md) — configuration itself stays on the
+// standard HA Config Flow (Settings > Devices & Services). Dependency-free:
+// no Lit, no build step, just the Web Components APIs Home Assistant's own
+// frontend already relies on.
 'use strict';
 
 class AbstractorPanel extends HTMLElement {
@@ -25,6 +27,64 @@ class AbstractorPanel extends HTMLElement {
 
   set narrow(_narrow) {
     this._render();
+  }
+
+  // Mirrors HA's own frontend `navigate()` helper (history.pushState +
+  // a `location-changed` event the app-router listens for). Reimplemented
+  // inline instead of imported from `custom-card-helpers` since this file
+  // is intentionally dependency-free and has no build step.
+  _navigate(path) {
+    history.pushState(null, '', path);
+    window.dispatchEvent(new CustomEvent('location-changed', { bubbles: true, composed: true }));
+  }
+
+  _showError(message) {
+    const errorEl = this.shadowRoot.querySelector('.action-error');
+    if (!errorEl) return;
+    errorEl.textContent = message;
+    errorEl.hidden = !message;
+  }
+
+  async _handleExport() {
+    this._showError('');
+    try {
+      const result = await this._hass.callService(
+        'abstractor',
+        'export_data',
+        {},
+        undefined,
+        false,
+        true
+      );
+      const snapshot = (result && result.response && result.response.snapshot) || (result && result.snapshot);
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'abstractor-snapshot.json';
+      this.shadowRoot.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      this._showError(`Export failed: ${err && err.message ? err.message : err}`);
+    }
+  }
+
+  async _handleImportFile(file) {
+    this._showError('');
+    let parsed;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch (err) {
+      this._showError(`Import failed: file is not valid JSON (${err.message})`);
+      return;
+    }
+    try {
+      await this._hass.callService('abstractor', 'import_data', { data: parsed });
+    } catch (err) {
+      this._showError(`Import failed: ${err && err.message ? err.message : err}`);
+    }
   }
 
   _abstractorDevices() {
@@ -60,6 +120,19 @@ class AbstractorPanel extends HTMLElement {
       :host { display: block; padding: 16px; font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif); }
       h1 { font-size: 1.5em; margin: 0 0 4px 0; color: var(--primary-text-color); }
       p.subtitle { color: var(--secondary-text-color); margin: 0 0 20px 0; }
+      .header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      button {
+        font: inherit; cursor: pointer; border-radius: 4px; padding: 8px 12px;
+        border: 1px solid var(--divider-color, #ccc);
+        background: var(--card-background-color, white);
+        color: var(--primary-color, #03a9f4);
+      }
+      button:hover { background: var(--secondary-background-color, #f0f0f0); }
+      .action-error {
+        margin: 8px 0 0 0; padding: 8px 12px; border-radius: 4px;
+        background: var(--error-color, #db4437); color: var(--text-primary-color, white);
+      }
       .empty { padding: 32px; text-align: center; color: var(--secondary-text-color); }
       .device-card {
         background: var(--card-background-color, white);
@@ -67,6 +140,7 @@ class AbstractorPanel extends HTMLElement {
         box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0,0,0,0.1));
         padding: 16px; margin-bottom: 12px;
       }
+      .device-card .card-header { display: flex; align-items: center; justify-content: space-between; }
       .device-card h2 { margin: 0 0 8px 0; font-size: 1.1em; color: var(--primary-text-color); }
       table { width: 100%; border-collapse: collapse; }
       td { padding: 4px 8px 4px 0; color: var(--primary-text-color); font-size: 0.95em; }
@@ -85,14 +159,41 @@ class AbstractorPanel extends HTMLElement {
     // into markup, so it can't be interpreted as HTML/script.
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
-      <h1>Abstractor</h1>
-      <p class="subtitle"></p>
+      <div class="header">
+        <div>
+          <h1>Abstractor</h1>
+          <p class="subtitle"></p>
+        </div>
+        <div class="actions">
+          <button type="button" class="add-sensor-button">Add sensor</button>
+          <button type="button" class="export-button">Export</button>
+          <button type="button" class="import-button">Import</button>
+          <input type="file" accept="application/json" class="import-file-input" hidden>
+        </div>
+      </div>
+      <div class="action-error" hidden></div>
       <div class="body"></div>
     `;
 
     this.shadowRoot.querySelector('.subtitle').textContent =
       `${devices.length} abstract device${devices.length === 1 ? '' : 's'} — ` +
       'read-only overview. Configure via Settings → Devices & Services.';
+
+    this.shadowRoot.querySelector('.add-sensor-button').addEventListener('click', () => {
+      this._navigate('/config/integrations/integration/abstractor');
+    });
+    this.shadowRoot.querySelector('.export-button').addEventListener('click', () => {
+      this._handleExport();
+    });
+    const fileInput = this.shadowRoot.querySelector('.import-file-input');
+    this.shadowRoot.querySelector('.import-button').addEventListener('click', () => {
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (file) this._handleImportFile(file);
+    });
 
     const bodyEl = this.shadowRoot.querySelector('.body');
     if (!devices.length) {
@@ -108,9 +209,22 @@ class AbstractorPanel extends HTMLElement {
       const card = document.createElement('div');
       card.className = 'device-card';
 
+      const cardHeader = document.createElement('div');
+      cardHeader.className = 'card-header';
+
       const h2 = document.createElement('h2');
       h2.textContent = d.name;
-      card.appendChild(h2);
+      cardHeader.appendChild(h2);
+
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.textContent = 'Edit';
+      editButton.addEventListener('click', () => {
+        this._navigate(`/config/devices/device/${d.id}`);
+      });
+      cardHeader.appendChild(editButton);
+
+      card.appendChild(cardHeader);
 
       const details = document.createElement('p');
       details.textContent = [d.manufacturer, d.model].filter(Boolean).join(' · ');

@@ -10,7 +10,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
@@ -456,6 +456,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN,
             SERVICE_EXPORT_DATA,
             partial(export_data_service, hass),
+            supports_response=SupportsResponse.ONLY,
         )
         hass.services.async_register(
             DOMAIN,
@@ -574,20 +575,33 @@ def _async_snapshot_entries(hass: HomeAssistant) -> dict[str, _SubentrySnapshotV
     }
 
 
-async def _save_snapshot(hass: HomeAssistant) -> None:
-    """Persist config and last coordinator values for support and restore."""
+async def _save_snapshot(hass: HomeAssistant) -> dict[str, Any]:
+    """Persist config and last coordinator values for support and restore.
+
+    Returns:
+        The snapshot dict that was persisted, so callers (e.g. the
+        `export_data` service) can hand it back to the caller without
+        rebuilding it.
+    """
     domain_data = hass.data[DOMAIN]
     coordinator = domain_data.get("coordinator")
     values = (coordinator.data or {}) if coordinator else {}
     snapshot = build_snapshot(_async_snapshot_entries(hass), values)
     domain_data["stored_snapshot"] = snapshot
     await domain_data[_STORAGE_DATA].async_save(snapshot)
+    return snapshot
 
 
-async def export_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Persist and log a complete integration snapshot."""
-    await _save_snapshot(hass)
+async def export_data_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+    """Persist a complete integration snapshot and hand it back to the caller.
+
+    Registered with `supports_response=SupportsResponse.ONLY` so a panel
+    "Export" button (or any other caller with `return_response=True`) gets
+    the snapshot directly instead of having to re-read it from Store.
+    """
+    snapshot = await _save_snapshot(hass)
     _LOGGER.info("Abstractor data export completed")
+    return {"snapshot": snapshot}
 
 
 async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
