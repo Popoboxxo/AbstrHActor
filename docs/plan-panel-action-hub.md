@@ -52,8 +52,12 @@ the one way that already exists, plus a working export/import UX.
   with `supports_response=SupportsResponse.ONLY`; have it return
   `{"snapshot": snapshot}` in addition to the existing `_save_snapshot` write
   (keep the persist-to-Store side effect — diagnostics/restore still need it).
-* `services.yaml`: add `response: {}` under `export_data` (documents the
-  response shape for the Developer Tools UI too, not just the panel).
+* `services.yaml`: no change needed — hassfest's `services.yaml` schema
+  (`CORE_INTEGRATION_SERVICES_SCHEMA`/`CUSTOM_INTEGRATION_SERVICES_SCHEMA` in
+  `script/hassfest/services.py`) has no `response` key at all; it only
+  documents `fields`/`target`. Declaring one fails CI validation
+  ("not a valid option at 'export_data.response'"). `supports_response` is a
+  Python-only registration, nothing to add here.
 * `tests/test_services.py`: assert the service call with
   `return_response=True` returns the built snapshot dict.
 
