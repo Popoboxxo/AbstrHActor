@@ -1,0 +1,9 @@
+{
+  "custom_script": null,
+  "eligible_roles": [],
+  "file_count_threshold": 5,
+  "mode": "off",
+  "secret_scan": true,
+  "triggers": [],
+  "version": 1
+}
