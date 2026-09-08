@@ -233,6 +233,7 @@ graphify-out/
 # --- agent-meta managed (do not edit) ---
 .claude/agent-memory-local/
 .claude/pending-tasks.md
+.claude/progress/
 .claude/settings.local.json
 .gemini/pending-tasks.md
 .gemini/settings.local.json

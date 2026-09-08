@@ -3,7 +3,7 @@
 > Projektbeschreibung für Claude-Agenten. Diese Datei ist die **einzige Quelle**
 > für projektspezifischen Kontext — Agenten lesen sie, statt eigenen Kontext zu haben.
 >
-> Generiert von agent-meta v0.101.0-beta.5 — `2026-09-05`
+> Generiert von agent-meta v1.0.0 — `2026-09-08`
 >
 > **Längenempfehlung:** 200–500 Zeilen optimal. Über 500 Zeilen → Detailwissen in
 > `docs/ARCHITECTURE.md`, `docs/API.md` o.ä. auslagern und manuell verlinken.
@@ -30,70 +30,11 @@ Hier kannst du eigene, projektspezifische Notizen eintragen. Dieser Bereich wird
 **Beschreibung:** A Home Assistant integration that abstracts physical devices (sensors, actuators) behind a unified interface. Implements hardware/software decoupling so that the concrete sensor hardware (e.g., Zendure, Shelly, Tasmota) can be swapped without changing automation logic, dashboards, or utility meters.
 
 
-## Tech-Stack
+> Struktur: siehe Verzeichnisstruktur im Repo (`ls`/`find`); deklarativ: `.meta-config/project.yaml` → `variables.PROJECT_STRUCTURE`.
 
-- **Runtime:** Python 3.12+
-- **Sprache:** Python
-- **Key-Dependencies:** - homeassistant >= 2025.1 - aiohttp (HA internal) - voluptuous (config flow schemas)
+> Runtime & Abhängigkeiten: siehe Projekt-Manifest (`pyproject.toml` / `requirements.txt` / `package.json` / `manifest.json`).
 
-
-## Architektur
-
-```
-# Root
-hacs.json                  # HACS manifest (name, homeassistant version, etc.)
-custom_components/abstractor/
-  __init__.py          # async_setup_entry, async_unload_entry
-  manifest.json        # HA manifest (domain, version, requirements, iot_class)
-  const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum
-  config_flow.py       # ConfigFlow with unique ID, discovery steps
-  coordinator.py       # DataUpdateCoordinator — central polling
-  diagnostics.py       # Diagnostics support
-  filters.py           # Value filters (spike filter, monotonic guard)
-  frontend.py          # Frontend integration entry point
-  influx_exporter.py   # InfluxDB exporter
-  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
-  snapshot.py          # Snapshot support
-  services.yaml        # Service definitions
-  strings.json         # Config flow translations (i18n)
-  icons.json           # Entity icon translations (mdi icons)
-  repository/
-    device_registry.py # Device registry (Repository pattern)
-  brand/
-    icon.png           # Brand icon for HACS UI (256x256)
-    logo.png           # Brand logo (optional)
-  translations/        # Translation catalogs
-  www/                 # Frontend static assets
-  # PLANNED / roadmap (do not exist yet):
-  bridge/              # AbstractBridge protocol + serial/mqtt/http bridges
-  sensor_types/        # SensorType enum + EntityDescription registry
-tests/                 # 14 test files (root-level)
-  __init__.py
-  conftest.py          # Pytest fixtures (mock HA, mock bridges)
-  test_config_flow.py  # Config flow tests (required: 100% coverage)
-  test_coordinator.py
-  test_diagnostics.py
-  test_filters.py
-  test_frontend.py
-  test_influx_exporter.py
-  test_lifecycle.py
-  test_migration.py
-  test_reconciliation.py
-  test_sensor.py
-  test_services.py
-  test_snapshot.py
-docs/
-  ARCHITECTURE.md      # High-level architecture docs
-  SENSOR_TYPES.md      # Supported sensor types and their interfaces
-.github/
-  workflows/
-    validate.yaml      # HACS Action + Hassfest validation on push/PR
-```
-
-**Entry-Point:**
-```
-custom_components/abstractor/__init__.py
-```
+**Entry-Point:** `custom_components/abstractor/__init__.py`
 
 **Besondere Patterns:**
 - **Singleton root + subentries**: one root ConfigEntry (unique_id ROOT_UNIQUE_ID)
@@ -160,7 +101,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 > **AI ROUTING:** Claude -> CLAUDE.md | Gemini, Opencode -> AGENTS.md
 
-Generiert von agent-meta v0.101.0-beta.5 — `2026-09-06`
+Generiert von agent-meta v1.0.0 — `2026-09-08`
 DoD-Preset: **rapid-prototyping** | REQ-Traceability: false | Tests: true | Codebase-Overview: false | Security-Audit: false
 > **Einstiegspunkt:** Du bist im `main-chat` Modus. Du agierst direkt als Router und Worker (siehe `use-orchestrator.md`).
 

@@ -8,70 +8,11 @@
 **Beschreibung:** A Home Assistant integration that abstracts physical devices (sensors, actuators) behind a unified interface. Implements hardware/software decoupling so that the concrete sensor hardware (e.g., Zendure, Shelly, Tasmota) can be swapped without changing automation logic, dashboards, or utility meters.
 
 
-## Tech-Stack
+> Struktur: siehe Verzeichnisstruktur im Repo (`ls`/`find`); deklarativ: `.meta-config/project.yaml` → `variables.PROJECT_STRUCTURE`.
 
-- **Runtime:** Python 3.12+
-- **Sprache:** Python
-- **Key-Dependencies:** - homeassistant >= 2025.1 - aiohttp (HA internal) - voluptuous (config flow schemas)
+> Runtime & Abhängigkeiten: siehe Projekt-Manifest (`pyproject.toml` / `requirements.txt` / `package.json` / `manifest.json`).
 
-
-## Architektur
-
-```
-# Root
-hacs.json                  # HACS manifest (name, homeassistant version, etc.)
-custom_components/abstractor/
-  __init__.py          # async_setup_entry, async_unload_entry
-  manifest.json        # HA manifest (domain, version, requirements, iot_class)
-  const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum
-  config_flow.py       # ConfigFlow with unique ID, discovery steps
-  coordinator.py       # DataUpdateCoordinator — central polling
-  diagnostics.py       # Diagnostics support
-  filters.py           # Value filters (spike filter, monotonic guard)
-  frontend.py          # Frontend integration entry point
-  influx_exporter.py   # InfluxDB exporter
-  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
-  snapshot.py          # Snapshot support
-  services.yaml        # Service definitions
-  strings.json         # Config flow translations (i18n)
-  icons.json           # Entity icon translations (mdi icons)
-  repository/
-    device_registry.py # Device registry (Repository pattern)
-  brand/
-    icon.png           # Brand icon for HACS UI (256x256)
-    logo.png           # Brand logo (optional)
-  translations/        # Translation catalogs
-  www/                 # Frontend static assets
-  # PLANNED / roadmap (do not exist yet):
-  bridge/              # AbstractBridge protocol + serial/mqtt/http bridges
-  sensor_types/        # SensorType enum + EntityDescription registry
-tests/                 # 14 test files (root-level)
-  __init__.py
-  conftest.py          # Pytest fixtures (mock HA, mock bridges)
-  test_config_flow.py  # Config flow tests (required: 100% coverage)
-  test_coordinator.py
-  test_diagnostics.py
-  test_filters.py
-  test_frontend.py
-  test_influx_exporter.py
-  test_lifecycle.py
-  test_migration.py
-  test_reconciliation.py
-  test_sensor.py
-  test_services.py
-  test_snapshot.py
-docs/
-  ARCHITECTURE.md      # High-level architecture docs
-  SENSOR_TYPES.md      # Supported sensor types and their interfaces
-.github/
-  workflows/
-    validate.yaml      # HACS Action + Hassfest validation on push/PR
-```
-
-**Entry-Point:**
-```
-custom_components/abstractor/__init__.py
-```
+**Entry-Point:** `custom_components/abstractor/__init__.py`
 
 **Besondere Patterns:**
 - **Singleton root + subentries**: one root ConfigEntry (unique_id ROOT_UNIQUE_ID)
@@ -136,23 +77,47 @@ Kategorien für `docs/REQUIREMENTS.md`:
  Opencode->AGENTS.md |
  Gemini->AGENTS.md
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v0.101.0-beta.5` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v1.0.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+
 
 
 ## Regeln
 
 # A2A Anti-Re-Delegation Gates
 
-1. Limit depth to 10, no self-handoff.
-2. Short payload: `payload.t` max 300 Zeichen.
-3. No Re-Delegation (payload starts with "Du bist...").
-4. Singleton Orchestrator: NUR der `main_chat` darf den `orchestrator` spawnen.
-5. Execution-Trace-Isolation: Worker-Output muss strukturiert sein (STATUS, RESULT, ARTIFACTS). Keine rohen Logs propagieren.
+## Enforced Gates (aktiv prüfen — HARD REJECT)
+
+1. **No Self-Handoff / No Re-Delegation:** Ein `payload`, der mit "Du bist..." beginnt, ist ein Re-Delegations-/Spec-Dump-Versuch → HARD REJECT.
+2. **Orchestrator-Singleton:** NUR `main_chat` darf den `orchestrator` spawnen. Worker → `orchestrator` → HARD REJECT (siehe `singleton-orchestrator-architecture.md`).
+3. **Execution-Trace-Isolation:** Worker-Output muss strukturiert sein (STATUS, RESULT, ARTIFACTS). Keine rohen Logs propagieren.
+
+## Degradierte Checks (Doku-Pflicht, kein Gate — Issue #346)
+
+Diese Checks sind dokumentierte Konventionen, keine erzwungenen Gates. Die
+eigene Modell-Prüfung war Ritual ohne Gate-Wirkung — Plattform-Limits decken
+den praktischen Fehlerfall ab:
+
+| Check | Status | Begründung |
+|---|---|---|
+| `delegation_depth ≤ 10` | dokumentiert | Die Plattform (z.B. Claude Code) erzwingt Tiefenlimits ohnehin; eigene Prüfung ist redundant. Referenz: `docs/concepts/a2a-handoff-protocol.md` |
+| `payload.t ≤ 300 Zeichen` | dokumentiert | Empfehlung für prägnante Task-Zeilen; der Re-Delegation-Check (Punkt 1) deckt den eigentlichen Fehlerfall (Spec-Dump) ab |
+| `max_depth` via project.yaml (`orchestrator.delegation.max_depth`) | dokumentiert | Toter Konfigurationsraum bei einem 2-Ebenen-Repo; der enforced-Pfad wurde aus `validate_envelope()` entfernt, der Doku-Verweis bleibt |
+
+## Per-Task-Tier: `payload.tier_override` (optional — Issue #346)
+
+Neues optionales Envelope-Feld: `payload.tier_override: <tier>` übersteuert die
+Rolle→Tier-Auflösung (`role-defaults.yaml` → `model`) nur für genau diesen Dispatch.
+
+**Guardrails (Referenz-Implementierung: `resolve_tier_override()` in `scripts/lib/delegation_syntax.py`):**
+
+1. **Preset-Bounds:** Der Tier-Name muss im aktiven tier-preset existieren (`config/tier-presets.yaml` — globales `tiers:` plus `providers.<provider>.tiers` wenn Provider-Kontext vorliegt). Unbekannter Tier oder Tier außerhalb des Presets → Override wird verworfen, Fallback auf Rollen-Default.
+2. **Kein Downgrade sicherheitskritischer Rollen:** Rollen aus `tier-override-policy.security-critical-roles` (`config/role-defaults.yaml`; Default: `security-auditor`, `code-reviewer`) können per Override nur gleich- oder höhergestuft werden.
+3. **Audit-Log-Pflicht:** Jeder Override-Versuch — angenommen ODER abgelehnt — wird im Delegations-Tracker/Checkpoint protokolliert: `tier_override=<tier> (applied|rejected: <reason>)`.
 
 ## Bekannte Grenzen
 
-- **Tiefenlimit (Punkt 1) ist modellbasiert, keine technische Barriere.** Eine passende Implementierung existiert (`validate_envelope(max_depth=...)` in `scripts/lib/delegation_syntax.py`), wird aber im aktiven Delegationspfad nirgends aufgerufen. Die Regel verlässt sich auf Modell-Gehorsam, nicht auf Enforcement.
-- **Singleton-Orchestrator (Punkt 4) wird nur über eine Selbstdeklaration der Agenten-Identität gestützt** (`#agent-meta:agent=<name>` in `.claude/hooks/orchestrator-guard.sh`), die im Hook-Quelltext selbst als "soft, self-reported convention, not a security boundary" dokumentiert ist. Jeder Agent kann sich technisch als privilegiert deklarieren. **Das ist eine bewusste Design-Grenze, kein behebbarer Bug:** kein Provider liefert im PreToolUse-Payload eine echte Agenten-Identität, der Hook kann die Behauptung also nicht verifizieren. Der Guard ist ein Konventions-Schutz gegen Versehen, kein Schutz gegen einen Agenten, der die Regel bewusst umgeht. Wer eine harte Grenze braucht, muss Git-Mutationen außerhalb des Agenten-Systems absichern (Branch-Protection, Pre-Receive-Hooks, Review-Pflicht) — zerstörerische Operationen (`push --force`, `reset --hard`, `clean -fd`, `branch -D`) bleiben deshalb ausdrücklich zustimmungspflichtig durch den Nutzer.
+- **Singleton-Orchestrator (Punkt 2) wird nur über eine Selbstdeklaration der Agenten-Identität gestützt** (`#agent-meta:agent=<name>` in `.claude/hooks/orchestrator-guard.sh`), die im Hook-Quelltext selbst als "soft, self-reported convention, not a security boundary" dokumentiert ist. Jeder Agent kann sich technisch als privilegiert deklarieren. **Das ist eine bewusste Design-Grenze, kein behebbarer Bug:** Claude Code liefert seit Kurzem zwar ein `agent_id`-Feld im PreToolUse-Payload (harness-gesetzt, nicht selbst-deklariert — seit Issue #683 genutzt, um Write/Edit/Bash für JEDEN dispatchten Subagenten von der Strict-Mode-Main-Chat-Blockade freizustellen), aber das sagt nur "irgendein Subagent", nicht "welche Rolle". Für die ROLLEN-Identität (git vs. orchestrator, für den Git-Mutation-Gate) liefert kein Provider ein echtes Feld — der Hook kann die Sentinel-Behauptung also weiterhin nicht verifizieren. Der Guard ist ein Konventions-Schutz gegen Versehen, kein Schutz gegen einen Agenten, der die Regel bewusst umgeht. Wer eine harte Grenze braucht, muss Git-Mutationen außerhalb des Agenten-Systems absichern (Branch-Protection, Pre-Receive-Hooks, Review-Pflicht) — zerstörerische Operationen (`push --force`, `reset --hard`, `clean -fd`, `branch -D`) bleiben deshalb ausdrücklich zustimmungspflichtig durch den Nutzer.
+- **`resolve_tier_override()` ist dormant by design** — es gibt keinen Interception-Punkt im Runtime-Dispatch (siehe `validate_envelope()`-Docstring in `scripts/lib/delegation_syntax.py`). Die Guardrails sind prompt-basiert durchgesetzt (Orchestrator-Template, Tier-Selection-Sektion); die Python-Funktion ist die testbare Referenz-Implementierung.
 - **Große Ergebnisse gehören in Dateien, nicht in den Return-Channel.** Der synchrone Tool-Result-Kanal hat ein undokumentiertes Größenlimit; überlange Antworten können ohne Fehlersignal beschnitten zurückkommen (agent-meta #514). Read-only-Rollen ohne `Write` (`Plan`, `Explore`, `code-reviewer`) sind davon strukturell betroffen. Daher: Artefakte ab ~1000 Zeilen (Pläne, Konzepte, Reviews) immer von einer schreibfähigen Rolle in eine Datei schreiben lassen und nur den Pfad zurückgeben. Empfangene Ergebnisse auf Vollständigkeit prüfen (fehlender Kopf/erste Abschnitte = Truncation), nicht blind weiterverarbeiten.
 
 
@@ -230,7 +195,7 @@ Issues referenzieren und am Ende mit passendem Keyword (`Fixes #123`, `Closes #1
 
 # Lifecycle-Tasks
 
-Beim Start prüfen: existiert `.gemini/pending-tasks.md bzw. .opencode/pending-tasks.md`?
+Beim Start prüfen: existiert `.gemini/pending-tasks.md bzw. .opencode/pending-tasks.md bzw. .codex/pending-tasks.md bzw. .zcode/pending-tasks.md bzw. .kimi-code/pending-tasks.md`?
 Falls ja und enthält `- [ ]`: User fragen ob delegiert werden soll.
 Nach Erledigung: löschen. Datei nicht committen.
 
@@ -239,7 +204,7 @@ Nach Erledigung: löschen. Datei nicht committen.
 # MCP Hard Prohibitions
 
 > Kurzfassung der harten Tool-Verbote aktiver MCP-Server. Vollständige Tool-Listen und
-> Hinweise: siehe `.claude/skills/mcp-<server>/SKILL.md` (`use-lazy-rules.md`).
+> Hinweise: pro Provider in `.gemini/skills bzw. .opencode/skills bzw. .agents/skills bzw. .zcode/skills bzw. .kimi-code/skills` — jeweils `mcp-<server>/SKILL.md` (`use-lazy-rules.md`).
 
 - **reqogniloom:** `workspace.close`, `workspace.reactivate`, `workspace.delete`, `permissions.set_rule`, `permissions.list`, `permissions.revoke`, `permissions.check`, `admin.backup_create`, `admin.backup_list`, `admin.restore`, `audit.query`, `audit.ai_review`, `events.dlq_list`, `events.dlq_replay`, `user.create`, `user.assign_role`, `user.list`, `user.deactivate` — absolut verboten.
 
@@ -254,9 +219,57 @@ Alle Agenten müssen direkt im Projektverzeichnis arbeiten (Isolation deaktivier
 
 
 
-# Python Conventions
+# SE-Kaskade: ADR-Standard
 
-PEP8 einhalten. Type Hints (typing) verwenden. Docstrings für Klassen/Methoden schreiben.
+Verbindlicher MADR-Minimal-Standard für Architecture Decision Records in der
+SE-Kaskade (Issue #339 B1). Normativ nur bei aktiver SE-Kaskade.
+
+
+
+
+# SE-Kaskade: Artefakt-Taxonomie
+
+Verbindliche Taxonomie, Trennregel und Output-Location-Regeln für alle SE-Artefakte
+(Issue #339 B3/B4, Issue #334). Normativ nur bei aktiver SE-Kaskade.
+
+
+
+
+# SE-Kaskade: Review-Lifecycle
+
+Verbindlicher Review-Lifecycle mit Protokoll-Pflicht und RVW-Finding-IDs für die
+SE-Kaskade (Issue #339 B5). Normativ nur bei aktiver SE-Kaskade.
+
+
+
+
+# Security Paved Roads
+
+Security wird als vorgeprüfte Paved-Road-Blöcke geliefert, nicht als DIY-Aufgabe:
+**invisible, consistent, embedded, non-optional** (Netflix Paved Roads / Golden Path).
+Ein Block ist ausgereift, sicherheitsgeprüft und wird identisch überall verwendet —
+niemand implementiert Security-Logik selbst neu.
+
+## Block-Katalog
+
+| Block | Abdeckt | Eigentümer-Agent |
+|-------|---------|------------------|
+| `auth-flow` | Authentifizierung (Login, Session, Token) | `security-auditor` |
+| `dependency-check` | SBOM + CVE-Scan der Abhängigkeiten | `dependency-auditor` |
+| `input-validation` | Eingabevalidierung (Schema, Sanitizing) | `security-auditor` |
+| `rate-limiting` | Rate-Limiting / Throttling | `devops-engineer` |
+| `cors-config` | CORS-Konfiguration | `security-auditor` |
+| `secret-scanning` | Secret-Scan (Leaks in Diffs, Commits, Logs) | `security-auditor` |
+
+## Enforcement
+
+- **Vor jedem Commit:** Secret-Scan über den Block `secret-scanning` ausführen.
+- **Vor jedem Deploy:** `dependency-check` (SBOM + CVE) ausführen.
+- **Für neue Features:** den `auth-flow`-Block nutzen statt Auth selbst zu bauen.
+
+DIY-Security ist eine Anti-Pattern: jede Variante erzeugt unbekannte Lücken.
+Abweichungen vom Block-Katalog werden als Review-Befund von `security-auditor`
+gemeldet, nicht als Eigenbau gerechtfertigt.
 
 
 
@@ -277,9 +290,28 @@ Regeln für den Umgang mit allen Git-Submodulen (`.agent-meta/`, `external/*/`, 
 
 
 
+# Threat Model — die 4 Fragen
+
+Vor jedem öffentlichen Release die 4 Fragen beantworten (Igor Andriushchenko,
+CISO Lovable):
+
+1. **Was baust du?** — Datenspeicherung, Auth, Autorisierung, woher kommen die User?
+2. **Was könnte schiefgehen?** — Worst-Case-Szenarien (Leak, Bypass, Datenverlust).
+3. **Was tust du dagegen?** — konkrete Gegenmaßnahme pro Risiko.
+4. **Was sind die Konsequenzen?** — Business-Impact, Datenverlust, Reputation.
+
+## Anwendung
+
+- `concept-reviewer` prüft die 4 Fragen in Design-Docs (Threat-Model-Checkliste).
+- `orchestrator` stellt die 4 Fragen vor Feature-Releases.
+- **Interne Apps:** vereinfacht — 1–2 Fragen reichen.
+- **Customer-facing Apps:** vollständig — alle 4 Fragen plus dokumentiertes Threat Model.
+
+
+
 # Lazy-Loaded Rules
 
-> Nicht immer geladen — bei Bedarf per `Read` öffnen: `.claude/skills/<skill>/SKILL.md`.
+> Nicht immer geladen — bei Bedarf per `Read` öffnen: `.gemini/skills bzw. .opencode/skills bzw. .agents/skills bzw. .zcode/skills bzw. .kimi-code/skills/<skill>/SKILL.md` (jeweils).
 
 | Skill | Wann |
 |---|---|
@@ -289,7 +321,6 @@ Regeln für den Umgang mit allen Git-Submodulen (`.agent-meta/`, `external/*/`, 
 | conventions | Vor Commits in agents/, config/, scripts/lib |
 | submodule-protection | .agent-meta/, external/, .gitmodules |
 | a2a-delegation-gates | A2A-Delegation an Subagenten |
-| python-conventions | Python-Code |
 | issue-lifecycle | GitHub-Issue |
 | lifecycle-tasks | Session-Start, pending-tasks.md vorhanden |
 | session-conclusion | Feature-Abschluss |
@@ -314,6 +345,7 @@ Main Chat ist Router + Worker. Kein Orchestrator-Subagent. Du bist der Orchestra
 
 | Intent / Keywords | Agent | Tier | Parallel |
 |-------------------|-------|------|----------|
+| concept-driven-dev, Konzept-Pipeline, gegen Spezifikation implementieren, spec-first | → Pipeline: `concept-driven-dev` | pipeline | no |
 | Dokumentation, README, Docs, Doku | → Pipeline: `docs-update` | pipeline | no |
 | Feature implementieren, Feature bauen, neues Feature, Funktion bauen, Feature Lifecycle, komplexes Feature, Feature Pipeline | → Pipeline: `feature-lifecycle` | pipeline | no |
 | Bug fixen, Bug beheben, Triage, schneller Fix, Hotfix | → Pipeline: `quick-fix` | pipeline | no |
@@ -322,6 +354,22 @@ Main Chat ist Router + Worker. Kein Orchestrator-Subagent. Du bist der Orchestra
 Volle Stage-Details (Agent/Modus je Stage, Loop/Fallback/Approval-Gate) einer gematchten Pipeline bei Bedarf: `Read {{PIPELINE_DETAILS_DIR}}/<pipeline-name>.md`.
 
 ## A2A Delegation
+
+
+## Status-Tabelle (Pflicht, Issue #678)
+
+Nach jedem Abschluss eines Batch-Mitglieds (FANOUT/PARALLEL_GROUP) und spätestens
+bei jedem BARRIER-Punkt eine kompakte Status-Tabelle ausgeben — nicht erst am Ende
+der gesamten Pipeline/Session.
+
+| Agent | Task | Status |
+|-------|------|--------|
+| `<agent>` | `<Ein-Satz-Task>` | `pending` \| `in_progress` \| `done` \| `failed` |
+
+- Eine Zeile pro Batch-Mitglied, in Dispatch-Reihenfolge.
+- `Status` wird bei jedem eingehenden Tool-Ergebnis aktualisiert, nicht erst am Ende gesammelt.
+- Ersetzt NICHT die BARRIER-Zusammenfassung — sie ist der sichtbare Zwischenstand
+  während des laufenden Batches, kein Duplikat.
 
 
 ## Plan Delegation
@@ -439,85 +487,87 @@ Schreibende Tools erfordern Editor- oder Admin-Rolle. Administrative/destruktive
 
 
 
+
+
 ## Agent Directory
-> ⚠️ **ACHTUNG:** Agenten (Prompts) liegen in `.gemini/agents bzw. .opencode/agents`.
+> ⚠️ **ACHTUNG:** Agenten (Prompts) liegen in `.gemini/agents bzw. .opencode/agents bzw. .codex/agents bzw. .zcode/agents bzw. .kimi-code/agents`.
 
 | Agent | Core Capabilities |
 |-------|-------------------|
 
-| `accessibility-specialist` | WCAG 2.1/2.2 Compliance-Audit, ARIA-Checks, Keyboard-Navigation, Screenreader... |
+| `accessibility-specialist` | WCAG 2.1/2.2 Compliance-Audit, ARIA-Checks, Keyboard-Navigation |
 
-| `agent-meta-manager` | agent-meta verwalten: Upgrade, Sync, Feedback, projektspezifische Agenten anl... |
+| `agent-meta-manager` | agent-meta verwalten: Upgrade, Sync, Feedback |
 
-| `api-specialist` | OpenAPI/Contract-First API Design, Schnittstellen-Spezifikationen. |
+| `api-specialist` | OpenAPI/Contract-First API Design, Schnittstellen-Spezifikationen |
 
-| `bug-feature-analyzer` | Issue-Triage: Eingehende Bug-Meldungen und Feature-Requests analysieren und k... |
+| `bug-feature-analyzer` | Issue-Triage: Eingehende Bug-Meldungen, Feature-Requests analysieren, k |
 
-| `code-reviewer` | Clean Code Gatekeeper: Blast-Radius-Analyse, SOLID/DRY Prüfung, Code-Qualität... |
+| `code-reviewer` | Clean Code Gatekeeper: Blast-Radius-Analyse, SOLID/DRY Prüfung, Code-Qualität |
 
-| `data-engineer` | ETL/ELT-Pipelines, Schema-Migration (Datenebene), Data-Quality-Checks, Lineag... |
+| `data-engineer` | ETL/ELT-Pipelines, Schema-Migration (Datenebene), Data-Quality-Checks |
 
-| `database-engineer` | Relationales Schema-Design, Datenbank-Migrationen, Query-Optimierung und Inde... |
+| `database-engineer` | Relationales Schema-Design, Datenbank-Migrationen, Query-Optimierung |
 
-| `dependency-auditor` | Supply-Chain-Hygiene: SBOM-Analyse, Lizenz-Kompatibilität, Version-Drift und ... |
+| `dependency-auditor` | Supply-Chain-Hygiene: SBOM-Analyse, Lizenz-Kompatibilität, Version-Drift und |
 
-| `developer` | Feature-Implementierung und Bugfixes |
+| `developer` | Feature-Implementierung, Bugfixes |
 
-| `devops-engineer` | CI/CD, Infrastructure as Code, Kubernetes, Observability. |
+| `devops-engineer` | CI/CD, Infrastructure as Code, Kubernetes |
 
-| `docker` | Dev-Stack verwalten, Test-Stack starten, Binary-Management, Dockerfiles erste... |
+| `docker` | Dev-Stack verwalten, Test-Stack starten, Binary-Management |
 
-| `documenter` | CODEBASE_OVERVIEW, ARCHITECTURE, README, Erkenntnisse pflegen |
+| `documenter` | CODEBASE_OVERVIEW, ARCHITECTURE, README |
 
-| `e2e-tester` | E2E-Tests, visuelle Regression und Accessibility-Audits via Playwright |
+| `e2e-tester` | E2E-Tests, visuelle Regression, Accessibility-Audits via Playwright |
 
-| `explorer` | Read-only Codebase-Recherche, Dependency- und Impact-Mapping, Datei- und Symb... |
+| `explorer` | Read-only Codebase-Recherche, Dependency, Impact-Mapping |
 
-| `feedback` | Projekt-Feedback standardisieren: Bugs, Features, Verbesserungen als GitHub I... |
+| `feedback` | Projekt-Feedback standardisieren: Bugs, Features, Verbesserungen als GitHub I |
 
-| `git` | Commits, Branches, Tags, Push/Pull und alle Git-Operationen |
+| `git` | Commits, Branches, Tags |
 
 | `ideation` | Neue Ideen explorieren, Vision schärfen, Übergabe an requirements |
 
-| `intern-developer` | [EASTER EGG / GAG] Der übereifrige Praktikant |
+| `intern-developer` | Der übereifrige Praktikant |
 
 | `junior-developer` | Triviale Code-Änderungen (≤2 Dateien, kein Architektur-Impact) |
 
-| `knowledge-curator` | Strategische Knowledge-Engine-Steuerung: Schema-Evolution, Wiki-Strukturierun... |
+| `knowledge-curator` | Strategische Knowledge-Engine-Steuerung: Schema-Evolution, Wiki-Strukturierun |
 
-| `knowledge-gardener` | Kleinteilige Wiki-Pflege: Links reparieren, Tags harmonisieren, Frontmatter e... |
+| `knowledge-gardener` | Kleinteilige Wiki-Pflege: Links reparieren, Tags harmonisieren, Frontmatter e |
 
-| `knowledge-indexer` | Pflegt index.md (Content-Katalog, OKF §6) und log.md (Chronologisches Event-L... |
+| `knowledge-indexer` | Pflegt index.md (Content-Katalog, OKF §6), log.md (Chronologisches Event-L |
 
-| `knowledge-ingestor` | Sources einlesen, Key Information extrahieren, Wiki-Seiten erstellen/ aktuali... |
+| `knowledge-ingestor` | Sources einlesen, Key Information extrahieren, Wiki-Seiten erstellen/ aktuali |
 
-| `knowledge-linter` | Wiki-Gesundheitscheck: Widersprüche, Orphans, veraltete Claims, kaputte Links... |
+| `knowledge-linter` | Wiki-Gesundheitscheck: Widersprüche, Orphans, veraltete Claims |
 
-| `knowledge-migrator` | Vorhandene Projektinhalte aufräumen und OKF-konform ins Knowledge Wiki migrieren |
+| `knowledge-migrator` | Vorhandene Projektinhalte aufräumen, OKF-konform ins Knowledge Wiki migrieren |
 
 | `knowledge-querier` | Fragen gegen das Knowledge Wiki beantworten |
 
-| `log-analyzer` | System- und Applikations-Logs analysieren: Frequency-Clustering, Severity-Kla... |
+| `log-analyzer` | System, Applikations-Logs analysieren: Frequency-Clustering, Severity-Kla |
 
 | `meta-feedback` | Verbesserungsvorschläge für agent-meta als GitHub Issues einreichen |
 
 | `orchestrator` | Einstiegspunkt für alle Entwicklungsaufgaben |
 
-| `performance-optimizer` | Big-O Bottleneck-Identifikation und datengetriebene Performance-Optimierung. |
+| `performance-optimizer` | Big-O Bottleneck-Identifikation, datengetriebene Performance-Optimierung |
 
 | `planner` | Umsetzungsplanung |
 
-| `release` | Versioning, Changelog, Build-Artifact, GitHub Release erstellen |
+| `release` | Versioning, Changelog, Build-Artifact |
 
 | `requirements` | Anforderungen aufnehmen, REQ-IDs vergeben, REQUIREMENTS.md pflegen |
 
-| `senior-developer` | Komplexe Features, Architektur-Entscheidungen, schwierige Bugs, Cross-Cutting... |
+| `senior-developer` | Komplexe Features, Architektur-Entscheidungen, schwierige Bugs |
 
-| `technical-writer` | Externe entwickler- und nutzergerichtete Doku: API-Referenzen, Getting-Starte... |
+| `technical-writer` | Externe entwickler, nutzergerichtete Doku: API-Referenzen, Getting-Starte |
 
 | `tester` | TDD, Test-Suite ausführen, Testabdeckung sichern |
 
-| `ui-ux-designer` | UI-Spezifikationen, Mockups und Design-Systeme erstellen. |
+| `ui-ux-designer` | UI-Spezifikationen, Mockups, Design-Systeme erstellen |
 
 | `validator` | Code gegen REQs prüfen, DoD-Checkliste, Traceability-Audit |
 
