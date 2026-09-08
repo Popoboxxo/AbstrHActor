@@ -287,3 +287,6 @@ test-results/
 
 # Local scratch note for content pending an external MCP sync — not project state.
 .reqogniloom-pending-sync.md
+
+# agent-meta v1.0.0+ provider-agnostic hooks dir (generated, like .claude/, .gemini/, .opencode/)
+.agents/
