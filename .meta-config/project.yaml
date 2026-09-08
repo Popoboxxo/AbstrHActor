@@ -234,7 +234,7 @@ variables:
   HACS_CATEGORY: integration
 orchestrator:
   enabled: true
-  mode: main-chat
+  mode: advisory
   handoff:
     protocol: none
 knowledge-engine:
@@ -318,7 +318,13 @@ external-skills:
 skills-registry: {}
 mcp-registry: {}
 speech-mode: caveman
-platforms: []
+platforms:
+- hacs
+auto_commit:
+  mode: auto
+  triggers:
+  - task-boundary
+  secret_scan: true
 provider-options:
   Claude: {}
   Continue: {}

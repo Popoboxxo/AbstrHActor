@@ -103,7 +103,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
 
 Generiert von agent-meta v1.0.0 — `2026-09-08`
 DoD-Preset: **rapid-prototyping** | REQ-Traceability: false | Tests: true | Codebase-Overview: false | Security-Audit: false
-> **Einstiegspunkt:** Du bist im `main-chat` Modus. Du agierst direkt als Router und Worker (siehe `use-orchestrator.md`).
+> **Einstiegspunkt:** Starte mit dem `orchestrator`-Agenten für alle Entwicklungsaufgaben — Ausnahmen siehe Abschnitt »Orchestrator — Universal Router«.
 
 ## Knowledge Engine
 

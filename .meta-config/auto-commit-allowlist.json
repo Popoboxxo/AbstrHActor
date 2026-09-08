@@ -1,9 +1,39 @@
 {
   "custom_script": null,
-  "eligible_roles": [],
+  "eligible_roles": [
+    "accessibility-specialist",
+    "agent-meta-manager",
+    "api-specialist",
+    "data-engineer",
+    "database-engineer",
+    "developer",
+    "devops-engineer",
+    "docker",
+    "documenter",
+    "e2e-tester",
+    "ideation",
+    "junior-developer",
+    "knowledge-curator",
+    "knowledge-gardener",
+    "knowledge-indexer",
+    "knowledge-ingestor",
+    "knowledge-migrator",
+    "knowledge-querier",
+    "orchestrator",
+    "performance-optimizer",
+    "planner",
+    "release",
+    "requirements",
+    "senior-developer",
+    "technical-writer",
+    "tester",
+    "ui-ux-designer"
+  ],
   "file_count_threshold": 5,
-  "mode": "off",
+  "mode": "auto",
   "secret_scan": true,
-  "triggers": [],
+  "triggers": [
+    "task-boundary"
+  ],
   "version": 1
 }
