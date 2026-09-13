@@ -10,6 +10,58 @@
 
 > Struktur: siehe Verzeichnisstruktur im Repo (`ls`/`find`); deklarativ: `.meta-config/project.yaml` → `variables.PROJECT_STRUCTURE`.
 
+**Verzeichnisstruktur:**
+```
+# Root
+hacs.json                  # HACS manifest (name, homeassistant version, etc.)
+custom_components/abstractor/
+  __init__.py          # async_setup_entry, async_unload_entry
+  manifest.json        # HA manifest (domain, version, requirements, iot_class)
+  const.py             # DOMAIN, CONF_*, SENSOR_TYPES enum
+  config_flow.py       # ConfigFlow with unique ID, discovery steps
+  coordinator.py       # DataUpdateCoordinator — central polling
+  diagnostics.py       # Diagnostics support
+  filters.py           # Value filters (spike filter, monotonic guard)
+  frontend.py          # Frontend integration entry point
+  influx_exporter.py   # InfluxDB exporter
+  sensor.py            # Sensor platform — CoordinatorEntity + EntityDescription
+  snapshot.py          # Snapshot support
+  services.yaml        # Service definitions
+  strings.json         # Config flow translations (i18n)
+  icons.json           # Entity icon translations (mdi icons)
+  repository/
+    device_registry.py # Device registry (Repository pattern)
+  brand/
+    icon.png           # Brand icon for HACS UI (256x256)
+    logo.png           # Brand logo (optional)
+  translations/        # Translation catalogs
+  www/                 # Frontend static assets
+  # PLANNED / roadmap (do not exist yet):
+  bridge/              # AbstractBridge protocol + serial/mqtt/http bridges
+  sensor_types/        # SensorType enum + EntityDescription registry
+tests/                 # 14 test files (root-level)
+  __init__.py
+  conftest.py          # Pytest fixtures (mock HA, mock bridges)
+  test_config_flow.py  # Config flow tests (required: 100% coverage)
+  test_coordinator.py
+  test_diagnostics.py
+  test_filters.py
+  test_frontend.py
+  test_influx_exporter.py
+  test_lifecycle.py
+  test_migration.py
+  test_reconciliation.py
+  test_sensor.py
+  test_services.py
+  test_snapshot.py
+docs/
+  ARCHITECTURE.md      # High-level architecture docs
+  SENSOR_TYPES.md      # Supported sensor types and their interfaces
+.github/
+  workflows/
+    validate.yaml      # HACS Action + Hassfest validation on push/PR
+```
+
 > Runtime & Abhängigkeiten: siehe Projekt-Manifest (`pyproject.toml` / `requirements.txt` / `package.json` / `manifest.json`).
 
 **Entry-Point:** `custom_components/abstractor/__init__.py`
@@ -77,7 +129,7 @@ Kategorien für `docs/REQUIREMENTS.md`:
  Opencode->AGENTS.md |
  Gemini->AGENTS.md
 > **ENTRY:** `orchestrator`-Agent (für alle Dev-Tasks).
-`agent-meta v1.0.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
+`agent-meta v1.1.0` | DoD: `rapid-prototyping` | REQ-Trace: `false`
 
 
 
@@ -380,6 +432,7 @@ Git Mutationen (commit, push, add etc) -> `git` Agent. Read-only (status, log) i
 Ausnahme auf User-Wunsch erlaubt.
 
 Native Extensions (Skills/Hooks) erlaubt, ignorieren nicht Branch-Guard/DoD.
+Skill-getriebene Sub-Agent-Loops (z.B. generische Harness-Skills wie `subagent-driven-development`) sind KEINE dritte Ausnahme von der Orchestrator-Pflicht: ein Skill darf einen bereits vom `orchestrator` gestarteten Loop ausführen, aber niemals selbst zum Einstiegspunkt für einen neuen Dev-Task werden. Einzige Ausnahmen bleiben User-Override und der aktive Main-Chat-Modus.
 
 
 
