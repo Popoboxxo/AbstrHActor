@@ -26,6 +26,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_CREATE_NEW_DEVICE,
+    CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
@@ -42,6 +43,7 @@ from .const import (
     CONF_INVERT,
     CONF_LEGACY_UNIQUE_ID,
     CONF_NET_SUBTRACT_ENTITY_ID,
+    CONF_NOTIFY_ENTITY_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -203,6 +205,115 @@ def _sensor_unique_id(data: Mapping[str, Any]) -> str:
     return f"abstractor_{device_type}_{'_'.join(sorted(sources))}"
 
 
+def _normalize_subentry_data(
+    hass: HomeAssistant,
+    user_input: dict[str, Any],
+    sources: list[str],
+    current_data: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Shared shaping for both create and reconfigure: sources, legacy id,
+    and resolving a picked target device into our own identifier key.
+
+    Lives at module level (not on the flow handler) so the snapshot import
+    restore path in ``__init__.py`` runs the exact same data shaping as the
+    config flow instead of a copy that could drift apart. ``hass`` is only
+    needed to resolve a submitted target device id into this integration's
+    own ``(DOMAIN, X)`` identifier.
+
+    `current_data` is the subentry's pre-existing data, passed only on
+    reconfigure. Anything it already carries wins over an absent field in
+    the submission — a reconfigure changes what the user actually changed,
+    never what the form simply did not repeat.
+
+    `CONF_LEGACY_UNIQUE_ID` goes one step further: once set it is carried
+    forward *unconditionally*, so a resubmission can neither clear nor
+    change it. Device-group resolution, in priority order:
+    1. `CONF_TARGET_DEVICE_ID` submitted → resolve and use that group id
+       (moving to a specific existing device always wins).
+    2. Else `CONF_CREATE_NEW_DEVICE` is True in this submission → the
+       explicit "detach" signal; `CONF_DEVICE_GROUP_ID` is left absent
+       from the returned data entirely, so the sensor falls back to its
+       own device keyed by its own subentry_id (same as an ungrouped
+       sensor elsewhere in this codebase).
+    3. Else (neither submitted) → any group id the subentry already had
+       is carried forward unchanged rather than silently dropped —
+       reconfiguring a bundled sensor for an unrelated reason (e.g.
+       toggling spike_filter) must not un-bundle it from its device.
+
+    This stays a pure data-shaping function: the ownership safety decision
+    and the actual registry transaction live in the flow handler's
+    `_validate_device_mapping` (called from the flow steps before this
+    runs), and the UI-only keys (`CONF_TARGET_DEVICE_ID`,
+    `CONF_CREATE_NEW_DEVICE`) are popped here so they are never persisted.
+    """
+    data = dict(user_input)
+    if len(sources) > 1:
+        data[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
+    else:
+        data.pop(CONF_SOURCE_ENTITY_IDS, None)
+
+    # A legacy unique id is this sensor's identity, not a preference: it is
+    # what the entity registry keyed the row on, and with it every bit of
+    # recorder history hanging off that row. Whether it got there through a
+    # YAML template migration (REQ-CORE-003) or through the device-bundling
+    # reconciliation pinning the pre-migration id, clearing or changing it
+    # re-derives the unique_id from the current sources, orphans the
+    # existing entity and starts a second one from zero.
+    #
+    # So an already-set value always wins: the reconfigure schema does not
+    # even offer the field once one exists, and this carries it forward
+    # regardless of what the submission contains — the schema decides what
+    # a user can see, this decides what the data can lose. Setting one for
+    # the first time stays possible; that is a deliberate, typed-in action.
+    pinned_legacy_unique_id = (
+        current_data.get(CONF_LEGACY_UNIQUE_ID) if current_data else None
+    )
+    legacy_unique_id = pinned_legacy_unique_id or data.get(CONF_LEGACY_UNIQUE_ID)
+    if legacy_unique_id:
+        data[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
+    else:
+        data.pop(CONF_LEGACY_UNIQUE_ID, None)
+
+    target_device_id = data.pop(CONF_TARGET_DEVICE_ID, None)
+    create_new_device = data.pop(CONF_CREATE_NEW_DEVICE, False)
+    if target_device_id:
+        group_id = _device_group_id_for_device(hass, target_device_id)
+        if group_id:
+            data[CONF_DEVICE_GROUP_ID] = group_id
+    elif create_new_device:
+        # Explicit detach: leave CONF_DEVICE_GROUP_ID absent entirely.
+        pass
+    elif current_data and current_data.get(CONF_DEVICE_GROUP_ID):
+        data[CONF_DEVICE_GROUP_ID] = current_data[CONF_DEVICE_GROUP_ID]
+    return data
+
+
+def _build_new_subentry_data(
+    hass: HomeAssistant,
+    user_input: dict[str, Any],
+    sources: list[str],
+) -> dict[str, Any]:
+    """Shape a raw submission into persistable data for a NEW sensor.
+
+    Shared by the config flow create step and the snapshot import restore
+    (`__init__.py`) so both paths normalize sources and pin a stable
+    identity identically. The caller must already have validated that
+    `sources` is non-empty. If the submission carries no explicit
+    `CONF_LEGACY_UNIQUE_ID`, one is generated now, at creation time only —
+    this is what closes GH#19: without it, a brand-new sensor's unique_id
+    is derived from its source entity ids (see sensor.py) and changes the
+    moment the user reconfigures it onto different hardware, orphaning the
+    entity and its recorder history. `_normalize_subentry_data`/sensor.py
+    already treat a set legacy_unique_id as permanent and winning over any
+    later source change — this just makes sure one always exists from the
+    start.
+    """
+    data = dict(user_input)
+    if not data.get(CONF_LEGACY_UNIQUE_ID):
+        data[CONF_LEGACY_UNIQUE_ID] = f"abstractor_{uuid.uuid4().hex}"
+    return _normalize_subentry_data(hass, data, sources)
+
+
 class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the one-time setup of the Abstractor root entry."""
 
@@ -287,51 +398,69 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
     def _init_schema(current: dict[str, Any], interval_value: str) -> vol.Schema:
         """Build the main options-flow schema (shared by the initial render
         and the re-render-with-errors path after a validation failure)."""
-        return vol.Schema(
-            {
-                vol.Required(
-                    CONF_POLL_INTERVAL, default=interval_value
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            *(str(value) for value in POLL_INTERVAL_PRESETS),
-                            "custom",
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
+        schema: dict[Any, Any] = {
+            vol.Required(
+                CONF_POLL_INTERVAL, default=interval_value
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        *(str(value) for value in POLL_INTERVAL_PRESETS),
+                        "custom",
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.PASSWORD
+                )
+            ),
+            vol.Optional(
+                CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_DEVICE_NAME,
+                default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_DEVICE_MANUFACTURER,
+                default=current.get(
+                    CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
                 ),
-                vol.Optional(
-                    CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
-                ): selector.TextSelector(),
-                vol.Optional(
-                    CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
-                ): selector.TextSelector(
-                    selector.TextSelectorConfig(
-                        type=selector.TextSelectorType.PASSWORD
-                    )
-                ),
-                vol.Optional(
-                    CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")
-                ): selector.TextSelector(),
-                vol.Optional(
-                    CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
-                ): selector.TextSelector(),
-                vol.Optional(
-                    CONF_DEVICE_NAME,
-                    default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
-                ): selector.TextSelector(),
-                vol.Optional(
-                    CONF_DEVICE_MANUFACTURER,
-                    default=current.get(
-                        CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
-                    ),
-                ): selector.TextSelector(),
-                vol.Optional(
-                    CONF_DEVICE_MODEL,
-                    default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
-                ): selector.TextSelector(),
-            }
-        )
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_DEVICE_MODEL,
+                default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
+            ): selector.TextSelector(),
+        }
+        # Optional entity selectors must not carry a None default: voluptuous
+        # applies defaults before the selector runs, and an entity selector
+        # rejects None (there is no entity to validate it against). So the
+        # default is only attached when a value already exists — on first
+        # setup the key stays absent, which both the tests and the frontend
+        # treat as "not configured". An explicit None (the frontend's way of
+        # clearing a selector) stays valid via vol.Any so a configured
+        # target can be removed again.
+        for key, domain in (
+            (CONF_DEBUG_SWITCH_ENTITY_ID, "input_boolean"),
+            (CONF_NOTIFY_ENTITY_ID, "notify"),
+        ):
+            entity_selector = selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=domain)
+            )
+            kwargs: dict[str, Any] = {}
+            if current.get(key):
+                kwargs["default"] = current[key]
+            schema[vol.Optional(key, **kwargs)] = vol.Any(None, entity_selector)
+        return vol.Schema(schema)
 
     async def async_step_poll_interval(
         self, user_input: dict[str, Any] | None = None
@@ -395,22 +524,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     return self.async_show_form(
                         step_id="user", data_schema=self._schema(), errors=errors
                     )
-                if not user_input.get(CONF_LEGACY_UNIQUE_ID):
-                    # No stable identity was typed in manually — generate one
-                    # now, at creation time only. This is what closes GH#19:
-                    # without it, a brand-new sensor's unique_id is derived
-                    # from its source entity ids (see sensor.py) and changes
-                    # the moment the user reconfigures it onto different
-                    # hardware, orphaning the entity and its recorder
-                    # history. _normalize()/sensor.py already treat a set
-                    # legacy_unique_id as permanent and winning over any
-                    # later source change — this just makes sure one always
-                    # exists from the start.
-                    user_input = {
-                        **user_input,
-                        CONF_LEGACY_UNIQUE_ID: f"abstractor_{uuid.uuid4().hex}",
-                    }
-                data = self._normalize(user_input, sources)
+                data = _build_new_subentry_data(self.hass, user_input, sources)
                 device_type = data[CONF_DEVICE_TYPE]
                 return self.async_create_entry(
                     title=f"Abstract {device_type}", data=data
@@ -903,75 +1017,14 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         sources: list[str],
         current_data: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Shared shaping for both create and reconfigure: sources, legacy id,
-        and resolving a picked target device into our own identifier key.
+        """Delegate to the shared module-level shaping helper.
 
-        `current_data` is the subentry's pre-existing data, passed only on
-        reconfigure. Anything it already carries wins over an absent field in
-        the submission — a reconfigure changes what the user actually changed,
-        never what the form simply did not repeat.
-
-        `CONF_LEGACY_UNIQUE_ID` goes one step further: once set it is carried
-        forward *unconditionally*, so a resubmission can neither clear nor
-        change it. Device-group resolution, in priority order:
-        1. `CONF_TARGET_DEVICE_ID` submitted → resolve and use that group id
-           (moving to a specific existing device always wins).
-        2. Else `CONF_CREATE_NEW_DEVICE` is True in this submission → the
-           explicit "detach" signal; `CONF_DEVICE_GROUP_ID` is left absent
-           from the returned data entirely, so the sensor falls back to its
-           own device keyed by its own subentry_id (same as an ungrouped
-           sensor elsewhere in this codebase).
-        3. Else (neither submitted) → any group id the subentry already had
-           is carried forward unchanged rather than silently dropped —
-           reconfiguring a bundled sensor for an unrelated reason (e.g.
-           toggling spike_filter) must not un-bundle it from its device.
-
-        This stays a pure data-shaping function: the ownership safety decision
-        and the actual registry transaction live in `_validate_device_mapping`
-        (called from the flow handlers before this runs), and the UI-only keys
-        (`CONF_TARGET_DEVICE_ID`, `CONF_CREATE_NEW_DEVICE`) are popped above so
-        they are never persisted.
+        Kept as a method so existing flow call sites and tests stay
+        unchanged; the actual logic lives in `_normalize_subentry_data`,
+        which the snapshot import restore path shares (single source of
+        truth for subentry data shaping).
         """
-        data = dict(user_input)
-        if len(sources) > 1:
-            data[CONF_SOURCE_ENTITY_IDS] = sorted(set(sources))
-        else:
-            data.pop(CONF_SOURCE_ENTITY_IDS, None)
-
-        # A legacy unique id is this sensor's identity, not a preference: it is
-        # what the entity registry keyed the row on, and with it every bit of
-        # recorder history hanging off that row. Whether it got there through a
-        # YAML template migration (REQ-CORE-003) or through the device-bundling
-        # reconciliation pinning the pre-migration id, clearing or changing it
-        # re-derives the unique_id from the current sources, orphans the
-        # existing entity and starts a second one from zero.
-        #
-        # So an already-set value always wins: the reconfigure schema does not
-        # even offer the field once one exists, and this carries it forward
-        # regardless of what the submission contains — the schema decides what
-        # a user can see, this decides what the data can lose. Setting one for
-        # the first time stays possible; that is a deliberate, typed-in action.
-        pinned_legacy_unique_id = (
-            current_data.get(CONF_LEGACY_UNIQUE_ID) if current_data else None
-        )
-        legacy_unique_id = pinned_legacy_unique_id or data.get(CONF_LEGACY_UNIQUE_ID)
-        if legacy_unique_id:
-            data[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
-        else:
-            data.pop(CONF_LEGACY_UNIQUE_ID, None)
-
-        target_device_id = data.pop(CONF_TARGET_DEVICE_ID, None)
-        create_new_device = data.pop(CONF_CREATE_NEW_DEVICE, False)
-        if target_device_id:
-            group_id = _device_group_id_for_device(self.hass, target_device_id)
-            if group_id:
-                data[CONF_DEVICE_GROUP_ID] = group_id
-        elif create_new_device:
-            # Explicit detach: leave CONF_DEVICE_GROUP_ID absent entirely.
-            pass
-        elif current_data and current_data.get(CONF_DEVICE_GROUP_ID):
-            data[CONF_DEVICE_GROUP_ID] = current_data[CONF_DEVICE_GROUP_ID]
-        return data
+        return _normalize_subentry_data(self.hass, user_input, sources, current_data)
 
     @staticmethod
     def _schema(

@@ -11,3 +11,17 @@ import_data:
       required: true
       selector:
         object:
+delete_sensor:
+  name: Delete Abstract Sensor
+  description: Deletes an Abstract sensor subentry, its entity, and its device.
+  fields:
+    subentry_id:
+      name: Subentry ID
+      description: ID of the sensor subentry (also listed as entry_id per entry in export snapshots).
+      selector:
+        text:
+    legacy_unique_id:
+      name: Legacy unique ID
+      description: Alternative — the sensor's unique_id as shown in the entity registry. Provide either this or subentry_id, not both.
+      selector:
+        text:

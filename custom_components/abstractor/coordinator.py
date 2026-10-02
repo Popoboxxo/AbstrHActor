@@ -60,6 +60,12 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         self.pipelines: dict[str, AbstractorFilterPipeline] = {}
         self.influx_exporter = None
         self._last_notified_events: dict[str, str] = {}
+        # Debug notification targets, applied from the root entry's options on
+        # every setup (see __init__.py). Both None = the debug notify path is
+        # silently off; nothing here may fail when the referenced entities do
+        # not exist.
+        self.debug_switch_entity_id: str | None = None
+        self.notify_entity_id: str | None = None
 
     def set_update_interval(self, seconds: int) -> None:
         """Update and reschedule the coordinator's periodic refresh timer.
@@ -171,19 +177,39 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         return self._read_state(condition_entity_id) == expected_state
 
     async def _async_notify_debug(self, subentry_id: str, event: str | None) -> None:
-        """Send deduplicated debug events through the existing HA notify group."""
+        """Send deduplicated debug events to the configured notify target.
+
+        The targets come from the root entry's options (applied on every
+        setup in __init__.py): an `input_boolean` gate and a `notify`
+        entity. When either option is unset the whole path is a silent
+        no-op — this is diagnostics plumbing, never a reason for a poll
+        cycle to fail. A referenced entity that does not (or no longer)
+        exists simply fails its checks here (`is_state` is False for a
+        missing entity, `has_service` guards the call), it never raises.
+        """
         if event is None:
             self._last_notified_events.pop(subentry_id, None)
             return
         if self._last_notified_events.get(subentry_id) == event:
             return
-        if not self.hass.states.is_state("input_boolean.automation_debugger", "on"):
+        debug_switch = self.debug_switch_entity_id
+        notify_entity_id = self.notify_entity_id
+        if not debug_switch or not notify_entity_id:
             return
-        if not self.hass.services.has_service("notify", "adminnotificationgroup"):
+        if not self.hass.states.is_state(debug_switch, "on"):
+            return
+        if not notify_entity_id.startswith("notify."):
+            _LOGGER.debug(
+                "Abstractor debug notify target %s is not a notify entity; skipping",
+                notify_entity_id,
+            )
+            return
+        service = notify_entity_id.removeprefix("notify.")
+        if not self.hass.services.has_service("notify", service):
             return
         await self.hass.services.async_call(
             "notify",
-            "adminnotificationgroup",
+            service,
             {"message": f"Abstractor {subentry_id}: {event}"},
             blocking=False,
         )

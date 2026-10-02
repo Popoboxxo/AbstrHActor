@@ -34,11 +34,13 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.abstractor.const import (
+    CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_TYPE,
     CONF_INFLUX_BUCKET,
     CONF_INFLUX_HOST,
     CONF_INFLUX_ORG,
     CONF_INFLUX_TOKEN,
+    CONF_NOTIFY_ENTITY_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     DOMAIN,
@@ -278,3 +280,51 @@ async def test_unload_clears_exporter(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     assert coordinator.influx_exporter is None
+
+
+_DEBUG_NOTIFY_OPTIONS = {
+    CONF_DEBUG_SWITCH_ENTITY_ID: "input_boolean.automation_debugger",
+    CONF_NOTIFY_ENTITY_ID: "notify.adminnotificationgroup",
+}
+
+
+async def test_setup_applies_debug_notify_options(hass: HomeAssistant) -> None:
+    """[B7] The debug-notify targets are applied to the coordinator from the
+    root entry's options on setup (replacing the former hardcoded entities)."""
+    await _setup_root_with_options(hass, _DEBUG_NOTIFY_OPTIONS)
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.debug_switch_entity_id == "input_boolean.automation_debugger"
+    assert coordinator.notify_entity_id == "notify.adminnotificationgroup"
+
+
+async def test_setup_without_debug_notify_options_leaves_them_unset(
+    hass: HomeAssistant,
+) -> None:
+    """[B7] No options -> both targets None -> the coordinator's debug
+    notify path is silently off."""
+    await _setup_root_with_options(hass, {})
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.debug_switch_entity_id is None
+    assert coordinator.notify_entity_id is None
+
+
+async def test_options_change_reload_reapplies_debug_notify_options(
+    hass: HomeAssistant,
+) -> None:
+    """[B7] Changing the options reloads the entry and re-applies the
+    debug-notify targets — including clearing them when removed."""
+    root_entry = await _setup_root_with_options(hass, _DEBUG_NOTIFY_OPTIONS)
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.notify_entity_id == "notify.adminnotificationgroup"
+
+    hass.config_entries.async_update_entry(
+        root_entry,
+        options={CONF_NOTIFY_ENTITY_ID: "notify.other_target"},
+    )
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    assert coordinator.debug_switch_entity_id is None
+    assert coordinator.notify_entity_id == "notify.other_target"
