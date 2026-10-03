@@ -25,6 +25,9 @@ from custom_components.abstractor.config_flow import (
     _sensor_unique_id,
 )
 from custom_components.abstractor.const import (
+    AGGREGATION_MAX,
+    AGGREGATION_SUM,
+    CONF_AGGREGATION,
     CONF_CREATE_NEW_DEVICE,
     CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_GROUP_ID,
@@ -250,6 +253,57 @@ async def test_subentry_create_form_multi_source_dedup(hass: HomeAssistant) -> N
         "sensor.a_power",
         "sensor.b_power",
     ]
+
+
+async def test_subentry_create_form_aggregation_mode(hass: HomeAssistant) -> None:
+    """[B2] The aggregation mode is a per-subentry option: max is persisted,
+    and omitting the field defaults the subentry to sum."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_IDS: ["sensor.a_power", "sensor.b_power"],
+            CONF_AGGREGATION: AGGREGATION_MAX,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    subentry = next(iter(root_entry.subentries.values()))
+    assert subentry.data[CONF_AGGREGATION] == AGGREGATION_MAX
+
+
+async def test_subentry_create_form_aggregation_defaults_to_sum(
+    hass: HomeAssistant,
+) -> None:
+    """[B2] Without an explicit submission the flow stores the sum default,
+    so pre-B2 subentries and fresh ones share one explicit mode."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    subentry = next(iter(root_entry.subentries.values()))
+    assert subentry.data[CONF_AGGREGATION] == AGGREGATION_SUM
 
 
 async def test_subentry_create_form_legacy_unique_id(hass: HomeAssistant) -> None:

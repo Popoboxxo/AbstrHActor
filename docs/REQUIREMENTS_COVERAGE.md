@@ -14,7 +14,7 @@ Audit against `LASTENHEFT_ABSTRAKTIONS_INTEGRATION.md`.
 | FA-08 | Delegated to HA | Existing Utility Meter remains the supported consumer. |
 | FA-09 | Unsupported by API | Existing YAML unique IDs cannot be claimed safely by a custom integration. Manual registry/consumer migration is required. |
 | FA-10 | Implemented with explicit sources | Multiple selected entities provide aggregation equivalent to pattern matching. |
-| FA-11 | Implemented | Multiple source entities are summed. |
+| FA-11 | Implemented | Multiple source entities are combined per the subentry's aggregation mode: sum (default), max/min, or first_available (REQ-CORE-004 extension, B2). |
 | FA-12 | Implemented | Invert and fallback behavior are configurable per entry. Conditional cross-entity fallback is not modeled. |
 | FA-13 | Implemented | Deduplicated events log at debug level and notify the configured `notify` entity only while the configured `input_boolean` debug switch is on (root options, REQ-NFA-007; formerly hardcoded). |
 | NFA-01 | Implemented | One coordinator poll and deduplicated notifications. |

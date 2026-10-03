@@ -11,6 +11,7 @@ ROOT_ENTRY_TITLE: Final = "Abstractor"
 CONF_DEVICE_TYPE: Final = "device_type"
 CONF_SOURCE_ENTITY_ID: Final = "source_entity_id"
 CONF_SOURCE_ENTITY_IDS: Final = "source_entity_ids"
+CONF_AGGREGATION: Final = "aggregation"
 CONF_SPIKE_FILTER: Final = "spike_filter"
 CONF_INVERT: Final = "invert"
 CONF_FALLBACK_ZERO: Final = "fallback_zero"
@@ -51,6 +52,18 @@ SENSOR_TYPES = [
     TYPE_POWER,
     TYPE_ENERGY,
     TYPE_WATER,
+]
+
+# Aggregation modes for multi-source subentries (REQ-CORE-004 extension, B2).
+AGGREGATION_SUM: Final = "sum"
+AGGREGATION_MAX: Final = "max"
+AGGREGATION_MIN: Final = "min"
+AGGREGATION_FIRST_AVAILABLE: Final = "first_available"
+AGGREGATION_MODES: Final = [
+    AGGREGATION_SUM,
+    AGGREGATION_MAX,
+    AGGREGATION_MIN,
+    AGGREGATION_FIRST_AVAILABLE,
 ]
 
 DEFAULT_POLL_INTERVAL: Final = 30
