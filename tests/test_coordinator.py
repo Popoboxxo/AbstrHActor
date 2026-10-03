@@ -307,6 +307,29 @@ async def test_add_subentry_without_seed_defaults_to_none() -> None:
     assert coordinator.pipelines["subentry-1"]._last_valid_state is None
 
 
+async def test_add_subentry_defaults_aggregation_to_sum() -> None:
+    """[B2] Subentries stored before aggregation modes existed carry no
+    mode; add_subentry normalizes it to the explicit sum default so the
+    pipeline never has to guess (and an explicit mode is passed through)."""
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+
+    coordinator.add_subentry(
+        "subentry-1", {"device_type": "power", "source_entity_id": "sensor.x"}
+    )
+    coordinator.add_subentry(
+        "subentry-2",
+        {
+            "device_type": "power",
+            "source_entity_id": "sensor.y",
+            "aggregation": "max",
+        },
+    )
+
+    assert coordinator.subentry_data["subentry-1"]["aggregation"] == "sum"
+    assert coordinator.pipelines["subentry-1"].config["aggregation"] == "sum"
+    assert coordinator.subentry_data["subentry-2"]["aggregation"] == "max"
+
+
 def test_add_subentry_logs_warning_when_device_type_missing(caplog) -> None:
     """A corrupted/legacy subentry with no device_type still defaults to
     'power' for polling, but must not do so silently."""

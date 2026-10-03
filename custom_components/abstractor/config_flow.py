@@ -25,6 +25,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
 from .const import (
+    AGGREGATION_MODES,
+    AGGREGATION_SUM,
+    CONF_AGGREGATION,
     CONF_CREATE_NEW_DEVICE,
     CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_GROUP_ID,
@@ -1064,6 +1067,14 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             schema[vol.Optional(CONF_LEGACY_UNIQUE_ID)] = selector.TextSelector()
         schema.update(
             {
+                vol.Optional(
+                    CONF_AGGREGATION, default=AGGREGATION_SUM
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=AGGREGATION_MODES,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(CONF_SPIKE_FILTER, default=False): bool,
                 vol.Optional(CONF_INVERT, default=False): bool,
                 vol.Optional(CONF_FALLBACK_ZERO, default=False): bool,

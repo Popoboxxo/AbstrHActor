@@ -5,6 +5,15 @@ import logging
 import math
 from typing import Any
 
+from .const import (
+    AGGREGATION_FIRST_AVAILABLE,
+    AGGREGATION_MAX,
+    AGGREGATION_MIN,
+    AGGREGATION_MODES,
+    AGGREGATION_SUM,
+    CONF_AGGREGATION,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 class AbstractorFilterPipeline:
@@ -58,13 +67,38 @@ class AbstractorFilterPipeline:
         Power sources are fail-soft and contribute zero when unavailable. Energy
         sources are fail-closed so a utility meter cannot count a bad sample.
 
+        The per-subentry ``aggregation`` mode (REQ-CORE-004 extension) decides
+        how the successfully parsed source values are combined:
+
+        - ``sum`` (default): all parsed values are added. For power, sources
+          that fail to parse are skipped (they contribute zero); for
+          energy/water a single failed source fails the whole aggregate
+          closed (``None``) so a utility meter cannot count a bad sample.
+        - ``max`` / ``min``: the highest / lowest parsed value wins. Only
+          successfully parsed sources are considered — a partially failed
+          multi-source sensor still reports a value. When NO source parses,
+          the device-type fallback applies (power fails soft to ``0.0``,
+          energy/water fail closed to ``None``).
+        - ``first_available``: the first successfully parsed source in the
+          configured (sorted) source order wins; when none parse, the same
+          device-type fallback as for ``max``/``min`` applies.
+
+        In every mode the configured ``invert`` transformation has already
+        been applied to each parsed value, and the device-type failure
+        contract is unchanged: power never fails closed, energy/water never
+        invent a sample.
+
         ``net_subtract_raw`` (REQ-CORE-005) is subtracted from the aggregate
-        after summing, e.g. to derive a net flow such as charge - discharge.
+        after aggregation, e.g. to derive a net flow such as charge - discharge.
 
         ``fallback_raw``/``fallback_condition_met`` (REQ-COMP-004) provide an
         alternate hardware source used only when the primary aggregate is
         unavailable AND the configured condition is met.
         """
+        aggregation = self.config.get(CONF_AGGREGATION, AGGREGATION_SUM)
+        if aggregation not in AGGREGATION_MODES:
+            _LOGGER.debug("Unknown aggregation mode %s; using sum", aggregation)
+            aggregation = AGGREGATION_SUM
         last_value = self._last_valid_state
         spike_filter = self.config.get("spike_filter", False)
         self.config["spike_filter"] = False
@@ -72,22 +106,37 @@ class AbstractorFilterPipeline:
         fail_closed = False
         try:
             for raw_state in raw_states:
+                if aggregation != AGGREGATION_SUM and self._parse_plain(
+                    raw_state
+                ) is None:
+                    # max/min/first_available: a source that delivered no
+                    # parseable value is skipped entirely — including the
+                    # fail-soft 0.0 power would otherwise get — so a dead
+                    # channel can never win min/first_available. Only the
+                    # total absence of parsed values falls through to the
+                    # device-type fallback below.
+                    continue
                 value = self.process(raw_state)
                 if value is None:
                     if self.config.get("device_type") == "power":
                         continue
-                    # Fail-closed device types (energy/water): don't bail out
-                    # immediately — the REQ-COMP-004 fallback below still gets
-                    # a chance to supply a value before we give up.
-                    fail_closed = True
-                    break
+                    if aggregation == AGGREGATION_SUM:
+                        # Fail-closed device types (energy/water): don't bail
+                        # out immediately — the REQ-COMP-004 fallback below
+                        # still gets a chance to supply a value before we
+                        # give up.
+                        fail_closed = True
+                        break
+                    continue
                 values.append(value)
         finally:
             self.config["spike_filter"] = spike_filter
         if fail_closed:
             total = None
+        elif values:
+            total = self._aggregate_values(values, aggregation)
         else:
-            total = sum(values) if values else (0.0 if self.config.get("device_type") == "power" else None)
+            total = 0.0 if self.config.get("device_type") == "power" else None
         self._last_valid_state = last_value
 
         if total is not None and net_subtract_raw is not None:
@@ -125,6 +174,24 @@ class AbstractorFilterPipeline:
         except (ValueError, TypeError):
             return None
         return val if math.isfinite(val) else None
+
+    @staticmethod
+    def _aggregate_values(values: list[float], aggregation: str) -> float:
+        """Combine parsed per-source values per the configured aggregation mode.
+
+        ``values`` only contains successfully parsed (and possibly inverted)
+        source values, in configured source order. ``sum`` adds them (the
+        historical behavior), ``max``/``min`` pick the extreme, and
+        ``first_available`` keeps the first — i.e. the highest-priority
+        source that delivered a value.
+        """
+        if aggregation == AGGREGATION_MAX:
+            return max(values)
+        if aggregation == AGGREGATION_MIN:
+            return min(values)
+        if aggregation == AGGREGATION_FIRST_AVAILABLE:
+            return values[0]
+        return sum(values)
 
     def _handle_unavailable(self) -> float | None:
         if self.config.get("fallback_zero", False) or self.config.get("device_type") == "power":

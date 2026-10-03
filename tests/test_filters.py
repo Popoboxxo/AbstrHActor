@@ -1,5 +1,13 @@
 """Test Abstractor filter behavior."""
 
+import pytest
+
+from custom_components.abstractor.const import (
+    AGGREGATION_FIRST_AVAILABLE,
+    AGGREGATION_MAX,
+    AGGREGATION_MIN,
+    CONF_AGGREGATION,
+)
 from custom_components.abstractor.filters import AbstractorFilterPipeline
 
 
@@ -117,3 +125,94 @@ def test_pipeline_without_seed_defaults_to_none() -> None:
     pipeline = AbstractorFilterPipeline({"spike_filter": True})
 
     assert pipeline._last_valid_state is None
+
+
+def test_max_aggregation_takes_highest_parsed_value() -> None:
+    """B2: max picks the active channel across the successfully parsed sources."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", CONF_AGGREGATION: AGGREGATION_MAX}
+    )
+
+    assert pipeline.process_sources(["2", "unavailable", "5"]) == 5.0
+
+
+def test_min_aggregation_takes_lowest_parsed_value() -> None:
+    """B2: min picks the smallest of the successfully parsed sources."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", CONF_AGGREGATION: AGGREGATION_MIN}
+    )
+
+    assert pipeline.process_sources(["2", "unavailable", "5"]) == 2.0
+
+
+def test_first_available_uses_first_parsed_source_in_order() -> None:
+    """B2: first_available keeps the first source (in configured source order)
+    that delivered a parseable value."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", CONF_AGGREGATION: AGGREGATION_FIRST_AVAILABLE}
+    )
+
+    assert pipeline.process_sources(["unavailable", "3", "5"]) == 3.0
+
+
+def test_max_aggregation_tolerates_partial_failure_for_energy() -> None:
+    """B2: unlike sum, max/min/first_available aggregate the parsed remainder —
+    one failed energy source must not fail the whole aggregate closed."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "energy", CONF_AGGREGATION: AGGREGATION_MAX}
+    )
+
+    assert pipeline.process_sources(["2", "unavailable"]) == 2.0
+
+
+def test_invert_applies_before_max_aggregation() -> None:
+    """B2: inversion runs per source before the mode picks its value."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", "invert": True, CONF_AGGREGATION: AGGREGATION_MAX}
+    )
+
+    assert pipeline.process_sources(["2", "5"]) == -2.0
+
+
+def test_net_subtract_applies_after_max_aggregation() -> None:
+    """B2: net-subtract (REQ-CORE-005) still runs after a non-sum aggregate."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", CONF_AGGREGATION: AGGREGATION_MAX}
+    )
+
+    result = pipeline.process_sources(["10", "4"], net_subtract_raw="3")
+
+    assert result == 7.0
+
+
+@pytest.mark.parametrize(
+    ("mode", "device_type", "expected"),
+    [
+        (AGGREGATION_MAX, "power", 0.0),
+        (AGGREGATION_MIN, "power", 0.0),
+        (AGGREGATION_FIRST_AVAILABLE, "power", 0.0),
+        (AGGREGATION_MAX, "energy", None),
+        (AGGREGATION_MIN, "water", None),
+        (AGGREGATION_FIRST_AVAILABLE, "energy", None),
+    ],
+)
+def test_aggregation_all_sources_failed_keeps_device_type_contract(
+    mode: str, device_type: str, expected: float | None
+) -> None:
+    """B2: when NO source parses, each mode falls back to the unchanged
+    device-type contract: power fails soft to 0.0, energy/water fail closed
+    to None (which also leaves the REQ-COMP-004 fallback a chance to fire)."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": device_type, CONF_AGGREGATION: mode}
+    )
+
+    assert pipeline.process_sources(["unavailable", "unknown"]) == expected
+
+
+def test_aggregation_unknown_mode_falls_back_to_sum() -> None:
+    """A hand-edited or invalid mode never crashes the pipeline; it sums."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", CONF_AGGREGATION: "median"}
+    )
+
+    assert pipeline.process_sources(["2", "3"]) == 5.0

@@ -9,6 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    AGGREGATION_SUM,
+    CONF_AGGREGATION,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
     CONF_FALLBACK_SOURCE_ENTITY_ID,
@@ -108,6 +110,11 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 subentry_id,
             )
             config["device_type"] = "power"
+        # Subentries stored before aggregation modes existed (B2) carry no
+        # mode; every pipeline config gets an explicit one so the filter
+        # pipeline never has to guess. The pipeline still defends itself
+        # against a missing/invalid key when constructed directly.
+        config.setdefault(CONF_AGGREGATION, AGGREGATION_SUM)
         self.subentry_data[subentry_id] = config
         self.pipelines[subentry_id] = AbstractorFilterPipeline(
             config, initial_last_valid_state
