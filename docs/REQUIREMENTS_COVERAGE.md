@@ -16,7 +16,7 @@ Audit against `LASTENHEFT_ABSTRAKTIONS_INTEGRATION.md`.
 | FA-10 | Implemented with explicit sources | Multiple selected entities provide aggregation equivalent to pattern matching. |
 | FA-11 | Implemented | Multiple source entities are summed. |
 | FA-12 | Implemented | Invert and fallback behavior are configurable per entry. Conditional cross-entity fallback is not modeled. |
-| FA-13 | Implemented | Deduplicated events log at debug level and notify `notify.adminnotificationgroup` only when `input_boolean.automation_debugger` is on. |
+| FA-13 | Implemented | Deduplicated events log at debug level and notify the configured `notify` entity only while the configured `input_boolean` debug switch is on (root options, REQ-NFA-007; formerly hardcoded). |
 | NFA-01 | Implemented | One coordinator poll and deduplicated notifications. |
 | NFA-02 | Implemented | Filter and snapshot validation are HA-independent. |
 | NFA-03 | Implemented | Manifest/config flow structure is HACS-compatible. |
@@ -30,11 +30,15 @@ Audit against `LASTENHEFT_ABSTRAKTIONS_INTEGRATION.md`.
 
 Exports use `format: abstractor.snapshot`, `version: 1`, an `entries` list
 containing portable `data` and `options`, and the latest abstracted `values`.
-Import validates this shape and stores it for review. It does not create
-`ConfigEntry` objects: preserving an existing config-entry ID, entity-registry
-identity, unique ID, and Recorder/Long-Term Statistics lineage is not exposed
-as a safe public migration API. Recreate entries through Config Flow and
-perform any registry/history migration manually and installation-specifically.
+Import validates this shape, persists it, and restores **missing** sensor
+subentries: an entry is recreated only when no existing subentry has the same
+stable identity (`legacy_unique_id`, else source-derived unique id), going
+through the same normalization as the config flow create path. Existing
+subentries are never overwritten or duplicated, and snapshot `entry_id`s are
+reused so the `values` map and ungrouped device identifiers stay aligned.
+Subentries with no source entity are skipped with a warning. Since recreation
+pins the snapshot's identity fields, entity-registry rows and Recorder/Long-Term
+Statistics lineage continue on the restored sensors instead of starting over.
 
 The following remain outside this MVP: automatic YAML migration, conditional
 cross-entity fallback expressions, native replacement for Utility Meter, and
@@ -47,6 +51,21 @@ This requirement was added after this document's original FA-*/NFA-* scheme
 was established (against `LASTENHEFT_ABSTRAKTIONS_INTEGRATION.md`) and has no
 FA-*/NFA-* equivalent. See `docs/REQUIREMENTS.md`, section 2 (Core Features),
 REQ-CORE-008, for the full description.
+
+## REQ-CORE-009 / REQ-DATA-003 / REQ-NFA-007 (Phase 1 management backend)
+
+Added after this document's original FA-*/NFA-* scheme was established and have
+no FA-*/NFA-* equivalent:
+
+- **REQ-CORE-009** (sensor deletion service, `delete_sensor`, by `subentry_id`
+  or `legacy_unique_id`) — see `docs/REQUIREMENTS.md` §2; implemented on
+  `feat/phase1-management-backend`.
+- **REQ-DATA-003** (import restores missing subentries) — see
+  `docs/REQUIREMENTS.md` §7; implemented via the shared
+  `_build_new_subentry_data`/`_normalize_subentry_data` helpers (single source
+  of truth with the config flow create path).
+- **REQ-NFA-007** (configurable debug-notify targets as root options) — see
+  `docs/REQUIREMENTS.md` §6.
 
 Tracked issues:
 
