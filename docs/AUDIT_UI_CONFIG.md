@@ -120,8 +120,9 @@ dormant, or constants, and including them would misrepresent the active surface:
   therefore excluded from the integration's own mapping assessment.
 - The two integration services (`export_data`, `import_data`) are write-capable but do not
   configure devices: `export_data` takes no parameters (`__init__.py:442-446`),
-  `import_data` accepts a validated snapshot and explicitly does **not** recreate config
-  entries (`__init__.py:579-585`). Neither contributes config dimensions.
+  `import_data` accepts a validated snapshot and recreates only the sensor
+  subentries that are missing from the installation — existing subentries are
+  never modified or duplicated (`__init__.py:import_data_service`, Phase 1/B6). Neither contributes config dimensions.
 
 ---
 

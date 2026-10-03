@@ -26,6 +26,7 @@ from custom_components.abstractor.config_flow import (
 )
 from custom_components.abstractor.const import (
     CONF_CREATE_NEW_DEVICE,
+    CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
@@ -36,6 +37,7 @@ from custom_components.abstractor.const import (
     CONF_INFLUX_ORG,
     CONF_INFLUX_TOKEN,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_NOTIFY_ENTITY_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -861,6 +863,52 @@ async def test_options_flow_saves_preset_interval_and_merges_defaults(
     # Options go to the entry's options; the singleton root's data stays {}.
     assert root_entry.options[CONF_POLL_INTERVAL] == 5
     assert root_entry.data == {}
+
+
+async def test_options_flow_saves_debug_notify_targets(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-NFA-007] The debug notify targets are root options: both fields
+    persist when submitted, and neither leaks into the root entry's data."""
+    root_entry = _options_entry(hass)
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_POLL_INTERVAL: "5",
+            CONF_DEBUG_SWITCH_ENTITY_ID: "input_boolean.debug_toggle",
+            CONF_NOTIFY_ENTITY_ID: "notify.test_group",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result2["type"] == "create_entry"
+    assert result2["data"][CONF_DEBUG_SWITCH_ENTITY_ID] == "input_boolean.debug_toggle"
+    assert result2["data"][CONF_NOTIFY_ENTITY_ID] == "notify.test_group"
+    assert root_entry.options[CONF_NOTIFY_ENTITY_ID] == "notify.test_group"
+    assert root_entry.data == {}
+
+
+async def test_options_flow_reopen_prefills_debug_notify_targets(
+    hass: HomeAssistant,
+) -> None:
+    """[REQ-NFA-007] Reopening the options flow prefills both targets from
+    the saved options (default only attached when a value exists)."""
+    root_entry = _options_entry(
+        hass,
+        {
+            CONF_DEBUG_SWITCH_ENTITY_ID: "input_boolean.debug_toggle",
+            CONF_NOTIFY_ENTITY_ID: "notify.test_group",
+        },
+    )
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+
+    debug_marker, _ = _schema_field(result["data_schema"], CONF_DEBUG_SWITCH_ENTITY_ID)
+    notify_marker, _ = _schema_field(result["data_schema"], CONF_NOTIFY_ENTITY_ID)
+    assert debug_marker.default() == "input_boolean.debug_toggle"
+    assert notify_marker.default() == "notify.test_group"
 
 
 async def test_options_flow_custom_interval_reveals_bounded_number_field(

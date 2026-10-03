@@ -30,6 +30,9 @@ CONF_INFLUX_BUCKET: Final = "influx_bucket"
 CONF_DEVICE_NAME: Final = "device_name"
 CONF_DEVICE_MANUFACTURER: Final = "device_manufacturer"
 CONF_DEVICE_MODEL: Final = "device_model"
+# Debug notification targets (root options; both unset = feature silently off).
+CONF_DEBUG_SWITCH_ENTITY_ID: Final = "debug_switch_entity_id"
+CONF_NOTIFY_ENTITY_ID: Final = "notify_entity_id"
 SUBENTRY_TYPE_SENSOR: Final = "sensor"
 
 # Storage
@@ -37,6 +40,7 @@ STORAGE_KEY: Final = f"{DOMAIN}.storage"
 STORAGE_VERSION: Final = 1
 SERVICE_EXPORT_DATA: Final = "export_data"
 SERVICE_IMPORT_DATA: Final = "import_data"
+SERVICE_DELETE_SENSOR: Final = "delete_sensor"
 
 # Sensor Types
 TYPE_POWER = "power"

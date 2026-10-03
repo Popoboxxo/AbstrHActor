@@ -24,7 +24,9 @@
           "influx_bucket": "InfluxDB bucket",
           "device_name": "Device name",
           "device_manufacturer": "Device manufacturer",
-          "device_model": "Device model"
+          "device_model": "Device model",
+          "debug_switch_entity_id": "Debug switch entity",
+          "notify_entity_id": "Debug notify entity"
         },
         "data_description": {
           "poll_interval": "Choose a preset or select custom for a bounded interval.",
@@ -34,7 +36,9 @@
           "influx_bucket": "InfluxDB bucket.",
           "device_name": "Device name, with {device_type} replaced by the sensor type.",
           "device_manufacturer": "Manufacturer shown in Home Assistant device details.",
-          "device_model": "Model shown in Home Assistant device details."
+          "device_model": "Model shown in Home Assistant device details.",
+          "debug_switch_entity_id": "input_boolean that gates debug notifications. Leave empty to keep debug notifications off.",
+          "notify_entity_id": "Notify entity that receives debug notifications while the debug switch is on."
         }
       },
       "poll_interval": {
@@ -141,11 +145,25 @@
     },
     "import_data": {
       "name": "Import Abstractor Data",
-      "description": "Validate and store a previously exported snapshot. Does not recreate or modify config entries.",
+      "description": "Validate and store a previously exported snapshot. Sensor subentries missing from the installation are recreated; existing sensors are never modified or duplicated.",
       "fields": {
         "data": {
           "name": "Snapshot",
           "description": "Snapshot object produced by abstractor.export_data."
+        }
+      }
+    },
+    "delete_sensor": {
+      "name": "Delete Abstract Sensor",
+      "description": "Delete an Abstract sensor subentry, its entity, and its device.",
+      "fields": {
+        "subentry_id": {
+          "name": "Subentry ID",
+          "description": "ID of the sensor subentry (also listed as entry_id per entry in export snapshots)."
+        },
+        "legacy_unique_id": {
+          "name": "Legacy unique ID",
+          "description": "Alternative — the sensor's unique_id as shown in the entity registry. Provide either this or subentry_id, not both."
         }
       }
     }

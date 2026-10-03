@@ -57,8 +57,11 @@ def test_fallback_condition_false_without_fallback_source() -> None:
     assert not coordinator._fallback_condition_met({})
 
 
-async def test_debug_event_notifies_only_when_debug_toggle_is_on() -> None:
-    """Debug notifications follow the existing HA toggle and are deduplicated."""
+async def test_debug_event_notifies_configured_target_and_deduplicates() -> None:
+    """Debug notifications follow the configured options (B7): the entity_id
+    of a notify entity is translated to its notify service, notifications are
+    only sent while the configured input_boolean is on, and repeats of the
+    same event are deduplicated."""
     services = SimpleNamespace(
         has_service=Mock(return_value=True),
         async_call=AsyncMock(),
@@ -67,11 +70,116 @@ async def test_debug_event_notifies_only_when_debug_toggle_is_on() -> None:
     coordinator = object.__new__(AbstractorDataUpdateCoordinator)
     coordinator.hass = SimpleNamespace(states=states, services=services)
     coordinator._last_notified_events = {}
+    coordinator.debug_switch_entity_id = "input_boolean.automation_debugger"
+    coordinator.notify_entity_id = "notify.adminnotificationgroup"
 
     await coordinator._async_notify_debug("entry-1", "spike rejected")
     await coordinator._async_notify_debug("entry-1", "spike rejected")
 
-    services.async_call.assert_awaited_once()
+    services.async_call.assert_awaited_once_with(
+        "notify",
+        "adminnotificationgroup",
+        {"message": "Abstractor entry-1: spike rejected"},
+        blocking=False,
+    )
+    states.is_state.assert_called_with("input_boolean.automation_debugger", "on")
+
+
+async def test_debug_event_skipped_silently_when_options_unset() -> None:
+    """B7: with no debug entities configured the whole path is a no-op —
+    this must hold even on a coordinator built without ever running
+    __init__.py's option application (both attributes default to None)."""
+    services = SimpleNamespace(
+        has_service=Mock(return_value=True),
+        async_call=AsyncMock(),
+    )
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.hass = SimpleNamespace(
+        states=SimpleNamespace(is_state=Mock(return_value=True)),
+        services=services,
+    )
+
+    await coordinator._async_notify_debug("entry-1", "spike rejected")
+
+    services.async_call.assert_not_awaited()
+
+
+async def test_debug_event_skipped_when_debug_switch_entity_missing() -> None:
+    """B7: a configured debug switch that no longer exists (is_state False
+    for a missing entity) silently disables notifications, never fails."""
+    services = SimpleNamespace(
+        has_service=Mock(return_value=True),
+        async_call=AsyncMock(),
+    )
+    states = SimpleNamespace(is_state=Mock(return_value=False))
+    coordinator = object.__new__(AbstractorDataUpdateCoordinator)
+    coordinator.hass = SimpleNamespace(states=states, services=services)
+    coordinator._last_notified_events = {}
+    coordinator.debug_switch_entity_id = "input_boolean.gone"
+    coordinator.notify_entity_id = "notify.adminnotificationgroup"
+
+    await coordinator._async_notify_debug("entry-1", "spike rejected")
+
+    services.async_call.assert_not_awaited()
+
+
+async def test_debug_event_skipped_when_notify_service_missing() -> None:
+    """B7: a configured notify entity whose service is gone (e.g. the
+    integration providing it was removed) is skipped, never fails."""
+    services = SimpleNamespace(
+        has_service=Mock(return_value=False),
+        async_call=AsyncMock(),
+    )
+    states = SimpleNamespace(is_state=Mock(return_value=True))
+    coordinator = object.__new__(AbstractorDataUpdateCoordinator)
+    coordinator.hass = SimpleNamespace(states=states, services=services)
+    coordinator._last_notified_events = {}
+    coordinator.debug_switch_entity_id = "input_boolean.automation_debugger"
+    coordinator.notify_entity_id = "notify.gone"
+
+    await coordinator._async_notify_debug("entry-1", "spike rejected")
+
+    services.async_call.assert_not_awaited()
+
+
+async def test_debug_event_skipped_for_non_notify_entity_id() -> None:
+    """B7: a hand-edited option that is not a notify entity_id is skipped
+    defensively instead of calling an arbitrary service."""
+    services = SimpleNamespace(
+        has_service=Mock(return_value=True),
+        async_call=AsyncMock(),
+    )
+    states = SimpleNamespace(is_state=Mock(return_value=True))
+    coordinator = object.__new__(AbstractorDataUpdateCoordinator)
+    coordinator.hass = SimpleNamespace(states=states, services=services)
+    coordinator._last_notified_events = {}
+    coordinator.debug_switch_entity_id = "input_boolean.automation_debugger"
+    coordinator.notify_entity_id = "script.not_a_notify_target"
+
+    await coordinator._async_notify_debug("entry-1", "spike rejected")
+
+    services.async_call.assert_not_awaited()
+
+
+async def test_debug_event_none_resets_dedup_for_subentry() -> None:
+    """A None event (pipeline healthy again) clears the dedup entry, so the
+    next occurrence of a previously notified event is delivered again."""
+    services = SimpleNamespace(
+        has_service=Mock(return_value=True),
+        async_call=AsyncMock(),
+    )
+    states = SimpleNamespace(is_state=Mock(return_value=True))
+    coordinator = object.__new__(AbstractorDataUpdateCoordinator)
+    coordinator.hass = SimpleNamespace(states=states, services=services)
+    coordinator._last_notified_events = {}
+    coordinator.debug_switch_entity_id = "input_boolean.automation_debugger"
+    coordinator.notify_entity_id = "notify.adminnotificationgroup"
+
+    await coordinator._async_notify_debug("entry-1", "spike rejected")
+    await coordinator._async_notify_debug("entry-1", None)
+    await coordinator._async_notify_debug("entry-1", "spike rejected")
+
+    assert services.async_call.await_count == 2
 
 
 async def test_add_and_remove_subentry() -> None:
@@ -139,6 +247,8 @@ def _update_coordinator(
     pipeline.last_event = None
     coordinator.pipelines = {"subentry-1": pipeline}
     coordinator._last_notified_events = {}
+    coordinator.debug_switch_entity_id = None
+    coordinator.notify_entity_id = None
     return coordinator
 
 

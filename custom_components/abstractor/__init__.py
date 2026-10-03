@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import partial
@@ -11,16 +12,23 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
+from .config_flow import _build_new_subentry_data
 from .const import (
+    CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_NOTIFY_ENTITY_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -29,6 +37,7 @@ from .const import (
     DOMAIN,
     ROOT_ENTRY_TITLE,
     ROOT_UNIQUE_ID,
+    SERVICE_DELETE_SENSOR,
     SERVICE_EXPORT_DATA,
     SERVICE_IMPORT_DATA,
     STORAGE_KEY,
@@ -47,6 +56,18 @@ PLATFORMS: list[str] = ["sensor"]
 _STORAGE_DATA = "storage"
 IMPORT_SERVICE_SCHEMA = vol.Schema(
     {vol.Required("data"): vol.All(dict, validate_snapshot)}
+)
+# The sensor to delete is identified by EITHER its subentry_id (the key under
+# the root entry, also listed as `entry_id` per entry in export snapshots) OR
+# its `legacy_unique_id` (the entity's unique_id, visible in the entity
+# registry UI). Both keys are optional individually; the handler rejects a
+# call that provides neither, and voluptuous' Exclusive group rejects one that
+# provides both.
+DELETE_SENSOR_SCHEMA = vol.Schema(
+    {
+        vol.Exclusive("subentry_id", "sensor_key"): str,
+        vol.Exclusive(CONF_LEGACY_UNIQUE_ID, "sensor_key"): str,
+    }
 )
 # The integration is configured through the UI only. async_setup exists purely
 # for the one-time reconciliation below, so guard against it being taken as an
@@ -402,6 +423,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
     )
     coordinator.influx_exporter = create_influx_exporter(hass, dict(entry.options))
+    # Debug notification targets (B7): re-applied on every (re)load like the
+    # poll interval and the exporter, so changing the root options takes
+    # effect on the reload the options update listener already triggers.
+    # Unset (or empty) options leave both None, which makes the coordinator's
+    # debug notify path a silent no-op.
+    coordinator.debug_switch_entity_id = entry.options.get(
+        CONF_DEBUG_SWITCH_ENTITY_ID
+    ) or None
+    coordinator.notify_entity_id = entry.options.get(CONF_NOTIFY_ENTITY_ID) or None
 
     # Polling is per sensor subentry, not per config entry: the root entry
     # itself carries no sensor configuration since device bundling landed.
@@ -464,6 +494,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             partial(import_data_service, hass),
             schema=IMPORT_SERVICE_SCHEMA,
         )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_DELETE_SENSOR,
+            partial(delete_sensor_service, hass),
+            schema=DELETE_SENSOR_SCHEMA,
+        )
     await _save_snapshot(hass)
     await async_register_panel(hass)
 
@@ -511,6 +547,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 domain_data.pop("registry", None)
                 hass.services.async_remove(DOMAIN, SERVICE_EXPORT_DATA)
                 hass.services.async_remove(DOMAIN, SERVICE_IMPORT_DATA)
+                hass.services.async_remove(DOMAIN, SERVICE_DELETE_SENSOR)
                 await async_unregister_panel(hass)
 
     return unload_ok
@@ -605,9 +642,177 @@ async def export_data_service(hass: HomeAssistant, call: ServiceCall) -> dict[st
 
 
 async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Import a snapshot into persistent storage for review and restore."""
+    """Import a snapshot: persist it and restore missing sensor subentries.
+
+    Restore semantics are deliberately conservative — import restores what is
+    MISSING, it never clobbers what exists:
+
+    - A snapshot entry is recreated only when no existing subentry has the
+      same stable identity (its ``legacy_unique_id``, or the source-derived
+      unique id for pre-GH#19 data without one).
+    - Existing subentries are left completely untouched: their data, title
+      and subentry id are NOT overwritten from the snapshot.
+    - The snapshot's per-entry ``entry_id`` is reused as the new subentry id
+      where possible, so the ``values`` map in the same snapshot still aligns
+      entry-by-entry (spike-filter reseeding) and ungrouped sensors resolve
+      to the same ``(DOMAIN, subentry_id)`` device identifier again.
+    - Subentries whose data has no source entity at all are skipped with a
+      warning instead of failing the whole import.
+
+    Recreation goes through the same normalization helper as the config
+    flow's create path, and each ``async_add_subentry`` fires the root
+    entry's update listener, so HA's standard subentry-add reload re-runs
+    ``async_setup_entry`` and brings the restored sensors (and their
+    entities) up without any further action here.
+
+    Raises:
+        HomeAssistantError: If the singleton root config entry does not
+            exist — there is nothing to attach restored subentries to.
+        vol.Invalid: If the payload is not a valid snapshot (raised by
+            ``validate_snapshot`` through the service schema).
+    """
     payload = validate_snapshot(call.data.get("data"))
+    root_entry = _async_root_entry(hass)
+    if root_entry is None:
+        raise HomeAssistantError(
+            "Abstractor root config entry does not exist; add the Abstractor "
+            "integration before importing a snapshot"
+        )
     store = hass.data[DOMAIN][_STORAGE_DATA]
     await store.async_save(payload)
     hass.data[DOMAIN]["stored_snapshot"] = payload
-    _LOGGER.info("Abstractor data import completed; config entries were not recreated")
+    created = _async_recreate_subentries(hass, root_entry, payload)
+    _LOGGER.info(
+        "Abstractor data import completed; %s sensor subentries restored",
+        len(created),
+    )
+
+
+@callback
+def _async_root_entry(hass: HomeAssistant) -> ConfigEntry | None:
+    """Return the singleton root config entry, if it exists."""
+    return next(
+        (
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if entry.unique_id == ROOT_UNIQUE_ID
+        ),
+        None,
+    )
+
+
+@callback
+def _async_recreate_subentries(
+    hass: HomeAssistant, root_entry: ConfigEntry, payload: Mapping[str, Any]
+) -> list[str]:
+    """Recreate sensor subentries that the snapshot has but the root lacks.
+
+    Identity comparison uses ``_pre_migration_unique_id`` on both sides: a
+    set ``legacy_unique_id`` always wins, otherwise the unique id is derived
+    from the source entities — the same rule sensor.py uses for its entity,
+    so "already exists" means "the entity registry row with this unique id is
+    already taken", never merely "some subentry with a similar name".
+
+    Returns:
+        The subentry ids that were created (empty when the snapshot adds
+        nothing, e.g. when re-importing over an intact installation).
+    """
+    existing_ids = {
+        _pre_migration_unique_id(subentry.data)
+        for subentry in root_entry.subentries.values()
+    }
+    created: list[str] = []
+    for item in payload.get("entries", []):
+        # Runtime config is the data|options merge (see _async_attach_as_subentry):
+        # modern subentry snapshots carry everything in `data` and an empty
+        # `options` mapping, while a pre-bundling export may have split a
+        # hardware-swapped source across the two.
+        merged = dict(item.get("data") or {}) | dict(item.get("options") or {})
+        sources = merged.get(CONF_SOURCE_ENTITY_IDS) or [
+            merged.get(CONF_SOURCE_ENTITY_ID)
+        ]
+        sources = [source for source in sources if source]
+        if not sources:
+            _LOGGER.warning(
+                "Abstractor import: skipping snapshot entry %s because it "
+                "has no source entity",
+                item.get("entry_id"),
+            )
+            continue
+        if _pre_migration_unique_id(merged) in existing_ids:
+            continue
+        subentry_id = item.get("entry_id") or f"abstractor_{uuid.uuid4().hex}"
+        if subentry_id in root_entry.subentries:
+            _LOGGER.warning(
+                "Abstractor import: skipping snapshot entry %s because a "
+                "subentry with that id already exists",
+                subentry_id,
+            )
+            continue
+        data = _build_new_subentry_data(hass, merged, sources)
+        device_type = data.get(CONF_DEVICE_TYPE, "power")
+        subentry = ConfigSubentry(
+            data=MappingProxyType(data),
+            subentry_id=subentry_id,
+            subentry_type=SUBENTRY_TYPE_SENSOR,
+            title=item.get("title") or f"Abstract {device_type}",
+            unique_id=item.get("unique_id"),
+        )
+        hass.config_entries.async_add_subentry(root_entry, subentry)
+        existing_ids.add(_pre_migration_unique_id(data))
+        created.append(subentry_id)
+    return created
+
+
+async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Delete one Abstract sensor subentry, its entity, and its device.
+
+    The sensor is identified by `subentry_id` (the key under the root entry,
+    also listed as `entry_id` per entry in export snapshots) or, alternatively,
+    by its `legacy_unique_id` (the entity's unique_id as shown in the entity
+    registry). The two keys are mutually exclusive and one of them is required.
+
+    Removal goes through HA's own ``async_remove_subentry``: it clears the
+    entity- and device-registry rows owned by the subentry and fires the root
+    entry's update listener, whose reload unloads the sensor platform and
+    re-runs ``async_setup_entry`` — which prunes the deleted subentry from the
+    coordinator. No extra coordinator refresh is needed beyond that standard
+    teardown, the entity disappears as part of it.
+
+    Raises:
+        ServiceValidationError: If no key was provided, the referenced
+            subentry does not exist, or no subentry matches the given
+            `legacy_unique_id`.
+        HomeAssistantError: If the singleton root config entry does not
+            exist.
+    """
+    subentry_id = call.data.get("subentry_id")
+    legacy_unique_id = call.data.get(CONF_LEGACY_UNIQUE_ID)
+    if subentry_id is None and legacy_unique_id is None:
+        raise ServiceValidationError(
+            "Provide either 'subentry_id' or 'legacy_unique_id'"
+        )
+    root_entry = _async_root_entry(hass)
+    if root_entry is None:
+        raise HomeAssistantError(
+            "Abstractor root config entry does not exist; nothing to delete"
+        )
+    if subentry_id is None:
+        subentry_id = next(
+            (
+                candidate_id
+                for candidate_id, subentry in root_entry.subentries.items()
+                if subentry.data.get(CONF_LEGACY_UNIQUE_ID) == legacy_unique_id
+            ),
+            None,
+        )
+        if subentry_id is None:
+            raise ServiceValidationError(
+                f"No Abstractor sensor with legacy_unique_id "
+                f"{legacy_unique_id!r} exists"
+            )
+    if subentry_id not in root_entry.subentries:
+        raise ServiceValidationError(
+            f"Abstractor subentry {subentry_id!r} does not exist"
+        )
+    hass.config_entries.async_remove_subentry(root_entry, subentry_id)
