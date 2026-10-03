@@ -22,7 +22,7 @@ FROM python:3.13-slim
 # -----------------------------------------------------------------------------
 # Home Assistant is the heavyweight dependency (async loop, entities, etc.).
 # Pin it for reproducibility; bump deliberately.
-ARG HOMEASSISTANT_VERSION=2025.3.0
+ARG HOMEASSISTANT_VERSION=2026.2.3
 # UID used for the non-root test user (defaults to 1000, matches most UIDs).
 ARG TEST_UID=1000
 
@@ -51,11 +51,11 @@ RUN apt-get update \
 #   - pytest-cov / pytest-asyncio         : coverage + asyncio support
 #   - ruff / mypy                         : static checks (lint profile)
 # -----------------------------------------------------------------------------
-RUN pip install --no-cache-dir \
+RUN pip install --upgrade pip && pip install --no-cache-dir \
         "homeassistant==${HOMEASSISTANT_VERSION}" \
         "pytest-homeassistant-custom-component==0.13.316" \
-        "pytest-cov==6.0.0" \
-        "pytest-asyncio==0.25.3" \
+        "pytest-cov==7.0.0" \
+        "pytest-asyncio==1.3.0" \
         "ruff==0.16.6" \
         "mypy==2.3.1"
 
