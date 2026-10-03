@@ -64,6 +64,8 @@ RUN pip install --upgrade pip && pip install --no-cache-dir \
 # -----------------------------------------------------------------------------
 COPY custom_components/ custom_components/
 COPY tests/ tests/
+# Dev-only migration generator, exercised by tests/test_migrate_script.py.
+COPY scripts/migrate_local_yaml.py scripts/
 # Library files must not be executable (Windows/Docker copies set +x by default)
 RUN find custom_components tests -name '*.py' -exec chmod -x {} \;
 

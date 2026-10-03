@@ -37,6 +37,7 @@ from .const import (
     CONF_DEVICE_TYPE,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
+    CONF_FALLBACK_ON_ZERO,
     CONF_FALLBACK_SOURCE_ENTITY_ID,
     CONF_FALLBACK_ZERO,
     CONF_INFLUX_BUCKET,
@@ -1084,6 +1085,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     CONF_FALLBACK_CONDITION_ENTITY_ID
                 ): selector.EntitySelector(),
                 vol.Optional(CONF_FALLBACK_CONDITION_STATE): selector.TextSelector(),
+                vol.Optional(CONF_FALLBACK_ON_ZERO, default=False): bool,
                 # Non-destructive device mapping controls (UI-only, never
                 # persisted — see _normalize and _validate_device_mapping).
                 vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(

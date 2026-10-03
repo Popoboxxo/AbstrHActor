@@ -12,6 +12,7 @@ from .const import (
     AGGREGATION_MODES,
     AGGREGATION_SUM,
     CONF_AGGREGATION,
+    CONF_FALLBACK_ON_ZERO,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,7 +94,11 @@ class AbstractorFilterPipeline:
 
         ``fallback_raw``/``fallback_condition_met`` (REQ-COMP-004) provide an
         alternate hardware source used only when the primary aggregate is
-        unavailable AND the configured condition is met.
+        unavailable AND the configured condition is met. With the optional
+        ``fallback_on_zero`` flag the fallback additionally fires when the
+        aggregate is exactly ``0.0`` — the template-idiom "primary == 0 ->
+        use fallback", which a power sensor's fail-soft zero would otherwise
+        mask forever (M1/ACE 1500).
         """
         aggregation = self.config.get(CONF_AGGREGATION, AGGREGATION_SUM)
         if aggregation not in AGGREGATION_MODES:
@@ -144,7 +149,10 @@ class AbstractorFilterPipeline:
             if subtract_value is not None:
                 total -= subtract_value
 
-        if total is None and fallback_condition_met and fallback_raw is not None:
+        fallback_eligible = total is None or (
+            self.config.get(CONF_FALLBACK_ON_ZERO, False) and total == 0.0
+        )
+        if fallback_eligible and fallback_condition_met and fallback_raw is not None:
             fallback_value = self._parse_plain(fallback_raw)
             if fallback_value is not None:
                 _LOGGER.debug("Using fallback source value: %s", fallback_value)

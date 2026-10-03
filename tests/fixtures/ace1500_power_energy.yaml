@@ -1,0 +1,249 @@
+# packages/abstraction/ace1500_power_energy.yaml
+# ==============================================================================
+# PACKAGE: Abstraction - ACE 1500 Power & Energy [V1.1]
+# Beschreibung: Abstraktionsschicht für den Zendure ACE 1500 Batteriespeicher.
+#               Entkoppelt Hardware-Entitäten (Zendure, Shelly) von Dashboards,
+#               Utility Metern und Automatisierungen.
+#               Ausgelagert aus battery_power_energy.yaml (V2.0) für
+#               bessere Übersichtlichkeit.
+#
+# Architektur-Regel (aus energy-abstraction.md):
+#   Hardware-IDs werden NIEMALS direkt in Dashboards oder Utility Metern
+#   verwendet. Stattdessen greifen alle Abnehmer auf diese Template-Sensoren zu.
+#
+# Sensoren:
+#   - ACE 1500 Shelly Aktuelle Leistung           (sensor.shelly_plug_ace1500_leistung)
+#   - ACE 1500 Batterie Eingang Aktuelle Leistung  (sensor.ace_1500_output_pack_power)
+#   - ACE 1500 Batterie Ausgang Aktuelle Leistung  (sensor.ace_1500_pack_input_power + Fallback)
+#   - ACE 1500 Aktuelle AC Leistung               (sensor.ace_1500_ac_output_power)
+#   - ACE 1500 Shelly Gesamtverbrauch             (sensor.shelly_plug_ace1500_energie)
+#   - ACE 1500 Gesamtverbrauch AC                 (sensor.ace_1500_aggr_discharge)
+#   - ACE 1500 Shelly Aktuelle Leistung (Inv.)    (invertiert)
+#   - ACE 1500 Aktuelle Leistung AC (Inv.)        (invertiert)
+#   - Zendure ACE 1500 Kombinierte Leistung       (Nettoleistung: Laden - Entladen)
+#
+# Utility Meter:
+#   - ace_1500_gesamtverbrauch_count              (AC-Eingang / Laden)
+#   - ace_1500_gesamtverbrauch_ac_count           (AC-Ausgang / Entladen)
+#   - ace_1500_batterie_ausgang_count             (Batterie-Ausgang kumuliert, W→kWh)
+#
+# Dependencies: Zendure HA Integration, Shelly Integration
+# Autor: HA Expert 2.0
+# Version: V1.1
+# Changelog:
+#   - V1.1: Fallback-Guard für "Batterie Ausgang" — Shelly-Fallback nur
+#           aktivieren wenn output_pack_power == 0 (kein Ladevorgang aktiv).
+#           Verhindert False-Positive: Ladeleistung wurde fälschlich als
+#           Entladeleistung gemeldet.
+#   - V1.0: Ausgelagert aus battery_power_energy.yaml (V2.0).
+#           Alle unique_ids und entity_ids bleiben exakt erhalten.
+#           YAML-Anker &ace_power_logic, &ace_energy_logic, &ace_power_inverse_logic
+#           lokal neu definiert (YAML-Anker sind nicht dateiübergreifend nutzbar).
+#           &ace_meter_config_no_reset analog zu battery_power_energy.yaml.
+# ==============================================================================
+
+template:
+  # ============================================================================
+  # BLOCK 1: ACE 1500 — Direkte Hardware-Abstraktion
+  # Anker-Definitionen: &ace_power_logic, &ace_energy_logic, &ace_power_inverse_logic
+  # ============================================================================
+  - sensor:
+
+      # ==============================================================================
+      # GERÄT: SHELLY PLUG ACE 1500
+      # ==============================================================================
+
+      # Aktuelle Leistung Shelly AC-Eingang (W) — definiert &ace_power_logic
+      - name: "ACE 1500 Shelly Aktuelle Leistung"
+        unique_id: "7d35baef-909f-4c4c-a4a9-c5149cfd0dab"
+        variables:
+          source: sensor.shelly_plug_ace1500_leistung
+        <<: &ace_power_logic
+          unit_of_measurement: "W"
+          device_class: power
+          state_class: measurement
+          icon: mdi:flash
+          availability: >
+            {{ has_value(source) and is_number(states(source)) }}
+          state: >
+            {{ states(source) | float(none) }}
+
+      # Aktuelle Leistung Batterie-Eingang (Pack-Seite) — definiert &ace_energy_logic
+      - name: "ACE 1500 Batterie Eingang Aktuelle Leistung"
+        unique_id: "30c88984-3cbb-4e47-8a9e-0cc9eed78886"
+        variables:
+          source: sensor.ace_1500_output_pack_power
+        <<: *ace_power_logic
+
+      # Aktuelle Leistung Batterie-Ausgang (Pack-Seite)
+      # Logik: primary = sensor.ace_1500_pack_input_power
+      #        Fallback auf sensor.ab2000x_33073_power wenn primary == 0
+      #        und Fallback-Sensor > 0 meldet (Shelly-Messung als Ersatzwert)
+      #
+      # WICHTIG: Fallback-Guard gegen False-Positive beim Laden:
+      #   Der Fallback-Shelly (co4elnj3n433073_leistung) misst AC-Leistung
+      #   allgemein — er ist auch positiv, wenn die ACE 1500 geladen wird.
+      #   Deshalb darf der Fallback NUR greifen, wenn kein Ladevorgang aktiv ist
+      #   (output_pack_power == 0). Sonst wird Ladeleistung fälschlich als
+      #   Entladeleistung gemeldet.
+      - name: "ACE 1500 Batterie Ausgang Aktuelle Leistung"
+        unique_id: "8bb94b14-3a14-4da1-8a55-24a676244d53"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        icon: mdi:flash
+        availability: >
+          {{ has_value('sensor.ace_1500_pack_input_power')
+             and is_number(states('sensor.ace_1500_pack_input_power')) }}
+        state: >
+          {% set primary = states('sensor.ace_1500_pack_input_power') | float(0) %}
+          {% if primary > 0 %}
+            {{ primary }}
+          {% else %}
+            {% set fallback = states('sensor.ab2000x_33073_power') | float(0) %}
+            {# Guard: Fallback nur wenn kein Ladevorgang aktiv (output_pack_power == 0) #}
+            {# Verhindert, dass Ladeleistung fälschlich als Entladeleistung gezählt wird #}
+            {% set charging = states('sensor.ace_1500_output_pack_power') | float(0) %}
+            {{ fallback if (fallback > 0 and charging == 0) else 0 }}
+          {% endif %}
+
+      # Aktuelle AC-Ausgangsleistung (Entladung ins Hausnetz)
+      - name: "ACE 1500 Aktuelle AC Leistung"
+        unique_id: "c221b359-720b-497d-a2d3-468ebf6ee33f"
+        variables:
+          source: sensor.ace_1500_ac_output_power
+        <<: *ace_power_logic
+
+      # Gesamtverbrauch Shelly AC-Eingang (kWh) — definiert &ace_energy_logic
+      - name: "ACE 1500 Shelly Gesamtverbrauch"
+        unique_id: "5ca440fb-3286-422c-8699-2ca9c2970821"
+        variables:
+          source: sensor.shelly_plug_ace1500_energie
+        <<: &ace_energy_logic
+          unit_of_measurement: "kWh"
+          device_class: energy
+          state_class: total_increasing
+          icon: mdi:lightning-bolt-circle
+          availability: >
+            {{ has_value(source) and is_number(states(source)) }}
+          state: >
+            {{ states(source) | float(none) }}
+
+      # Gesamtverbrauch AC-Ausgang / Entladung gesamt (kWh)
+      - name: "ACE 1500 Gesamtverbrauch AC"
+        unique_id: "0a46f895-685b-473c-994d-5a115d84bffc"
+        variables:
+          source: sensor.ace_1500_aggr_discharge
+        <<: *ace_energy_logic
+
+      # Invertierte Shelly-Leistung (W * -1) — definiert &ace_power_inverse_logic
+      - name: "ACE 1500 Shelly Aktuelle Leistung (Invertiert)"
+        unique_id: "3dde5eb4-53ff-4de2-b89a-5a40e0cc8ddc"
+        variables:
+          source: sensor.shelly_plug_ace1500_leistung
+        <<: &ace_power_inverse_logic
+          unit_of_measurement: "W"
+          device_class: power
+          state_class: measurement
+          icon: mdi:flash-outline
+          availability: >
+            {{ has_value(source) and is_number(states(source)) }}
+          state: >
+            {% set val = states(source) | float(0) * -1 %}
+            {{ 0 if val == 0 else val | round(2) }}
+
+      # Invertierte AC-Ausgangsleistung (W * -1)
+      - name: "ACE 1500 Aktuelle Leistung AC (Invertiert)"
+        unique_id: "3dde5eb4-53ff-4de2-b89a-5a40e0cc8dde"
+        variables:
+          source: sensor.ace_1500_ac_output_power
+        <<: *ace_power_inverse_logic
+
+      - name: "Zendure ACE 1500 Kombinierte Leistung (Invertiert)"
+        unique_id: "67c5a783-0bda-437a-b45b-34aa1f454e89"
+        variables:
+          source: sensor.zendure_ace_1500_kombinierte_leistung
+        <<: *ace_power_inverse_logic
+
+      
+
+  # ============================================================================
+  # BLOCK 2: ACE 1500 — Kombinierte / Berechnete Sensoren
+  # ============================================================================
+  - sensor:
+
+      # ==========================================================================
+      # ACE 1500
+      # Hardware: sensor.ace_1500_output_pack_power  (AC-Eingang / Laden)
+      #           sensor.ace_1500_ac_output_power    (AC-Ausgang / Entladen)
+      # Eigenheit: Laden und Entladen laufen über separate Hardware-Kanäle.
+      #            Shelly Plug misst den AC-Eingang (Ladung).
+      # ==========================================================================
+
+      # Kombinierte Nettoleistung: Laden (+) minus Entladen (-)
+      # Positiv = Nettoladen, Negativ = Nettoentladen, 0 = Standby
+      - name: "Zendure ACE 1500 Kombinierte Leistung"
+        unique_id: "c7a6e5f3-bd36-4064-8358-25738f315170"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        icon: mdi:battery-transmission
+        state: >
+          {% set charge = states('sensor.ace_1500_batterie_eingang_aktuelle_leistung') | float(0) %}
+          {% set discharge = states('sensor.ace_1500_batterie_ausgang_aktuelle_leistung') | float(0) %}
+          {# Berechnung des Netto-Flusses: Laden (+) minus Entladen (-) #}
+          {{ (charge - discharge) | round(2) }}
+        attributes:
+          # Debug-Attribute für volle Transparenz
+          raw_charge: "{{ states('sensor.ace_1500_batterie_eingang_aktuelle_leistung') }}"
+          raw_discharge: "{{ states('sensor.ace_1500_batterie_ausgang_aktuelle_leistung') }}"
+          mode: >
+            {% set net = states('sensor.ace_1500_batterie_eingang_aktuelle_leistung') | float(0) - states('sensor.ace_1500_batterie_ausgang_aktuelle_leistung') | float(0) %}
+            {% if net > 0 %}charging
+            {% elif net < 0 %}discharging
+            {% else %}idle{% endif %}
+
+sensor:
+  - platform: integration
+    source: sensor.ace_1500_batterie_ausgang_aktuelle_leistung
+    name: "ACE 1500 Batterie Ausgang Energie Raw"
+    unique_id: "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
+    unit_prefix: k
+    round: 3
+    # 'left' ist bei unstetigen Smart-Plug Werten meist am genauesten
+    method: left
+
+
+
+
+# ==========================================================================
+# UTILITY METER — ACE 1500
+# Quellen: abstrahierte Template-Sensoren aus Block 1
+# Anker &ace_meter_config_no_reset beim ersten Eintrag definiert.
+# ==========================================================================
+utility_meter:
+
+  # Gesamtverbrauch AC-Eingang (Ladung via Shelly Plug)
+  ace_1500_gesamtverbrauch_count:
+    source: sensor.ace_1500_gesamtverbrauch
+    name: "ACE 1500 Gesamtverbrauch Count"
+    unique_id: d7a6e3d7-d6ea-41eb-bc04-00532cfc1a59
+    <<: &ace_meter_config_no_reset
+      tariffs: []
+      delta_values: false
+      always_available: true
+
+  # Gesamtverbrauch AC-Ausgang (Entladung ins Hausnetz)
+  ace_1500_gesamtverbrauch_ac_count:
+    source: sensor.ace_1500_gesamtverbrauch_ac
+    name: "ACE 1500 Gesamtverbrauch AC Count"
+    unique_id: a7d72cbe-e4bd-4b9e-ac7b-d633841fd0db
+    <<: *ace_meter_config_no_reset
+
+  # Batterie-Ausgang Leistung kumuliert (W → kWh, Riemann-Integration via HA)
+  # Quelle: abstrahierter Sensor mit Fallback auf sensor.ab2000x_33073_power
+  ace_1500_batterie_ausgang_count:
+    source: sensor.ace_1500_batterie_ausgang_energie_raw
+    name: "ACE 1500 Batterie Ausgang Count"
+    unique_id: f3c7a281-9d14-4b8e-a6f2-1d85e0c3b47a
+    <<: *ace_meter_config_no_reset

@@ -216,3 +216,63 @@ def test_aggregation_unknown_mode_falls_back_to_sum() -> None:
     )
 
     assert pipeline.process_sources(["2", "3"]) == 5.0
+
+
+def test_fallback_on_zero_uses_fallback_when_primary_is_zero() -> None:
+    """M1/ACE 1500: with fallback_on_zero the fallback source fires when the
+    aggregate is exactly 0 (power fail-soft would otherwise mask it forever),
+    replicating the template idiom 'primary == 0 -> fallback'."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", "fallback_on_zero": True}
+    )
+
+    result = pipeline.process_sources(
+        ["0"], fallback_raw="125", fallback_condition_met=True
+    )
+
+    assert result == 125.0
+    assert pipeline.last_event == "fallback source used"
+
+
+def test_fallback_on_zero_fires_when_primary_unavailable() -> None:
+    """A dead primary becomes fail-soft 0 for power, which the zero trigger
+    treats exactly like a real 0 — the YAML template does the same
+    (states(...)|float(0) then the fallback branch)."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", "fallback_on_zero": True}
+    )
+
+    result = pipeline.process_sources(
+        ["unavailable"], fallback_raw="125", fallback_condition_met=True
+    )
+
+    assert result == 125.0
+
+
+def test_fallback_not_fired_on_zero_without_flag() -> None:
+    """Without fallback_on_zero the historical contract holds: power's
+    fail-soft 0 stands, the fallback only fires for unavailable (None)."""
+    pipeline = AbstractorFilterPipeline({"device_type": "power"})
+
+    result = pipeline.process_sources(
+        ["0"], fallback_raw="125", fallback_condition_met=True
+    )
+
+    assert result == 0.0
+
+
+def test_fallback_on_zero_still_requires_condition_and_value() -> None:
+    """The zero trigger never bypasses the REQ-COMP-004 condition, and a
+    fallback source that itself has no value leaves the 0 standing."""
+    pipeline = AbstractorFilterPipeline(
+        {"device_type": "power", "fallback_on_zero": True}
+    )
+
+    assert (
+        pipeline.process_sources(["0"], fallback_raw="125", fallback_condition_met=False)
+        == 0.0
+    )
+    assert (
+        pipeline.process_sources(["0"], fallback_raw="unavailable", fallback_condition_met=True)
+        == 0.0
+    )
