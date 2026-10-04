@@ -1,0 +1,250 @@
+# packages/abstraction/battery_power_energy.yaml
+# ==============================================================================
+# PACKAGE: Abstraction - Battery Power & Energy [V2.0]
+# Beschreibung: Abstraktionsschicht für Hyper2000 EG und OG Batteriespeicher.
+#               Entkoppelt Hardware-Entitäten (Zendure, Shelly) von Dashboards,
+#               Utility Metern und Automatisierungen.
+#               Enthält: Hyper2000 EG, Hyper2000 OG
+#               ACE 1500 → ace1500_power_energy.yaml (ausgelagert V2.0)
+#
+# Architektur-Regel (aus energy-abstraction.md):
+#   Hardware-IDs werden NIEMALS direkt in Dashboards oder Utility Metern
+#   verwendet. Stattdessen greifen alle Abnehmer auf diese Template-Sensoren zu.
+#
+# Dependencies: Zendure HA Integration, Shelly Integration
+# Autor: HA Expert 2.0
+# Version: V2.0
+# Changelog:
+#   - V2.0: ACE 1500 Sensoren und Utility Meter in ace1500_power_energy.yaml
+#           ausgelagert. Dieses Package enthält nur noch Hyper2000 EG/OG.
+#   - V1.3: Utility Meter ace_1500_batterie_ausgang_count hinzugefügt.
+#   - V1.2: ACE 1500 Batterie Ausgang Aktuelle Leistung: Fallback-Logik ergänzt.
+#   - V1.1: Migration Hyper2000 EG/OG + ACE 1500 Sensor-Block aus template.yaml.
+#           Anker &power_logic, &energy_logic, &power_inverse_logic übernommen.
+#   - V1.0: Initiale Erstellung. Migration aus battery_monitoring.yaml (Template-
+#           Sensoren Hyper OG, Hyper EG, ACE 1500) und utility_meter.yaml
+#           (Hyper2000 EG/OG + ACE 1500 Zähler).
+#           unique_ids und entity_ids bleiben exakt erhalten.
+# ==============================================================================
+
+template:
+  # ============================================================================
+  # BLOCK 1: Hyper2000 EG/OG + ACE 1500 — Direkte Hardware-Abstraktion
+  # Anker-Definitionen: &power_logic, &energy_logic, &power_inverse_logic
+  # Migration aus template.yaml (V1.1)
+  # ============================================================================
+  - sensor:
+      # ==============================================================================
+      # GERÄT 1: SHELLY PLUG HYPER2000 EG (Hier werden die Anker definiert)
+      # ==============================================================================
+
+      # 1.1 Aktuelle Leistung (W) -> Definiert &power_logic
+      - name: "Hyper2000 EG Aktuelle Leistung"
+        unique_id: "ce963e07-64aa-4871-8c73-96edb8d284fe"
+        variables:
+          source: sensor.shelly_plug_hyper2000_eg_power
+        <<: &power_logic
+          unit_of_measurement: "W"
+          device_class: power
+          state_class: measurement
+          icon: mdi:flash
+          availability: >
+            {{ has_value(source) and is_number(states(source)) }}
+          state: >
+            {{ states(source) | float(none) }}
+
+      # 1.2 Gesamtverbrauch (kWh) -> Definiert &energy_logic
+      - name: "Hyper2000 EG Gesamtverbrauch"
+        unique_id: "2a7f2d8d-c4e1-43ca-8a8d-3679a69473f8"
+        variables:
+          source: sensor.shelly_plug_hyper2000_eg_consumed_energy
+        <<: &energy_logic
+          unit_of_measurement: "kWh"
+          device_class: energy
+          state_class: total_increasing
+          icon: mdi:lightning-bolt-circle
+          availability: >
+            {{ has_value(source) and is_number(states(source)) }}
+          state: >
+            {{ states(source) | float(none) }}
+
+      # 1.3 Energieeinspeisung (kWh)
+      - name: "Hyper2000 EG Energieeinspeisung"
+        unique_id: "1b674347-0e19-492c-a6c8-b0877d777c96"
+        variables:
+          source: sensor.shelly_plug_hyper2000_eg_returned_energy
+        <<: *energy_logic
+
+      # 1.4 Invertierte Leistung (W * -1) -> Definiert &power_inverse_logic
+      - name: "Hyper2000 EG Aktuelle Leistung (Invertiert)"
+        unique_id: "b2704134-63c1-4a21-a89f-77e6bcb02cf3"
+        variables:
+          source: sensor.shelly_plug_hyper2000_eg_power
+        <<: &power_inverse_logic
+          unit_of_measurement: "W"
+          device_class: power
+          state_class: measurement
+          icon: mdi:flash-outline
+          availability: >
+            {{ has_value(source) and is_number(states(source)) }}
+          state: >
+            {% set val = states(source) | float(0) * -1 %}
+            {{ 0 if val == 0 else val | round(2) }}
+
+      # ==============================================================================
+      # GERÄT 2: SHELLY PLUG HYPER2000 OG
+      # ==============================================================================
+
+      # 2.1 Aktuelle Leistung (W)
+      - name: "Hyper2000 OG Aktuelle Leistung"
+        unique_id: "2ed029a3-ef87-4a1d-8ee6-ee1d24e3ce35"
+        variables:
+          source: sensor.solarbatterie_shelly_plug_switch_0_power
+        <<: *power_logic
+
+      # 2.2 Gesamtverbrauch (kWh)
+      - name: "Hyper2000 OG Gesamtverbrauch"
+        unique_id: "387eabc3-620e-4023-be10-c9b75a34be29"
+        variables:
+          source: sensor.solarbatterie_shelly_plug_consumed_energy
+        <<: *energy_logic
+
+      # 2.3 Energieeinspeisung (kWh)
+      - name: "Hyper2000 OG Energieeinspeisung"
+        unique_id: "0f420cc6-3131-4fad-98d4-5c1196b52571"
+        variables:
+          source: sensor.solarbatterie_shelly_plug_returned_energy
+        <<: *energy_logic
+
+      # 2.4 Invertierte Leistung (W * -1)
+      - name: "Hyper2000 OG Aktuelle Leistung (Invertiert)"
+        unique_id: "5ab57dcd-b093-4170-8034-820d2e90a86d"
+        variables:
+          source: sensor.solarbatterie_shelly_plug_switch_0_power
+        <<: *power_inverse_logic
+
+  # ============================================================================
+  # BLOCK 2: Shelly-Abstraktions-Sensoren (aus battery_monitoring.yaml, V1.0)
+  # ============================================================================
+  - sensor:
+
+      # ==========================================================================
+      # HYPER2000 OG (OBERGESCHOSS)
+      # Hardware: sensor.solarbatterie_shelly_plug_switch_0_power
+      # ==========================================================================
+
+      # Ladung: positiver Anteil des Shelly-Messwerts (Netz → Batterie)
+      - name: "Batterie Ladung Shelly Plug Hyper OG"
+        device_class: power
+        unit_of_measurement: "W"
+        state_class: measurement
+        unique_id: "6c1c5192-7a70-4dab-b9d7-0d11d12895da"
+        state: "{{ states('sensor.solarbatterie_shelly_plug_switch_0_power')|float(0) if states('sensor.solarbatterie_shelly_plug_switch_0_power')| int > 0 else 0 }}"
+
+      # Einspeisung: negativer Anteil (Batterie → Netz), als Rohwert
+      - name: "Batterie Einspeisung Ausgelesen Local Hyper OG"
+        device_class: power
+        unit_of_measurement: "W"
+        state_class: measurement
+        unique_id: "4b83d503-ef33-4de9-9e11-e00765ff83bb"
+        state: "{{ states('sensor.solarbatterie_shelly_plug_switch_0_power')|float(0) if states('sensor.solarbatterie_shelly_plug_switch_0_power')| int < 1 else 0 }}"
+
+      # Einspeisung normiert: negativen Wert in positive Zahl umrechnen
+      - name: "Batterie Einspeisung Normiert Local Hyper OG"
+        device_class: power
+        unit_of_measurement: "W"
+        state_class: measurement
+        unique_id: "26bb9711-8c08-485e-87ce-8ce5209f0573"
+        state: >
+          {% set wert = states('sensor.batterie_einspeisung_ausgelesen_local')|float(0) * -1 | round(3) %}
+          {% if wert == 0 %}
+            0
+          {% else %}
+            {{ wert }}
+          {% endif %}
+
+      # ==========================================================================
+      # HYPER2000 EG (ERDGESCHOSS)
+      # Hardware: sensor.shelly_plug_hyper2000_eg_power
+      # ==========================================================================
+
+      # Ladung: positiver Anteil des Shelly-Messwerts (Netz → Batterie)
+      - name: "Batterie Ladung Shelly Plug Hyper EG"
+        device_class: power
+        unit_of_measurement: "W"
+        state_class: measurement
+        unique_id: "77a764ba-a2b1-4a3b-b931-a6b2adef0885"
+        state: "{{ states('sensor.shelly_plug_hyper2000_eg_power')|float(0) if states('sensor.shelly_plug_hyper2000_eg_power')| int > 0 else 0 }}"
+
+      # Einspeisung: negativer Anteil (Batterie → Netz), als Rohwert
+      - name: "Batterie Einspeisung Ausgelesen Local Hyper EG"
+        device_class: power
+        unit_of_measurement: "W"
+        state_class: measurement
+        unique_id: "8adf37b4-56ed-46ae-b59d-b319e764f193"
+        state: "{{ states('sensor.shelly_plug_hyper2000_eg_power')|float(0) if states('sensor.shelly_plug_hyper2000_eg_power')| int < 1 else 0 }}"
+
+      # Einspeisung normiert: negativen Wert in positive Zahl umrechnen
+      - name: "Batterie Einspeisung Normiert Local Hyper EG"
+        device_class: power
+        unit_of_measurement: "W"
+        state_class: measurement
+        unique_id: "f9115f12-862a-41b0-bae1-5ef1e98b228a"
+        state: >
+          {% set wert = states('sensor.batterie_einspeisung_ausgelesen_local_hyper_eg')|float(0) * -1 | round(3) %}
+          {% if wert == 0 %}
+            0
+          {% else %}
+            {{ wert }}
+          {% endif %}
+
+# ==========================================================================
+# UTILITY METER — Hyper2000 EG / OG
+# Quellen: abstrahierte Template-Sensoren aus Zendure HA Integration
+# Anker &meter_config_no_reset wird beim ersten Eintrag (hyper2000_eg_energieeinspeisung_count)
+# definiert — identische Konfiguration wie in utility_meter.yaml.
+# ACE 1500 Utility Meter → ace1500_power_energy.yaml
+# ==========================================================================
+utility_meter:
+
+  # --------------------------------------------------------------------------
+  # HYPER2000 EG (ERDGESCHOSS)
+  # Anker-Definition beim ersten Eintrag — alle weiteren nutzen *meter_config_no_reset
+  # --------------------------------------------------------------------------
+
+  # Einspeisung ins Netz (Entladung der Batterie)
+  hyper2000_eg_energieeinspeisung_count:
+    source: sensor.hyper2000_eg_energieeinspeisung
+    name: "Hyper2000 EG Energieeinspeisung Count"
+    unique_id: hyper2000_eg_energieeinspeisung_count
+    <<: &meter_config_no_reset
+      tariffs: []
+      delta_values: false
+      always_available: true
+
+  # Gesamtverbrauch (Ladung der Batterie aus dem Netz)
+  hyper2000_eg_gesamtverbrauch_count:
+    source: sensor.hyper2000_eg_gesamtverbrauch
+    name: "Hyper2000 EG Gesamtverbrauch Count"
+    unique_id: hyper2000_eg_gesamtverbrauch_count
+    <<: *meter_config_no_reset
+
+  # --------------------------------------------------------------------------
+  # HYPER2000 OG (OBERGESCHOSS)
+  # --------------------------------------------------------------------------
+
+  # Einspeisung ins Netz (Entladung der Batterie)
+  hyper2000_og_energieeinspeisung_count:
+    source: sensor.hyper2000_og_energieeinspeisung
+    name: "Hyper2000 OG Energieeinspeisung Count"
+    unique_id: hyper2000_og_energieeinspeisung_count
+    <<: *meter_config_no_reset
+
+  # Gesamtverbrauch (Ladung der Batterie aus dem Netz)
+  hyper2000_og_gesamtverbrauch_count:
+    source: sensor.hyper2000_og_gesamtverbrauch
+    name: "Hyper2000 OG Gesamtverbrauch Count"
+    unique_id: hyper2000_og_gesamtverbrauch_count
+    <<: *meter_config_no_reset
+
+  # ACE 1500 Utility Meter → ace1500_power_energy.yaml ausgelagert

@@ -15,6 +15,10 @@ CONF_AGGREGATION: Final = "aggregation"
 CONF_SPIKE_FILTER: Final = "spike_filter"
 CONF_INVERT: Final = "invert"
 CONF_FALLBACK_ZERO: Final = "fallback_zero"
+# REQ-COMP-004 extension (M1/ACE 1500): also fire the fallback source when the
+# aggregate is exactly 0 — mirrors "primary == 0 -> use fallback" template
+# semantics, which power's fail-soft 0 would otherwise mask forever.
+CONF_FALLBACK_ON_ZERO: Final = "fallback_on_zero"
 CONF_LEGACY_UNIQUE_ID: Final = "legacy_unique_id"
 CONF_FALLBACK_SOURCE_ENTITY_ID: Final = "fallback_source_entity_id"
 CONF_FALLBACK_CONDITION_ENTITY_ID: Final = "fallback_condition_entity_id"

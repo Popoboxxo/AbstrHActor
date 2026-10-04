@@ -112,7 +112,22 @@ def test_reconfiguring_source_keeps_same_entity_id(
 ):
     page = logged_in_page
 
+    # Snapshot before adding so we can identify THIS test's own entity
+    # deterministically: in a full-suite run other tests (e.g. the net-flow
+    # test) add their own sensor.abstract_power_* entities to the shared HA
+    # container, and `next(iter(<set of all of them>))` picks an arbitrary
+    # member (Python string-hash order) — possibly another test's entity
+    # (380 W), not ours (42 W).
+    entity_ids_pre_add = _current_entity_ids(hass_base_url, hass_bearer_token)
     _add_device(page, hass_base_url, "Fallback Power Source")
+    entity_ids_new = (
+        _current_entity_ids(hass_base_url, hass_bearer_token) - entity_ids_pre_add
+    )
+    assert len(entity_ids_new) == 1, (
+        "expected exactly one new abstract entity to be created, got "
+        f"{entity_ids_new}"
+    )
+    entity_id = entity_ids_new.pop()
     entity_ids_before = _current_entity_ids(hass_base_url, hass_bearer_token)
     assert entity_ids_before, "expected the newly added device's entity to be listed"
 
@@ -174,7 +189,9 @@ def test_reconfiguring_source_keeps_same_entity_id(
     # docker/ha_config_e2e/virtual_sensors.yaml) specifically so this is a
     # reliable discriminator between "source actually swapped" and
     # "reconfigure was a no-op".
-    entity_id = next(iter(entity_ids_after))
+    # entity_id was captured at creation time above (entity_ids_new), so the
+    # reconfigure cannot have changed it — REQ-CORE-001 — and the poll below
+    # necessarily targets THIS test's own sensor.
     state = None
     for _ in range(20):
         resp = requests.get(
