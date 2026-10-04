@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-10-04
+
+### Added
+
+- Management backend: delete-sensor service, snapshot import/restore and
+  debug options for operating an Abstractor fleet day to day —
+  [GH#36](https://github.com/Popoboxxo/AbstrHActor/pull/36)
+- Per-sensor aggregation modes: multiple source sensors can now be combined
+  with `sum`, `max`, `min` or `first_available` instead of only summing —
+  [GH#37](https://github.com/Popoboxxo/AbstrHActor/pull/37)
+- M1 battery migration support: new `fallback_on_zero` subentry flag that
+  falls back to a secondary source when the primary reports 0, plus a local
+  YAML snapshot generator (`scripts/migrate_local_yaml.py`) and a Hyper2000 /
+  ACE 1500 mapping guide (`docs/migration-m1-batteries.md`) —
+  [GH#38](https://github.com/Popoboxxo/AbstrHActor/pull/38)
+
+### Fixed
+
+- Unique-ID E2E test now picks its own entity deterministically, removing a
+  source of flakes in the E2E suite
+
+### Changed
+
+- (None in this release)
+
+### Removed
+
+- (None in this release)
+
 ## [1.1.0] — 2026-09-07
 
 ### Added
