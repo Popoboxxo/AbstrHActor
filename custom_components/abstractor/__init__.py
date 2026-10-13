@@ -49,10 +49,11 @@ from .frontend import async_register_panel, async_unregister_panel
 from .influx_exporter import create_influx_exporter
 from .repository.device_registry import DeviceRegistry
 from .snapshot import build_snapshot, validate_snapshot
+from .websocket import async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor"]
 _STORAGE_DATA = "storage"
 IMPORT_SERVICE_SCHEMA = vol.Schema(
     {vol.Required("data"): vol.All(dict, validate_snapshot)}
@@ -502,6 +503,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     await _save_snapshot(hass)
     await async_register_panel(hass)
+    async_register_websocket(hass)
 
     return True
 

@@ -14,8 +14,24 @@ from .const import (
     CONF_AGGREGATION,
     CONF_FALLBACK_ON_ZERO,
 )
+from .specs import SPEC_REGISTRY, FailContract
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_fail_soft(device_type: str | None) -> bool:
+    """Return True when a device type's failure contract is SOFT_ZERO.
+
+    The spec registry (``specs.py``) is the single source of truth for the
+    fail contract. A type the registry does not know (legacy or hand-edited
+    data) falls back to the historical rule — only ``power`` fails soft — so
+    nothing changes for unmapped types.
+    """
+    spec = SPEC_REGISTRY.try_get(device_type) if device_type else None
+    if spec is None:
+        return device_type == "power"
+    return spec.fail_contract is FailContract.SOFT_ZERO
+
 
 class AbstractorFilterPipeline:
     """Processes states through configured filters."""
@@ -106,6 +122,7 @@ class AbstractorFilterPipeline:
             aggregation = AGGREGATION_SUM
         last_value = self._last_valid_state
         spike_filter = self.config.get("spike_filter", False)
+        fail_soft = _is_fail_soft(self.config.get("device_type"))
         self.config["spike_filter"] = False
         values = []
         fail_closed = False
@@ -123,7 +140,7 @@ class AbstractorFilterPipeline:
                     continue
                 value = self.process(raw_state)
                 if value is None:
-                    if self.config.get("device_type") == "power":
+                    if fail_soft:
                         continue
                     if aggregation == AGGREGATION_SUM:
                         # Fail-closed device types (energy/water): don't bail
@@ -141,7 +158,7 @@ class AbstractorFilterPipeline:
         elif values:
             total = self._aggregate_values(values, aggregation)
         else:
-            total = 0.0 if self.config.get("device_type") == "power" else None
+            total = 0.0 if fail_soft else None
         self._last_valid_state = last_value
 
         if total is not None and net_subtract_raw is not None:
@@ -202,6 +219,8 @@ class AbstractorFilterPipeline:
         return sum(values)
 
     def _handle_unavailable(self) -> float | None:
-        if self.config.get("fallback_zero", False) or self.config.get("device_type") == "power":
+        if self.config.get("fallback_zero", False) or _is_fail_soft(
+            self.config.get("device_type")
+        ):
             return 0.0
         return None

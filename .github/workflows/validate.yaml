@@ -61,3 +61,21 @@ jobs:
           pip install -r requirements.txt -r requirements_test.txt
       - name: Run pytest
         run: pytest tests/ -v --cov=custom_components/abstractor --cov-report=term-missing
+
+  frontend:
+    name: Frontend build artifact in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check frontend
+        run: npm run typecheck:frontend
+      - name: Build frontend
+        run: node scripts/build-frontend.mjs
+      - name: Verify committed artifact is in sync
+        run: git diff --exit-code -- custom_components/abstractor/www/abstractor-panel.js

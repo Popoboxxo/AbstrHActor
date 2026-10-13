@@ -1,7 +1,7 @@
 """Test Abstractor sidebar panel registration (ADR-007)."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 from custom_components.abstractor.frontend import (
     async_register_panel,

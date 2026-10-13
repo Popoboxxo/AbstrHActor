@@ -64,11 +64,26 @@ from .const import (
     POLL_INTERVAL_PRESETS,
     ROOT_ENTRY_TITLE,
     ROOT_UNIQUE_ID,
-    SENSOR_TYPES,
     SUBENTRY_TYPE_SENSOR,
 )
+from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _device_type_options() -> list[selector.SelectOptionDict]:
+    """Return the enabled sensor/binary specs as select options.
+
+    The config flow derives its type catalogue from ``SPEC_REGISTRY`` (the
+    single source of truth) instead of a hand-maintained list, so a spec can
+    never be offered before it is enabled — or drift out of sync with the
+    platform-specific behavior in ``coordinator``/``sensor``.
+    """
+    return [
+        selector.SelectOptionDict(value=spec.type_key, label=spec.display_name)
+        for spec in SPEC_REGISTRY.enabled()
+        if spec.platform in ("sensor", "binary_sensor")
+    ]
 
 
 def _device_group_id_for_device(hass: HomeAssistant, device_id: str) -> str | None:
@@ -504,14 +519,52 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
 class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
     """Create or reconfigure one Abstract sensor as a subentry."""
 
+    # Device type chosen in the create flow's first step. ``None`` when the
+    # create flow has not reached the details step (or on a reconfigure flow,
+    # which keeps the type selectable in its single form).
+    _device_type: str | None = None
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Create a new Abstract sensor subentry."""
+        """Choose the Abstract sensor type; the type-specific fields follow.
+
+        Split from the details step so a non-numeric (binary) type never sees
+        the numeric-only pipeline fields that only the numeric coordinator
+        pipeline consumes (M5).
+        """
+        if user_input is not None:
+            self._device_type = user_input[CONF_DEVICE_TYPE]
+            return await self.async_step_details()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=_device_type_options(),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_details(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect the source(s) and, for numeric types, the value pipeline."""
+        if self._device_type is None:
+            # No type chosen yet (e.g. a restored flow missing its first step
+            # answer): restart at the type selection instead of guessing.
+            return await self.async_step_user()
+
         errors: dict[str, str] = {}
         if user_input is not None:
-            sources = user_input.get(CONF_SOURCE_ENTITY_IDS) or [
-                user_input.get(CONF_SOURCE_ENTITY_ID)
+            submission = {**user_input, CONF_DEVICE_TYPE: self._device_type}
+            sources = submission.get(CONF_SOURCE_ENTITY_IDS) or [
+                submission.get(CONF_SOURCE_ENTITY_ID)
             ]
             sources = [source for source in sources if source]
             if not sources:
@@ -523,19 +576,23 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 # entity row yet, so there is no entity to reparent — the
                 # subentry data is committed verbatim and normal entity setup
                 # later creates the entity on the requested safe device.
-                errors = await self._validate_device_mapping(user_input)
+                errors = await self._validate_device_mapping(submission)
                 if errors:
                     return self.async_show_form(
-                        step_id="user", data_schema=self._schema(), errors=errors
+                        step_id="details",
+                        data_schema=self._schema_for(self._device_type),
+                        errors=errors,
                     )
-                data = _build_new_subentry_data(self.hass, user_input, sources)
+                data = _build_new_subentry_data(self.hass, submission, sources)
                 device_type = data[CONF_DEVICE_TYPE]
                 return self.async_create_entry(
                     title=f"Abstract {device_type}", data=data
                 )
 
         return self.async_show_form(
-            step_id="user", data_schema=self._schema(), errors=errors
+            step_id="details",
+            data_schema=self._schema_for(self._device_type),
+            errors=errors,
         )
 
     def _get_subentry_config_entry(self) -> ConfigEntry:
@@ -583,7 +640,8 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     return self.async_show_form(
                         step_id="reconfigure",
                         data_schema=self.add_suggested_values_to_schema(
-                            self._schema(
+                            self._schema_for(
+                                current.data.get(CONF_DEVICE_TYPE, "power"),
                                 reconfigure=True,
                                 legacy_unique_id_pinned=bool(
                                     current.data.get(CONF_LEGACY_UNIQUE_ID)
@@ -617,7 +675,8 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                self._schema(
+                self._schema_for(
+                    current.data.get(CONF_DEVICE_TYPE, "power"),
                     reconfigure=True,
                     legacy_unique_id_pinned=bool(
                         current.data.get(CONF_LEGACY_UNIQUE_ID)
@@ -1031,17 +1090,28 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         return _normalize_subentry_data(self.hass, user_input, sources, current_data)
 
     @staticmethod
-    def _schema(
-        *, reconfigure: bool = False, legacy_unique_id_pinned: bool = False
+    def _schema_for(
+        device_type: str,
+        *,
+        reconfigure: bool = False,
+        legacy_unique_id_pinned: bool = False,
     ) -> vol.Schema:
-        """Build the sensor schema — shared by create and reconfigure.
+        """Build the source/identity schema for one device type.
 
-        Adds the device-mapping fields (`CONF_TARGET_DEVICE_ID` device
-        selector filtered to `DOMAIN`, and the `CONF_CREATE_NEW_DEVICE`
-        checkbox defaulting False) for both create and reconfigure. These are
-        UI-only and never persisted: `_normalize` strips them and
-        `_validate_device_mapping` turns them into a safe registry operation
-        or a fail-loud conflict error before any subentry data write.
+        The field set is derived from the device type's spec in
+        ``SPEC_REGISTRY``: a non-numeric (binary) type never sees the
+        numeric-only pipeline fields (aggregation, spike filter, invert,
+        fallback, net-subtract) that only the numeric coordinator pipeline
+        consumes. A type the registry does not know keeps the historical full
+        field set, so a hand-edited legacy subentry stays reconfigureable.
+
+        `CONF_DEVICE_TYPE` is only part of the form when `reconfigure=True`
+        (the create flow picks the type in its first step). The device-mapping
+        fields (`CONF_TARGET_DEVICE_ID` device selector filtered to `DOMAIN`,
+        and `CONF_CREATE_NEW_DEVICE` defaulting False) are UI-only and never
+        persisted: `_normalize` strips them and `_validate_device_mapping`
+        turns them into a safe registry operation or a fail-loud conflict
+        error before any subentry data write.
 
         `legacy_unique_id_pinned=True` drops `CONF_LEGACY_UNIQUE_ID` from the
         form: the subentry already has one, which makes it that sensor's
@@ -1052,48 +1122,55 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         cannot change" — and `_normalize` enforces the same thing on the data,
         so a submission that bypasses the form cannot drop it either.
         """
-        schema: dict[Any, Any] = {
-            vol.Required(CONF_DEVICE_TYPE): selector.SelectSelector(
+        spec = SPEC_REGISTRY.try_get(device_type)
+        include_numeric = spec.numeric if spec is not None else True
+
+        schema: dict[Any, Any] = {}
+        if reconfigure:
+            schema[vol.Required(CONF_DEVICE_TYPE)] = selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=SENSOR_TYPES,
+                    options=_device_type_options(),
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
-            ),
-            vol.Optional(CONF_SOURCE_ENTITY_ID): selector.EntitySelector(),
-            vol.Optional(CONF_SOURCE_ENTITY_IDS): selector.EntitySelector(
-                selector.EntitySelectorConfig(multiple=True)
-            ),
-        }
+            )
+        schema[vol.Optional(CONF_SOURCE_ENTITY_ID)] = selector.EntitySelector()
+        schema[vol.Optional(CONF_SOURCE_ENTITY_IDS)] = selector.EntitySelector(
+            selector.EntitySelectorConfig(multiple=True)
+        )
         if not legacy_unique_id_pinned:
             schema[vol.Optional(CONF_LEGACY_UNIQUE_ID)] = selector.TextSelector()
-        schema.update(
-            {
-                vol.Optional(
-                    CONF_AGGREGATION, default=AGGREGATION_SUM
-                ): selector.SelectSelector(
+        if include_numeric:
+            schema[vol.Optional(CONF_AGGREGATION, default=AGGREGATION_SUM)] = (
+                selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=AGGREGATION_MODES,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
-                ),
-                vol.Optional(CONF_SPIKE_FILTER, default=False): bool,
-                vol.Optional(CONF_INVERT, default=False): bool,
-                vol.Optional(CONF_FALLBACK_ZERO, default=False): bool,
-                vol.Optional(CONF_NET_SUBTRACT_ENTITY_ID): selector.EntitySelector(),
-                vol.Optional(CONF_FALLBACK_SOURCE_ENTITY_ID): selector.EntitySelector(),
-                vol.Optional(
-                    CONF_FALLBACK_CONDITION_ENTITY_ID
-                ): selector.EntitySelector(),
-                vol.Optional(CONF_FALLBACK_CONDITION_STATE): selector.TextSelector(),
-                vol.Optional(CONF_FALLBACK_ON_ZERO, default=False): bool,
-                # Non-destructive device mapping controls (UI-only, never
-                # persisted — see _normalize and _validate_device_mapping).
-                vol.Optional(CONF_TARGET_DEVICE_ID): selector.DeviceSelector(
-                    selector.DeviceSelectorConfig(integration=DOMAIN)
-                ),
-                vol.Optional(
-                    CONF_CREATE_NEW_DEVICE, default=False
-                ): selector.BooleanSelector(),
-            }
+                )
+            )
+            schema[vol.Optional(CONF_SPIKE_FILTER, default=False)] = bool
+            schema[vol.Optional(CONF_INVERT, default=False)] = bool
+            schema[vol.Optional(CONF_FALLBACK_ZERO, default=False)] = bool
+            schema[vol.Optional(CONF_NET_SUBTRACT_ENTITY_ID)] = (
+                selector.EntitySelector()
+            )
+            schema[vol.Optional(CONF_FALLBACK_SOURCE_ENTITY_ID)] = (
+                selector.EntitySelector()
+            )
+            schema[vol.Optional(CONF_FALLBACK_CONDITION_ENTITY_ID)] = (
+                selector.EntitySelector()
+            )
+            schema[vol.Optional(CONF_FALLBACK_CONDITION_STATE)] = (
+                selector.TextSelector()
+            )
+            schema[vol.Optional(CONF_FALLBACK_ON_ZERO, default=False)] = bool
+        # Non-destructive device mapping controls (UI-only, never persisted —
+        # see _normalize and _validate_device_mapping). Applicable to every
+        # platform, so they are always present.
+        schema[vol.Optional(CONF_TARGET_DEVICE_ID)] = selector.DeviceSelector(
+            selector.DeviceSelectorConfig(integration=DOMAIN)
+        )
+        schema[vol.Optional(CONF_CREATE_NEW_DEVICE, default=False)] = (
+            selector.BooleanSelector()
         )
         return vol.Schema(schema)

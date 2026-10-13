@@ -264,6 +264,12 @@ AGENTS.md.sync-backup-*
 CLAUDE.md.sync-backup-*
 sync.log
 
+# node install output (npm install). Generated dependency tree, never commit.
+# The frontend sources stay tracked (frontend/src/, package.json, and
+# package-lock.json) so the build stays reproducible; only the installed
+# modules are ignored. Matches node_modules/ at any depth.
+node_modules/
+
 # Home Assistant demo instance runtime state (docker/docker-compose.demo.yml)
 # Contains generated auth tokens/secrets — never commit. The seed
 # configuration.yaml is tracked on purpose so the demo instance is
