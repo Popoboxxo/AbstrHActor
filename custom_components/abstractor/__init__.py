@@ -53,7 +53,7 @@ from .websocket import async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "light"]
 _STORAGE_DATA = "storage"
 IMPORT_SERVICE_SCHEMA = vol.Schema(
     {vol.Required("data"): vol.All(dict, validate_snapshot)}

@@ -197,7 +197,7 @@ async def ws_subentry_create(hass, connection, msg) -> None:
     requested_type = data.get(CONF_DEVICE_TYPE)
     if requested_type is not None:
         spec = SPEC_REGISTRY.try_get(requested_type)
-        if spec is None or not spec.enabled or spec.platform not in {"sensor", "binary_sensor"}:
+        if spec is None or not spec.enabled or spec.platform not in {"sensor", "binary_sensor", "switch", "light", "cover"}:
             connection.send_error(msg["id"], "invalid", f"Unsupported device_type: {requested_type}")
             return
     try:

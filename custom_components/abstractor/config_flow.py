@@ -82,7 +82,7 @@ def _device_type_options() -> list[selector.SelectOptionDict]:
     return [
         selector.SelectOptionDict(value=spec.type_key, label=spec.display_name)
         for spec in SPEC_REGISTRY.enabled()
-        if spec.platform in ("sensor", "binary_sensor")
+        if spec.platform in ("sensor", "binary_sensor", "switch", "light", "cover")
     ]
 
 
