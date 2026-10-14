@@ -59,6 +59,12 @@ def _add_device(page, hass_base_url: str, source_name: str) -> None:
     page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
     page.wait_for_timeout(500)
 
+    # Two-step create flow: the first step ("user") selects the device type
+    # (default "power"); the source picker lives on the second ("details")
+    # step. Submit the type step to reach it.
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
+    page.wait_for_timeout(500)
+
     # This picker opens as its own role="dialog" (named after the field's
     # aria-label) layered on top of the subentry form dialog, which itself
     # sits on top of the domain listing page underneath both — scoping to

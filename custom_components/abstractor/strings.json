@@ -69,9 +69,18 @@
       "step": {
         "user": {
           "title": "Add Abstract sensor",
-          "description": "Choose the type of abstract sensor and its hardware source(s).",
+          "description": "Choose the type of abstract sensor to add.",
           "data": {
-            "device_type": "Device Type",
+            "device_type": "Device Type"
+          },
+          "data_description": {
+            "device_type": "Power, energy, water, or a binary sensor type."
+          }
+        },
+        "details": {
+          "title": "Configure Abstract sensor",
+          "description": "Choose the hardware source(s) and, for numeric sensors, the value pipeline.",
+          "data": {
             "source_entity_id": "Source entity",
             "source_entity_ids": "Source entities",
             "legacy_unique_id": "Legacy unique ID (optional)",
@@ -88,7 +97,6 @@
             "create_new_device": "Create a separate device"
           },
           "data_description": {
-            "device_type": "Power, energy, or water abstraction layer.",
             "source_entity_id": "Single hardware sensor to abstract.",
             "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
             "legacy_unique_id": "Manually reuse a specific unique_id (e.g. from a migrated YAML template sensor). Leave blank to have one generated automatically — either way, this sensor's identity will never change again, even if you later swap its source hardware.",

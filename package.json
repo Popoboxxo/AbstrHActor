@@ -1,0 +1,14 @@
+{
+  "name": "abstrhactor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "build:frontend:watch": "node scripts/build-frontend.mjs --watch",
+    "typecheck:frontend": "tsc -p frontend/tsconfig.json"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0",
+    "typescript": "^5.9.0"
+  }
+}

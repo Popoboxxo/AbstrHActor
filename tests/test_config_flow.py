@@ -35,11 +35,18 @@ from custom_components.abstractor.const import (
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_FALLBACK_CONDITION_ENTITY_ID,
+    CONF_FALLBACK_CONDITION_STATE,
+    CONF_FALLBACK_ON_ZERO,
+    CONF_FALLBACK_SOURCE_ENTITY_ID,
+    CONF_FALLBACK_ZERO,
     CONF_INFLUX_BUCKET,
     CONF_INFLUX_HOST,
     CONF_INFLUX_ORG,
     CONF_INFLUX_TOKEN,
+    CONF_INVERT,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_NET_SUBTRACT_ENTITY_ID,
     CONF_NOTIFY_ENTITY_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
@@ -87,13 +94,18 @@ async def test_subentry_create_form(hass: HomeAssistant) -> None:
         context={"source": config_entries.SOURCE_USER},
     )
     assert result["type"] == "form"
+    assert result["step_id"] == "user"
+
+    # Two-step create flow: the type is chosen first, then the details.
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
+    assert typed["type"] == "form"
+    assert typed["step_id"] == "details"
 
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_DEVICE_TYPE: "power",
-            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
-        },
+        typed["flow_id"],
+        {CONF_SOURCE_ENTITY_ID: "sensor.test_power"},
     )
     await hass.async_block_till_done()
 
@@ -115,12 +127,12 @@ async def test_subentry_create_auto_generates_stable_unique_id(hass: HomeAssista
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_DEVICE_TYPE: "power",
-            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
-        },
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
+    await hass.config_entries.subentries.async_configure(
+        typed["flow_id"],
+        {CONF_SOURCE_ENTITY_ID: "sensor.test_power"},
     )
     await hass.async_block_till_done()
 
@@ -142,9 +154,11 @@ async def test_subentry_reconfigure_keeps_auto_generated_id_after_source_swap(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+    typed = await hass.config_entries.subentries.async_configure(
+        create_result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
     await hass.config_entries.subentries.async_configure(
-        create_result["flow_id"],
-        {CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.old_plug"},
+        typed["flow_id"], {CONF_SOURCE_ENTITY_ID: "sensor.old_plug"}
     )
     await hass.async_block_till_done()
     subentry_id, subentry = next(iter(root_entry.subentries.items()))
@@ -212,13 +226,17 @@ async def test_subentry_create_form_requires_source(hass: HomeAssistant) -> None
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
 
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {CONF_DEVICE_TYPE: "power"},
+        typed["flow_id"],
+        {},
     )
 
     assert result2["type"] == "form"
+    assert result2["step_id"] == "details"
     assert result2["errors"] == {"base": "source_required"}
     assert len(root_entry.subentries) == 0
 
@@ -232,11 +250,13 @@ async def test_subentry_create_form_multi_source_dedup(hass: HomeAssistant) -> N
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
 
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+        typed["flow_id"],
         {
-            CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_IDS: [
                 "sensor.b_power",
                 "sensor.a_power",
@@ -265,10 +285,12 @@ async def test_subentry_create_form_aggregation_mode(hass: HomeAssistant) -> Non
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+        typed["flow_id"],
         {
-            CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_IDS: ["sensor.a_power", "sensor.b_power"],
             CONF_AGGREGATION: AGGREGATION_MAX,
         },
@@ -292,12 +314,12 @@ async def test_subentry_create_form_aggregation_defaults_to_sum(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
-        {
-            CONF_DEVICE_TYPE: "power",
-            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
-        },
+        typed["flow_id"],
+        {CONF_SOURCE_ENTITY_ID: "sensor.test_power"},
     )
     await hass.async_block_till_done()
 
@@ -315,11 +337,13 @@ async def test_subentry_create_form_legacy_unique_id(hass: HomeAssistant) -> Non
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
 
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+        typed["flow_id"],
         {
-            CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_ID: "sensor.test_power",
             CONF_LEGACY_UNIQUE_ID: "old_unique_id_123",
         },
@@ -1203,6 +1227,19 @@ def _root_entry(hass: HomeAssistant) -> MockConfigEntry:
     return entry
 
 
+async def _select_create_type(
+    hass: HomeAssistant, root_entry: MockConfigEntry, device_type: str
+) -> dict[str, Any]:
+    """Start a create flow, submit the type step, return the details form."""
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    return await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: device_type}
+    )
+
+
 def _add_sensor_subentry(
     hass: HomeAssistant,
     root_entry: MockConfigEntry,
@@ -1314,18 +1351,16 @@ def _patch_capabilities(capabilities: RegistryCapabilities) -> Any:
 async def test_subentry_create_schema_exposes_mapping_fields(
     hass: HomeAssistant,
 ) -> None:
-    """[design #1] The create schema exposes CONF_TARGET_DEVICE_ID as a
+    """[design #1] The create details schema exposes CONF_TARGET_DEVICE_ID as a
     DeviceSelector filtered to DOMAIN and CONF_CREATE_NEW_DEVICE defaulting
     to False."""
     root_entry = _root_entry(hass)
 
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={"source": config_entries.SOURCE_USER},
-    )
-    assert result["type"] == "form"
+    typed = await _select_create_type(hass, root_entry, "power")
+    assert typed["type"] == "form"
+    assert typed["step_id"] == "details"
 
-    schema = result["data_schema"]
+    schema = typed["data_schema"]
     _target_marker, target_validator = _schema_field(schema, CONF_TARGET_DEVICE_ID)
     assert isinstance(target_validator, selector.DeviceSelector)
     assert target_validator.config["integration"] == DOMAIN
@@ -1334,20 +1369,128 @@ async def test_subentry_create_schema_exposes_mapping_fields(
     assert create_marker.default() is False
 
 
-async def test_subentry_create_with_detach_flag_is_noop(hass: HomeAssistant) -> None:
-    """[design #3] A create flow with the detach checkbox set has no entity
-    row to detach: the sensor is created ungrouped and no registry row is
-    touched."""
+# Numeric-only pipeline fields: offered for numeric specs, withheld for
+# binary/non-numeric specs (M5). Every create/reconfigure form assertion below
+# uses this tuple so the contract stays in one place.
+_NUMERIC_ONLY_FIELDS = (
+    CONF_AGGREGATION,
+    CONF_SPIKE_FILTER,
+    CONF_INVERT,
+    CONF_FALLBACK_ZERO,
+    CONF_FALLBACK_ON_ZERO,
+    CONF_NET_SUBTRACT_ENTITY_ID,
+    CONF_FALLBACK_SOURCE_ENTITY_ID,
+    CONF_FALLBACK_CONDITION_ENTITY_ID,
+    CONF_FALLBACK_CONDITION_STATE,
+)
+_SHARED_FIELDS = (
+    CONF_SOURCE_ENTITY_ID,
+    CONF_SOURCE_ENTITY_IDS,
+    CONF_LEGACY_UNIQUE_ID,
+    CONF_TARGET_DEVICE_ID,
+    CONF_CREATE_NEW_DEVICE,
+)
+
+
+async def test_subentry_create_type_step_lists_enabled_specs(
+    hass: HomeAssistant,
+) -> None:
+    """[M5] The create type step offers exactly the enabled sensor/binary specs
+    and nothing else."""
     root_entry = _root_entry(hass)
 
     result = await hass.config_entries.subentries.async_init(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "user"
+    _marker, validator = _schema_field(result["data_schema"], CONF_DEVICE_TYPE)
+    assert isinstance(validator, selector.SelectSelector)
+    options = validator.config["options"]
+    values = [option["value"] if isinstance(option, dict) else option for option in options]
+    assert values == ["power", "energy", "water", "door_contact", "motion", "smoke"]
+    # Only the type is asked for here; everything else lives in the details step.
+    assert [str(marker.schema) for marker in result["data_schema"].schema] == [
+        CONF_DEVICE_TYPE
+    ]
+
+
+async def test_subentry_create_binary_type_omits_numeric_fields(
+    hass: HomeAssistant,
+) -> None:
+    """[M5] A binary type's create form never offers numeric-only pipeline
+    fields, but keeps the source, identity, and device-mapping fields."""
+    root_entry = _root_entry(hass)
+
+    typed = await _select_create_type(hass, root_entry, "door_contact")
+
+    assert typed["type"] == "form"
+    assert typed["step_id"] == "details"
+    fields = [str(marker.schema) for marker in typed["data_schema"].schema]
+    for field in _NUMERIC_ONLY_FIELDS:
+        assert field not in fields
+    for field in _SHARED_FIELDS:
+        assert field in fields
+    assert CONF_DEVICE_TYPE not in fields
+
+
+async def test_subentry_create_numeric_type_exposes_numeric_fields(
+    hass: HomeAssistant,
+) -> None:
+    """[M5] A numeric type keeps the full pipeline field set — behavior parity
+    for power/energy/water."""
+    root_entry = _root_entry(hass)
+
+    typed = await _select_create_type(hass, root_entry, "power")
+
+    fields = [str(marker.schema) for marker in typed["data_schema"].schema]
+    for field in _NUMERIC_ONLY_FIELDS:
+        assert field in fields
+    for field in _SHARED_FIELDS:
+        assert field in fields
+    assert CONF_DEVICE_TYPE not in fields
+
+
+async def test_subentry_reconfigure_binary_type_omits_numeric_fields(
+    hass: HomeAssistant,
+) -> None:
+    """[M5] Reconfiguring a binary subentry renders the fields for its current
+    type (no numeric pipeline fields) while still offering the type selector."""
+    root_entry = _root_entry(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "door_contact",
+            CONF_SOURCE_ENTITY_ID: "binary_sensor.door",
+        },
+        subentry_type="sensor",
+        title="Abstract door_contact",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+
+    result = await _start_reconfigure(hass, root_entry, subentry.subentry_id)
+
+    assert result["type"] == "form"
+    fields = [str(marker.schema) for marker in result["data_schema"].schema]
+    assert CONF_DEVICE_TYPE in fields
+    for field in _NUMERIC_ONLY_FIELDS:
+        assert field not in fields
+    for field in _SHARED_FIELDS[:-2]:  # legacy id is present (never pinned here)
+        assert field in fields
+
+
+async def test_subentry_create_with_detach_flag_is_noop(hass: HomeAssistant) -> None:
+    """[design #3] A create flow with the detach checkbox set has no entity
+    row to detach: the sensor is created ungrouped and no registry row is
+    touched."""
+    root_entry = _root_entry(hass)
+
+    typed = await _select_create_type(hass, root_entry, "power")
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+        typed["flow_id"],
         {
-            CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_ID: "sensor.a",
             CONF_CREATE_NEW_DEVICE: True,
         },
@@ -1380,14 +1523,10 @@ async def test_subentry_create_with_target_owned_by_other_subentry_succeeds_on_u
         identifiers={(DOMAIN, "group-b")},
     )
 
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={"source": config_entries.SOURCE_USER},
-    )
+    typed = await _select_create_type(hass, root_entry, "power")
     result2 = await hass.config_entries.subentries.async_configure(
-        result["flow_id"],
+        typed["flow_id"],
         {
-            CONF_DEVICE_TYPE: "power",
             CONF_SOURCE_ENTITY_ID: "sensor.a",
             CONF_TARGET_DEVICE_ID: device_b.id,
         },
@@ -1424,15 +1563,11 @@ async def test_subentry_create_with_cross_subentry_target_rejected_on_single_own
         identifiers={(DOMAIN, "group-b")},
     )
 
-    result = await hass.config_entries.subentries.async_init(
-        (root_entry.entry_id, "sensor"),
-        context={"source": config_entries.SOURCE_USER},
-    )
+    typed = await _select_create_type(hass, root_entry, "power")
     with _patch_capabilities(_capabilities_single_owner()):
         result2 = await hass.config_entries.subentries.async_configure(
-            result["flow_id"],
+            typed["flow_id"],
             {
-                CONF_DEVICE_TYPE: "power",
                 CONF_SOURCE_ENTITY_ID: "sensor.a",
                 CONF_TARGET_DEVICE_ID: device_b.id,
             },

@@ -32,7 +32,7 @@ async def _do_register_panel(hass: HomeAssistant, src: Path) -> bool:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(_PANEL_URL, str(src), True)]
         )
-    except Exception as exc:  # pragma: no cover - defensive, mirrors HA's own pattern
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive, mirrors HA's own pattern
         if "already" not in str(exc).lower():
             _LOGGER.warning("Abstractor panel static path registration failed: %s", exc)
             return False
@@ -58,7 +58,7 @@ async def _do_register_panel(hass: HomeAssistant, src: Path) -> bool:
             require_admin=False,
         )
         return True
-    except Exception as exc:  # pragma: no cover - defensive, mirrors HA's own pattern
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive, mirrors HA's own pattern
         if "already" not in str(exc).lower():
             _LOGGER.warning("Failed to register Abstractor panel: %s", exc)
             return False
@@ -102,6 +102,6 @@ async def async_unregister_panel(hass: HomeAssistant) -> None:
         from homeassistant.components import frontend
 
         frontend.async_remove_panel(hass, _PANEL_URL_PATH)
-    except Exception as exc:  # pragma: no cover - defensive, mirrors HA's own pattern
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive, mirrors HA's own pattern
         _LOGGER.debug("Failed to remove Abstractor panel: %s", exc)
     hass.data.pop(_PANEL_REGISTERED_KEY, None)

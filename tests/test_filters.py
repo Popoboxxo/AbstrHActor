@@ -276,3 +276,29 @@ def test_fallback_on_zero_still_requires_condition_and_value() -> None:
         pipeline.process_sources(["0"], fallback_raw="unavailable", fallback_condition_met=True)
         == 0.0
     )
+
+
+def test_pass_through_device_type_fails_closed() -> None:
+    """M6: a device type whose spec is not SOFT_ZERO fails closed like
+    energy/water — the pipeline consults spec.fail_contract, not a literal."""
+    pipeline = AbstractorFilterPipeline({"device_type": "cover_position"})
+
+    assert pipeline.process_sources(["2", "unavailable"]) is None
+    assert pipeline.process("unavailable") is None
+
+
+def test_unknown_device_type_keeps_historical_contract() -> None:
+    """M6: an unmapped/legacy device type falls back to the historical rule —
+    the literal 'power' fails soft, anything else fails closed."""
+    assert (
+        AbstractorFilterPipeline({"device_type": "power"}).process_sources(
+            ["unavailable"]
+        )
+        == 0.0
+    )
+    assert (
+        AbstractorFilterPipeline({"device_type": "legacy_thing"}).process_sources(
+            ["unavailable"]
+        )
+        is None
+    )

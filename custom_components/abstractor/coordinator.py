@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -21,8 +22,22 @@ from .const import (
     DOMAIN,
 )
 from .filters import AbstractorFilterPipeline
+from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
+
+@dataclass
+class SubentryMeta:
+    """Runtime-only health metadata for a single subentry (never persisted)."""
+
+    last_event: str | None = None
+    event_at: datetime | None = None
+    spike_rejections: int = 0
+    fallbacks: int = 0
+    unavailable_samples: int = 0
+    source_states: dict[str, str] = field(default_factory=dict)
+    stale: bool = False
+
 
 class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Abstractor data."""
@@ -60,6 +75,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self.subentry_data: dict[str, dict] = {}
         self.pipelines: dict[str, AbstractorFilterPipeline] = {}
+        self.meta: dict[str, SubentryMeta] = {}
         self.influx_exporter = None
         self._last_notified_events: dict[str, str] = {}
         # Debug notification targets, applied from the root entry's options on
@@ -116,14 +132,20 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         # against a missing/invalid key when constructed directly.
         config.setdefault(CONF_AGGREGATION, AGGREGATION_SUM)
         self.subentry_data[subentry_id] = config
-        self.pipelines[subentry_id] = AbstractorFilterPipeline(
-            config, initial_last_valid_state
-        )
+        spec = SPEC_REGISTRY.try_get(config.get("device_type", "power"))
+        if spec is not None and spec.numeric:
+            self.pipelines[subentry_id] = AbstractorFilterPipeline(
+                config, initial_last_valid_state
+            )
+        else:
+            self.pipelines.pop(subentry_id, None)
+        self.meta.setdefault(subentry_id, SubentryMeta())
 
     def remove_subentry(self, subentry_id: str) -> None:
         """Remove a subentry from central polling."""
         self.subentry_data.pop(subentry_id, None)
         self.pipelines.pop(subentry_id, None)
+        self.meta.pop(subentry_id, None)
         self._last_notified_events.pop(subentry_id, None)
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -143,6 +165,22 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
             ]
 
             pipeline = self.pipelines.get(subentry_id)
+            if pipeline is None:
+                primary = source_ids[0] if source_ids else None
+                val = self._read_state(primary)
+                data[subentry_id] = val
+                await self._async_notify_debug(subentry_id, None)
+                previous = self.meta.get(subentry_id, SubentryMeta())
+                self.meta[subentry_id] = SubentryMeta(
+                    last_event=previous.last_event,
+                    event_at=previous.event_at,
+                    spike_rejections=previous.spike_rejections,
+                    fallbacks=previous.fallbacks,
+                    unavailable_samples=previous.unavailable_samples + (1 if val is None else 0),
+                    source_states={primary: val} if primary and val is not None else {},
+                    stale=False,
+                )
+                continue
             if pipeline:
                 net_subtract_raw = self._read_state(config.get(CONF_NET_SUBTRACT_ENTITY_ID))
                 fallback_raw = self._read_state(config.get(CONF_FALLBACK_SOURCE_ENTITY_ID))
@@ -154,6 +192,33 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     fallback_condition_met=fallback_condition_met,
                 )
                 data[subentry_id] = val
+                previous = self.meta.get(subentry_id, SubentryMeta())
+                spike_hits = previous.spike_rejections
+                fallback_hits = previous.fallbacks
+                unavailable_samples = previous.unavailable_samples
+                if (pipeline.last_event or "").lower().startswith("spike"):
+                    spike_hits += 1
+                if (pipeline.last_event or "").lower().startswith("fallback"):
+                    fallback_hits += 1
+                if val is None:
+                    unavailable_samples += 1
+                source_states = {
+                    source_id: (raw_states[i] if i < len(raw_states) else None)
+                    for i, source_id in enumerate(source_ids)
+                }
+                self.meta[subentry_id] = SubentryMeta(
+                    last_event=pipeline.last_event,
+                    event_at=datetime.now(UTC)
+                    if pipeline.last_event is not None
+                    else previous.event_at,
+                    spike_rejections=spike_hits,
+                    fallbacks=fallback_hits,
+                    unavailable_samples=unavailable_samples,
+                    source_states={
+                        k: v for k, v in source_states.items() if v is not None
+                    },
+                    stale=False,
+                )
                 await self._async_notify_debug(subentry_id, pipeline.last_event)
 
                 if self.influx_exporter and val is not None:

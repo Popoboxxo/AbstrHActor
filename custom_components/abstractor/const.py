@@ -1,6 +1,8 @@
 """Constants for the Abstractor integration."""
 from typing import Any, Final
 
+from .specs import SPEC_REGISTRY
+
 DOMAIN: Final = "abstractor"
 CONFIG_ENTRY_VERSION: Final = 1
 # Identity of the singleton parent entry that every sensor subentry hangs off.
@@ -46,17 +48,18 @@ STORAGE_VERSION: Final = 1
 SERVICE_EXPORT_DATA: Final = "export_data"
 SERVICE_IMPORT_DATA: Final = "import_data"
 SERVICE_DELETE_SENSOR: Final = "delete_sensor"
+WS_GET_SUBENTRIES: Final = "abstractor/subentries"
+WS_YAML_SCAN: Final = "abstractor/yaml_scan"
 
 # Sensor Types
 TYPE_POWER = "power"
 TYPE_ENERGY = "energy"
 TYPE_WATER = "water"
 
-SENSOR_TYPES = [
-    TYPE_POWER,
-    TYPE_ENERGY,
-    TYPE_WATER,
-]
+# Derived from the spec registry (the single source of truth for the type
+# catalogue; see specs.py) so the offered types cannot drift from the specs.
+# Only enabled specs are listed.
+SENSOR_TYPES = [spec.type_key for spec in SPEC_REGISTRY.enabled()]
 
 # Aggregation modes for multi-source subentries (REQ-CORE-004 extension, B2).
 AGGREGATION_SUM: Final = "sum"

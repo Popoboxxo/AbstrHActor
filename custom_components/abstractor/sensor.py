@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
+from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,10 @@ async def async_setup_entry(
                 subentry_id,
             )
             device_type = "power"
+        spec = SPEC_REGISTRY.try_get(device_type)
+        if spec is not None and spec.platform != "sensor":
+            # Not owned by this platform (e.g. binary_sensor). Skip.
+            continue
         # Identity (unique_id) is derived from subentry.data ONLY. subentry.data
         # is what the create/reconfigure flow writes atomically each time (see
         # config_flow.py); deriving unique_id from anything else would risk
@@ -107,7 +112,8 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
             self._attr_unique_id = (
                 f"abstractor_{device_type}_{'_'.join(sorted(identity_source_ids))}"
             )
-        self._attr_name = device_type.capitalize()
+        self._spec = SPEC_REGISTRY.try_get(device_type) or SPEC_REGISTRY.get("power")
+        self._attr_name = self._spec.display_name
         # device_group_id set -> this sensor joins an existing device (the
         # subentry that originally registered it under this identifier).
         # Not set -> this sensor gets its own device, keyed by its own

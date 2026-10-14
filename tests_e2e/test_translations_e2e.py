@@ -46,6 +46,12 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
     page.wait_for_timeout(500)
 
+    # Two-step create flow: the first step ("user") selects the device type
+    # (default "power"); the source picker lives on the second ("details")
+    # step. Submit the type step to reach it.
+    page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
+    page.wait_for_timeout(500)
+
     source_dialog = page.get_by_role("dialog", name="Source entity")
     page.get_by_label("Source entity", exact=True).click()
     search_field = source_dialog.get_by_placeholder("Search", exact=True)
