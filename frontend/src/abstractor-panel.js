@@ -222,6 +222,8 @@ class AbstractorPanel extends HTMLElement {
     this._modalEl = null;
     this._modalForm = null;
     this._modalPickers = [];
+    this._subscribed = false;
+    this._unsub = null;
     this._store.subscribe(() => this._render());
   }
 
@@ -231,6 +233,7 @@ class AbstractorPanel extends HTMLElement {
       this._store.setState({ admin: !!hass.user.is_admin });
     }
     this._modalPickers.forEach((picker) => { picker.hass = hass; });
+    this._ensureSubscription();
     this._maybeFetch();
     this._render();
   }
@@ -267,12 +270,53 @@ class AbstractorPanel extends HTMLElement {
   }
 
   _maybeFetch() {
+    // The subscription keeps data fresh once loaded; until then (or if no
+    // subscription is available) fall back to the one-shot fetch so the panel
+    // always paints its first frame.
+    if (this._subscribed && this._store.state.loaded) return;
     if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
     const s = this._store.state;
     const stale = Date.now() - s.lastFetchAt > 10000;
     if (!s.loading && (!s.loaded || stale)) {
       this._fetchSubentries(false);
     }
+  }
+
+  _ensureSubscription() {
+    if (this._subscribed) return;
+    if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
+    if (!this._hass.connection || !this._hass.connection.subscribeMessage) return;
+    this._subscribed = true;
+    this._store.setState({ loading: true, error: '' });
+    this._hass.connection
+      .subscribeMessage(
+        (event) => {
+          const list = (event && Array.isArray(event.subentries)) ? event.subentries : [];
+          this._store.setState({
+            subentries: list,
+            loaded: true,
+            loading: false,
+            lastFetchAt: Date.now(),
+          });
+        },
+        { type: 'abstractor/subentries/subscribe' }
+      )
+      .then((unsub) => { this._unsub = unsub; })
+      .catch((err) => {
+        this._subscribed = false;
+        this._store.setState({
+          loading: false,
+          error: 'Load failed: ' + (err && err.message ? err.message : err),
+        });
+      });
+  }
+
+  disconnectedCallback() {
+    if (this._unsub) {
+      this._unsub();
+      this._unsub = null;
+    }
+    this._subscribed = false;
   }
 
   _toggleEditMode() {

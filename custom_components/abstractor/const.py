@@ -49,6 +49,7 @@ SERVICE_EXPORT_DATA: Final = "export_data"
 SERVICE_IMPORT_DATA: Final = "import_data"
 SERVICE_DELETE_SENSOR: Final = "delete_sensor"
 WS_GET_SUBENTRIES: Final = "abstractor/subentries"
+WS_SUBSCRIBE_SUBENTRIES: Final = "abstractor/subentries/subscribe"
 WS_YAML_SCAN: Final = "abstractor/yaml_scan"
 
 # Sensor Types
