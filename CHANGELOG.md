@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Reproducible frontend build chain (esbuild; `npm run build:frontend`) with a
   CI job that fails on a stale committed bundle, plus `node --test` unit tests
   for the panel form logic — [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+- Actuator support: `switch` and `light` platforms that proxy a source entity —
+  Abstractor forwards commands to the underlying entity's service and never
+  talks to hardware directly — [GH#46](https://github.com/Popoboxxo/AbstrHActor/pull/46)
+- `cover` platform (open/close and position) riding the same actuator base —
+  [GH#49](https://github.com/Popoboxxo/AbstrHActor/pull/49)
+- `riemann_energy`: a sensor that integrates a power source over time into
+  accumulated energy (kWh), restored across restarts —
+  [GH#49](https://github.com/Popoboxxo/AbstrHActor/pull/49)
 
 ### Changed
 
