@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -13,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_DEVICE_GROUP_ID,
@@ -53,6 +55,23 @@ async def async_setup_entry(
         spec = SPEC_REGISTRY.try_get(device_type)
         if spec is not None and spec.platform != "sensor":
             # Not owned by this platform (e.g. binary_sensor). Skip.
+            continue
+        if spec is not None and spec.integration == "riemann_left":
+            # Integrator sensor: consumes the (numeric) source power and
+            # accumulates energy over time instead of exposing the raw value.
+            async_add_entities(
+                [
+                    RiemannEnergySensor(
+                        coordinator,
+                        entry,
+                        device_type,
+                        subentry.data.get(CONF_LEGACY_UNIQUE_ID),
+                        subentry_id=subentry_id,
+                        device_group_id=subentry.data.get(CONF_DEVICE_GROUP_ID),
+                    )
+                ],
+                config_subentry_id=subentry_id,
+            )
             continue
         # Identity (unique_id) is derived from subentry.data ONLY. subentry.data
         # is what the create/reconfigure flow writes atomically each time (see
@@ -153,3 +172,85 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
     def native_value(self):
         """Return the state of the sensor."""
         return self.coordinator.data.get(self._subentry_id)
+
+
+def _integrate_energy(
+    energy_kwh: float, power_w: float | None, elapsed_seconds: float
+) -> float:
+    """Integrate a power reading (W) over an elapsed interval into energy (kWh).
+
+    Pure helper so the left-Riemann integration is unit-testable without HA.
+    A missing power sample or a non-positive interval contributes nothing.
+    """
+    if power_w is None or elapsed_seconds <= 0:
+        return energy_kwh
+    return energy_kwh + (float(power_w) / 1000.0) * (elapsed_seconds / 3600.0)
+
+
+class RiemannEnergySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], RestoreSensor):
+    """Accumulate energy by integrating a source power reading over time.
+
+    The coordinator pipeline supplies the current power value (W) for this
+    subentry; this entity integrates it between coordinator updates and exposes
+    the running total in kWh. The accumulator is restored across restarts so the
+    long-term energy total is not reset on every reload.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(
+        self,
+        coordinator: AbstractorDataUpdateCoordinator,
+        entry: ConfigEntry,
+        device_type: str,
+        legacy_unique_id: str | None = None,
+        *,
+        subentry_id: str,
+        device_group_id: str | None = None,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entry = entry
+        self._subentry_id = subentry_id
+        self._device_type = device_type
+        spec = SPEC_REGISTRY.get(device_type)
+        self._attr_unique_id = legacy_unique_id or f"abstractor_{subentry_id}_riemann"
+        self._attr_name = spec.display_name
+        device_key = device_group_id or subentry_id
+        device_name = str(
+            entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
+        ).replace("{device_type}", device_type.capitalize())
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_key)},
+            name=device_name,
+            manufacturer=str(
+                entry.options.get(CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER)
+            ),
+            model=str(entry.options.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL)),
+        )
+        self._energy = 0.0
+        self._last_time = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            self._energy = float(last.native_value)
+        self._last_time = dt_util.utcnow()
+
+    def _handle_coordinator_update(self) -> None:
+        now = dt_util.utcnow()
+        power = None
+        if self.coordinator.data:
+            power = self.coordinator.data.get(self._subentry_id)
+        if self._last_time is not None:
+            elapsed = (now - self._last_time).total_seconds()
+            self._energy = _integrate_energy(self._energy, power, elapsed)
+        self._last_time = now
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> float:
+        return round(self._energy, 4)
