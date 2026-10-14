@@ -1419,6 +1419,7 @@ async def test_subentry_create_type_step_lists_enabled_specs(
         "smoke",
         "switch_state",
         "light_state",
+        "cover_position",
     ]
     # Only the type is asked for here; everything else lives in the details step.
     assert [str(marker.schema) for marker in result["data_schema"].schema] == [
