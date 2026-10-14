@@ -1,11 +1,20 @@
-// Abstractor sidebar panel (Phase UI-1).
-// Thin orchestrator on top of the Abstractor websocket read API and HA's own
-// native config surfaces. Base mode is read-only; an explicit Edit-mode toggle
-// is a purely local, admin-gated UI flag before write affordances are exposed.
-// Write commands on the server are authorized solely by HA admin privileges.
-'use strict';
-
-const DEVICE_TYPES = ['power', 'energy', 'water', 'door_contact', 'motion', 'smoke'];
+// Abstractor sidebar panel (Phase UI-1/UI-2).
+// Management surface on top of the Abstractor websocket API. Base mode is
+// read-only; an explicit, admin-gated "Edit mode" toggle exposes write
+// affordances: an in-panel create/edit form (device type, sources, logical
+// identity, numeric pipeline), delete-with-confirm, and per-card configure.
+// Device-to-device moves stay in the native config flow on purpose (the
+// registry-mapping transaction lives there; the panel must not duplicate it).
+// Write commands are authorized server-side solely by HA admin privileges.
+import {
+  AGGREGATION_MODES,
+  DEVICE_TYPES,
+  buildPayload,
+  hasErrors,
+  isNumericType,
+  subentryToFields,
+  validateSensorForm,
+} from './sensor-form.js';
 
 const TABS = [
   { id: 'devices', key: 'tab.devices' },
@@ -28,6 +37,26 @@ const I18N = {
     'action.close': 'Close',
     'action.details': 'Details',
     'action.edit': 'Edit',
+    'action.configure': 'Configure',
+    'action.delete': 'Delete',
+    'action.save': 'Save',
+    'action.cancel': 'Cancel',
+    'form.createTitle': 'Add Abstract sensor',
+    'form.editTitle': 'Configure Abstract sensor',
+    'form.deviceType': 'Device type',
+    'form.sources': 'Source entities',
+    'form.logicalName': 'Logical name',
+    'form.objectId': 'Entity object id',
+    'form.aggregation': 'Aggregation',
+    'form.spikeFilter': 'Enable spike filter',
+    'form.invert': 'Invert value',
+    'form.fallbackZero': 'Fail soft to zero',
+    'form.fallbackOnZero': 'Use fallback when zero',
+    'form.netSubtract': 'Subtract entity (net flow)',
+    'form.fallbackSource': 'Fallback source entity',
+    'form.fallbackCondition': 'Fallback condition entity',
+    'form.fallbackConditionState': 'Fallback condition state',
+    'confirm.delete': 'Delete this Abstract sensor?',
     'status.sensors': 'sensors',
     'status.loading': 'Loading...',
     'title': 'Abstractor',
@@ -74,6 +103,26 @@ const I18N = {
     'action.close': 'Schliessen',
     'action.details': 'Details',
     'action.edit': 'Bearbeiten',
+    'action.configure': 'Konfigurieren',
+    'action.delete': 'Loeschen',
+    'action.save': 'Speichern',
+    'action.cancel': 'Abbrechen',
+    'form.createTitle': 'Abstract-Sensor hinzufuegen',
+    'form.editTitle': 'Abstract-Sensor konfigurieren',
+    'form.deviceType': 'Geraetetyp',
+    'form.sources': 'Quell-Entitaeten',
+    'form.logicalName': 'Logischer Name',
+    'form.objectId': 'Entity-Object-Id',
+    'form.aggregation': 'Aggregation',
+    'form.spikeFilter': 'Spike-Filter aktivieren',
+    'form.invert': 'Wert invertieren',
+    'form.fallbackZero': 'Bei Fehler auf Null',
+    'form.fallbackOnZero': 'Fallback bei Null verwenden',
+    'form.netSubtract': 'Entitaet abziehen (Nettofluss)',
+    'form.fallbackSource': 'Fallback-Quellentitaet',
+    'form.fallbackCondition': 'Fallback-Bedingungsentitaet',
+    'form.fallbackConditionState': 'Fallback-Bedingungszustand',
+    'confirm.delete': 'Diesen Abstract-Sensor loeschen?',
     'status.sensors': 'Sensoren',
     'status.loading': 'Laedt...',
     'title': 'Abstractor',
@@ -161,6 +210,9 @@ class AbstractorPanel extends HTMLElement {
     this._filterOverride = null;
     this._migrateLoaded = false;
     this._migrateSensors = [];
+    this._modalEl = null;
+    this._modalForm = null;
+    this._modalPickers = [];
     this._store.subscribe(() => this._render());
   }
 
@@ -169,6 +221,7 @@ class AbstractorPanel extends HTMLElement {
     if (hass && hass.user) {
       this._store.setState({ admin: !!hass.user.is_admin });
     }
+    this._modalPickers.forEach((picker) => { picker.hass = hass; });
     this._maybeFetch();
     this._render();
   }
@@ -330,9 +383,9 @@ class AbstractorPanel extends HTMLElement {
     // wire header
     this.shadowRoot.querySelector('.tab-toggle').addEventListener('click', () => this._toggleEditMode());
     this.shadowRoot.querySelector('.add-sensor-button').addEventListener('click', () => {
-  if (this._store.state.editMode) this._handleAddViaWs();
-  else this._navigate('/config/integrations/integration/abstractor');
-});
+      if (this._store.state.editMode) this._openSensorForm(null);
+      else this._navigate('/config/integrations/integration/abstractor');
+    });
     this.shadowRoot.querySelector('.export-button').addEventListener('click', () => this._handleExport());
     const fileInput = this.shadowRoot.querySelector('.import-file-input');
     this.shadowRoot.querySelector('.import-button').addEventListener('click', () => { if (fileInput) fileInput.click(); });
@@ -402,6 +455,8 @@ class AbstractorPanel extends HTMLElement {
         else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
       });
     }
+
+    if (this._modalEl) this.shadowRoot.appendChild(this._modalEl);
   }
 
   _deviceIdFor(entry) {
@@ -503,6 +558,24 @@ class AbstractorPanel extends HTMLElement {
         else this._navigate('/config/integrations/integration/abstractor');
       });
       card.appendChild(editButton);
+
+      if (s.editMode) {
+        const configureButton = document.createElement('button');
+        configureButton.type = 'button';
+        configureButton.textContent = this._t('action.configure');
+        configureButton.style.marginTop = '8px';
+        configureButton.style.marginLeft = '8px';
+        configureButton.addEventListener('click', () => this._openSensorForm(e));
+        card.appendChild(configureButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.textContent = this._t('action.delete');
+        deleteButton.style.marginTop = '8px';
+        deleteButton.style.marginLeft = '8px';
+        deleteButton.addEventListener('click', () => this._confirmDelete(e));
+        card.appendChild(deleteButton);
+      }
 
       const table = document.createElement('table');
       const row = table.insertRow();
@@ -628,38 +701,239 @@ class AbstractorPanel extends HTMLElement {
     return this._filterOverride || 'all';
   }
 
-  async _handleAddViaWs() {
+  _field(labelKey, inputEl) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const label = document.createElement('b');
+    label.textContent = this._t(labelKey);
+    wrap.appendChild(label);
+    wrap.appendChild(inputEl);
+    return wrap;
+  }
+
+  _textInput(value, type) {
+    const input = document.createElement('input');
+    input.type = type || 'text';
+    input.value = value == null ? '' : String(value);
+    input.style.width = '100%';
+    return input;
+  }
+
+  _checkbox(checked) {
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = !!checked;
+    return input;
+  }
+
+  _checkboxField(labelKey, inputEl) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const label = document.createElement('label');
+    const text = document.createElement('span');
+    text.textContent = ' ' + this._t(labelKey);
+    label.appendChild(inputEl);
+    label.appendChild(text);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  _entityPicker(values, multiple) {
+    const picker = document.createElement('ha-entity-picker');
+    picker.hass = this._hass;
+    picker.allowCustomEntity = true;
+    picker.multiple = !!multiple;
+    picker.value = multiple ? (values || []) : ((values && values[0]) || '');
+    this._modalPickers.push(picker);
+    return picker;
+  }
+
+  _pickerValue(picker, multiple) {
+    const value = picker ? picker.value : (multiple ? [] : '');
+    if (multiple) return Array.isArray(value) ? value : (value ? [value] : []);
+    return value || '';
+  }
+
+  _readForm(refs) {
+    return {
+      device_type: refs.device_type.value,
+      sources: this._pickerValue(refs.sources, true),
+      logical_name: refs.logical_name.value,
+      object_id: refs.object_id.value,
+      aggregation: refs.aggregation.value,
+      spike_filter: refs.spike_filter.checked,
+      invert: refs.invert.checked,
+      fallback_zero: refs.fallback_zero.checked,
+      fallback_on_zero: refs.fallback_on_zero.checked,
+      net_subtract_entity_id: this._pickerValue(refs.net_subtract_entity_id, false),
+      fallback_source_entity_id: this._pickerValue(refs.fallback_source_entity_id, false),
+      fallback_condition_entity_id: this._pickerValue(refs.fallback_condition_entity_id, false),
+      fallback_condition_state: refs.fallback_condition_state.value,
+    };
+  }
+
+  _openSensorForm(existing) {
     if (!this._store.state.editMode) {
-      this._showError('Enable edit mode first.');
+      this._showError(this._t('error.adminOnly'));
       return;
     }
-    const typeRaw = window.prompt(
-      `Device type (${DEVICE_TYPES.join(', ')}):`,
-      'power'
+    this._closeModal();
+    const fields = existing ? subentryToFields(existing) : subentryToFields({ device_type: 'power' });
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'drawer-backdrop';
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+
+    const form = document.createElement('div');
+    form.className = 'drawer';
+    form.style.width = 'min(560px, 94vw)';
+
+    const title = document.createElement('h2');
+    title.textContent = existing ? this._t('form.editTitle') : this._t('form.createTitle');
+    form.appendChild(title);
+
+    const refs = {};
+
+    refs.device_type = document.createElement('select');
+    DEVICE_TYPES.forEach((type) => {
+      const opt = document.createElement('option');
+      opt.value = type;
+      opt.textContent = type;
+      refs.device_type.appendChild(opt);
+    });
+    refs.device_type.value = fields.device_type;
+    form.appendChild(this._field('form.deviceType', refs.device_type));
+
+    refs.sources = this._entityPicker(fields.sources, true);
+    form.appendChild(this._field('form.sources', refs.sources));
+
+    refs.logical_name = this._textInput(fields.logical_name, 'text');
+    form.appendChild(this._field('form.logicalName', refs.logical_name));
+
+    refs.object_id = this._textInput(fields.object_id, 'text');
+    form.appendChild(this._field('form.objectId', refs.object_id));
+
+    const numeric = document.createElement('div');
+    refs.aggregation = document.createElement('select');
+    AGGREGATION_MODES.forEach((mode) => {
+      const opt = document.createElement('option');
+      opt.value = mode;
+      opt.textContent = mode;
+      refs.aggregation.appendChild(opt);
+    });
+    refs.aggregation.value = fields.aggregation;
+    numeric.appendChild(this._field('form.aggregation', refs.aggregation));
+
+    refs.spike_filter = this._checkbox(fields.spike_filter);
+    numeric.appendChild(this._checkboxField('form.spikeFilter', refs.spike_filter));
+    refs.invert = this._checkbox(fields.invert);
+    numeric.appendChild(this._checkboxField('form.invert', refs.invert));
+    refs.fallback_zero = this._checkbox(fields.fallback_zero);
+    numeric.appendChild(this._checkboxField('form.fallbackZero', refs.fallback_zero));
+    refs.fallback_on_zero = this._checkbox(fields.fallback_on_zero);
+    numeric.appendChild(this._checkboxField('form.fallbackOnZero', refs.fallback_on_zero));
+
+    refs.net_subtract_entity_id = this._entityPicker(
+      fields.net_subtract_entity_id ? [fields.net_subtract_entity_id] : [], false
     );
-    if (typeRaw === null) return;
-    const deviceType = String(typeRaw).trim().toLowerCase();
-    if (DEVICE_TYPES.indexOf(deviceType) === -1) {
-      this._showError(`Invalid device type: ${typeRaw}. Allowed: ${DEVICE_TYPES.join(', ')}`);
+    numeric.appendChild(this._field('form.netSubtract', refs.net_subtract_entity_id));
+    refs.fallback_source_entity_id = this._entityPicker(
+      fields.fallback_source_entity_id ? [fields.fallback_source_entity_id] : [], false
+    );
+    numeric.appendChild(this._field('form.fallbackSource', refs.fallback_source_entity_id));
+    refs.fallback_condition_entity_id = this._entityPicker(
+      fields.fallback_condition_entity_id ? [fields.fallback_condition_entity_id] : [], false
+    );
+    numeric.appendChild(this._field('form.fallbackCondition', refs.fallback_condition_entity_id));
+    refs.fallback_condition_state = this._textInput(fields.fallback_condition_state, 'text');
+    numeric.appendChild(this._field('form.fallbackConditionState', refs.fallback_condition_state));
+
+    form.appendChild(numeric);
+
+    const syncNumeric = () => {
+      numeric.style.display = isNumericType(refs.device_type.value) ? '' : 'none';
+    };
+    refs.device_type.addEventListener('change', syncNumeric);
+    syncNumeric();
+
+    const errEl = document.createElement('div');
+    errEl.className = 'error';
+    errEl.setAttribute('role', 'alert');
+    errEl.style.display = 'none';
+    form.appendChild(errEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    actions.style.marginTop = '12px';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = this._t('action.cancel');
+    cancelBtn.addEventListener('click', () => this._closeModal());
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = this._t('action.save');
+    saveBtn.addEventListener('click', () => this._submitSensorForm(existing, refs, errEl, saveBtn));
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    form.appendChild(actions);
+
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) this._closeModal(); });
+    backdrop.appendChild(form);
+    this._modalEl = backdrop;
+    this._modalForm = form;
+    this.shadowRoot.appendChild(backdrop);
+    if (refs.device_type.focus) refs.device_type.focus();
+  }
+
+  async _submitSensorForm(existing, refs, errEl, saveBtn) {
+    const fields = this._readForm(refs);
+    const errors = validateSensorForm(fields);
+    if (hasErrors(errors)) {
+      errEl.textContent = Object.values(errors).join('; ');
+      errEl.style.display = '';
       return;
     }
-    const sourcesRaw = window.prompt('Source entity ids (comma separated):');
-    if (!sourcesRaw) return;
-    const sources = sourcesRaw.split(',').map((x) => x.trim()).filter(Boolean);
-    const logicalName = window.prompt('Logical device name (optional):') || '';
-    const objectId = window.prompt('Entity object id (optional):') || '';
+    const data = buildPayload(fields);
+    saveBtn.disabled = true;
     try {
-      await this._hass.callWS({ type: 'abstractor/subentry/create', data: {
-        source_entity_ids: sources,
-        logical_name: logicalName || undefined,
-        object_id: objectId || undefined,
-        device_type: deviceType,
-      } });
+      if (existing) {
+        await this._hass.callWS({
+          type: 'abstractor/subentry/update',
+          subentry_id: existing.subentry_id,
+          data,
+        });
+      } else {
+        await this._hass.callWS({ type: 'abstractor/subentry/create', data });
+      }
+      this._closeModal();
       this._showError('');
       await this._fetchSubentries(true);
     } catch (err) {
-      this._showError(`Create failed: ${err && err.message ? err.message : err}`);
+      errEl.textContent = `Save failed: ${err && err.message ? err.message : err}`;
+      errEl.style.display = '';
+      saveBtn.disabled = false;
     }
+  }
+
+  async _confirmDelete(entry) {
+    if (!this._store.state.editMode) return;
+    if (!window.confirm(this._t('confirm.delete'))) return;
+    try {
+      await this._hass.callWS({ type: 'abstractor/subentry/delete', subentry_id: entry.subentry_id });
+      await this._fetchSubentries(true);
+    } catch (err) {
+      this._showError(`Delete failed: ${err && err.message ? err.message : err}`);
+    }
+  }
+
+  _closeModal() {
+    if (this._modalEl && this._modalEl.parentNode) {
+      this._modalEl.parentNode.removeChild(this._modalEl);
+    }
+    this._modalEl = null;
+    this._modalForm = null;
+    this._modalPickers = [];
   }
 
   async _handleExport() {

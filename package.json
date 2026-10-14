@@ -5,7 +5,8 @@
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:frontend:watch": "node scripts/build-frontend.mjs --watch",
-    "typecheck:frontend": "tsc -p frontend/tsconfig.json"
+    "typecheck:frontend": "tsc -p frontend/tsconfig.json",
+    "test:frontend": "node --test tests/frontend/"
   },
   "devDependencies": {
     "esbuild": "^0.27.0",
