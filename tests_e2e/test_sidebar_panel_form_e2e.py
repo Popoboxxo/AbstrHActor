@@ -28,25 +28,32 @@ def _abstract_power_ids(hass_base_url: str, token: str) -> set[str]:
 
 def _pick_source(page, panel, name: str) -> None:
     """Select a source entity through the labelled entity picker, tolerating
-    both the dialog and the inline combo-box presentations."""
+    both the dialog and the inline combo-box presentations.
+
+    The multi-select picker's search field does not expose a stable
+    placeholder, so the search input is addressed as the dialog's first input.
+    """
     field = panel.get_by_label("Source entities")
     field.click()
 
-    source_dialog = page.get_by_role("dialog", name="Source entities")
-    if source_dialog.count():
-        search = source_dialog.get_by_placeholder("Search", exact=True)
-        search.wait_for(state="visible", timeout=5000)
-        search.press_sequentially(name, delay=100)
-        source_dialog.get_by_text(name, exact=False).first.click()
-        # A multi-select picker may require an explicit confirm.
-        confirm = source_dialog.get_by_role(
-            "button", name=re.compile(r"^(save|done|close)$", re.IGNORECASE)
-        )
-        if confirm.count():
-            confirm.first.click()
+    dialog = page.get_by_role("dialog", name="Source entities")
+    scope = dialog if dialog.count() else panel
+    search = scope.locator("input").first
+    search.wait_for(state="visible", timeout=5000)
+    search.press_sequentially(name, delay=100)
+
+    option = scope.get_by_text(name, exact=False)
+    if option.count():
+        option.first.click()
     else:
-        field.press_sequentially(name, delay=100)
-        page.get_by_text(name, exact=False).first.click()
+        search.press("Enter")
+
+    # A multi-select picker can require an explicit confirm.
+    confirm = scope.get_by_role(
+        "button", name=re.compile(r"^(save|done|ok|close|add)$", re.IGNORECASE)
+    )
+    if confirm.count():
+        confirm.first.click()
 
 
 def test_panel_form_creates_live_entity(
