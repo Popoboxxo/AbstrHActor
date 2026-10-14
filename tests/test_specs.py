@@ -7,6 +7,11 @@ def test_shipping_types_enabled() -> None:
     assert {"power", "energy", "water"} <= enabled
 
 
+def test_actuator_types_enabled() -> None:
+    enabled = {s.type_key for s in SPEC_REGISTRY.enabled()}
+    assert {"switch_state", "light_state"} <= enabled
+
+
 def test_riemann_disabled_by_default() -> None:
     spec = SPEC_REGISTRY.get("riemann_energy")
     assert spec.enabled is False

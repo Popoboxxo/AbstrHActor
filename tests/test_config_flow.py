@@ -1395,8 +1395,8 @@ _SHARED_FIELDS = (
 async def test_subentry_create_type_step_lists_enabled_specs(
     hass: HomeAssistant,
 ) -> None:
-    """[M5] The create type step offers exactly the enabled sensor/binary specs
-    and nothing else."""
+    """[M5] The create type step offers exactly the enabled specs and nothing
+    else."""
     root_entry = _root_entry(hass)
 
     result = await hass.config_entries.subentries.async_init(
@@ -1410,7 +1410,16 @@ async def test_subentry_create_type_step_lists_enabled_specs(
     assert isinstance(validator, selector.SelectSelector)
     options = validator.config["options"]
     values = [option["value"] if isinstance(option, dict) else option for option in options]
-    assert values == ["power", "energy", "water", "door_contact", "motion", "smoke"]
+    assert values == [
+        "power",
+        "energy",
+        "water",
+        "door_contact",
+        "motion",
+        "smoke",
+        "switch_state",
+        "light_state",
+    ]
     # Only the type is asked for here; everything else lives in the details step.
     assert [str(marker.schema) for marker in result["data_schema"].schema] == [
         CONF_DEVICE_TYPE
