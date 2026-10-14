@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-10-14
+
+### Added
+
+- Registry-driven sensor specification catalogue (`specs.py`) as the single
+  source of truth for supported types, replacing scattered `device_type`
+  branches — [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+- `binary_sensor` platform with `door_contact`, `motion` and `smoke` types —
+  [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+- Abstractor management sidebar panel backed by an admin-gated websocket API:
+  list subentries with health metadata, and create / update / delete / rename /
+  update options — [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+- In-panel sensor create/edit form (device type, sources, numeric pipeline),
+  delete-with-confirm and a rename action — [GH#41](https://github.com/Popoboxxo/AbstrHActor/pull/41),
+  [GH#42](https://github.com/Popoboxxo/AbstrHActor/pull/42)
+- Live panel refresh via a websocket subscription instead of polling —
+  [GH#43](https://github.com/Popoboxxo/AbstrHActor/pull/43)
+- Reproducible frontend build chain (esbuild; `npm run build:frontend`) with a
+  CI job that fails on a stale committed bundle, plus `node --test` unit tests
+  for the panel form logic — [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+
+### Changed
+
+- Sensor config flow is now two steps (choose type, then details) so binary
+  types never see numeric-only pipeline fields —
+  [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+- `SENSOR_TYPES`, the filter fail-contract and the config-flow schema are all
+  derived from the spec registry instead of hand-maintained lists —
+  [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+
+### Fixed
+
+- Panel entity rename now derives the platform from the existing entity id, so
+  a binary sensor is renamed to `binary_sensor.*` rather than `sensor.*` —
+  [GH#42](https://github.com/Popoboxxo/AbstrHActor/pull/42)
+
+### Removed
+
+- The decorative edit-mode session token in the websocket API; write commands
+  are gated solely by Home Assistant admin privileges —
+  [GH#40](https://github.com/Popoboxxo/AbstrHActor/pull/40)
+
 ## [1.2.0] — 2026-10-04
 
 ### Added
