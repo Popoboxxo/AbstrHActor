@@ -9,7 +9,7 @@ from types import MappingProxyType
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigSubentry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.abstractor.config_flow import (
@@ -27,6 +27,7 @@ from custom_components.abstractor.const import (
     DOMAIN,
     SUBENTRY_TYPE_SENSOR,
     WS_GET_SUBENTRIES,
+    WS_SUBSCRIBE_SUBENTRIES,
     WS_YAML_SCAN,
 )
 from custom_components.abstractor.specs import SPEC_REGISTRY
@@ -94,15 +95,11 @@ def _meta_payload(coordinator, subentry_id: str):
     }
 
 
-@websocket_api.websocket_command({vol.Required("type"): WS_GET_SUBENTRIES})
-@websocket_api.async_response
-async def ws_get_subentries(hass, connection, msg) -> None:
-    if not _require_admin(connection, msg):
-        return
+def _build_subentries(hass):
+    """Build the subentry list payload shared by the read API and subscription."""
     root_entry = _async_root_entry(hass)
     if root_entry is None:
-        connection.send_result(msg["id"], {"subentries": []})
-        return
+        return []
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     out = []
     for subentry_id, subentry in root_entry.subentries.items():
@@ -110,8 +107,10 @@ async def ws_get_subentries(hass, connection, msg) -> None:
         value = None
         last_event = None
         if coordinator is not None:
-            value = coordinator.data.get(subentry_id) if coordinator.data else None
-            pipeline = coordinator.pipelines.get(subentry_id)
+            coordinator_data = getattr(coordinator, "data", None)
+            value = coordinator_data.get(subentry_id) if coordinator_data else None
+            pipelines = getattr(coordinator, "pipelines", {}) or {}
+            pipeline = pipelines.get(subentry_id)
             last_event = pipeline.last_event if pipeline is not None else None
         health = "idle"
         if coordinator is not None and not getattr(coordinator, "last_update_success", True):
@@ -140,7 +139,40 @@ async def ws_get_subentries(hass, connection, msg) -> None:
                 "meta": _meta_payload(coordinator, subentry_id),
             }
         )
-    connection.send_result(msg["id"], {"subentries": out})
+    return out
+
+
+@websocket_api.websocket_command({vol.Required("type"): WS_GET_SUBENTRIES})
+@websocket_api.async_response
+async def ws_get_subentries(hass, connection, msg) -> None:
+    if not _require_admin(connection, msg):
+        return
+    connection.send_result(msg["id"], {"subentries": _build_subentries(hass)})
+
+
+@websocket_api.websocket_command({vol.Required("type"): WS_SUBSCRIBE_SUBENTRIES})
+@websocket_api.async_response
+async def ws_subentries_subscribe(hass, connection, msg) -> None:
+    """Push the subentry list on every coordinator update.
+
+    Read-only and admin-gated like the one-shot ``abstractor/subentries``. The
+    coordinator is reused across config-entry reloads (see ``__init__.py``), so
+    this listener survives the reload that every subentry add/remove triggers
+    and a write is reflected without the panel polling.
+    """
+    if not _require_admin(connection, msg):
+        return
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+
+    @callback
+    def _forward() -> None:
+        connection.send_event(msg["id"], {"subentries": _build_subentries(hass)})
+
+    if coordinator is not None:
+        connection.subscriptions[msg["id"]] = coordinator.async_add_listener(_forward)
+    else:
+        connection.subscriptions[msg["id"]] = lambda: None
+    connection.send_result(msg["id"])
 
 
 @websocket_api.websocket_command({vol.Required("type"): "abstractor/subentry/create", vol.Required("data"): dict})
@@ -347,6 +379,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     # Write commands are authorized solely by the per-command ``_require_admin``
     # gate; there is intentionally no separate edit-mode session token.
     websocket_api.async_register_command(hass, ws_get_subentries)
+    websocket_api.async_register_command(hass, ws_subentries_subscribe)
     websocket_api.async_register_command(hass, ws_subentry_create)
     websocket_api.async_register_command(hass, ws_subentry_update)
     websocket_api.async_register_command(hass, ws_subentry_delete)

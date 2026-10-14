@@ -27,6 +27,7 @@ async def test_register_websocket_registers_commands_without_token() -> None:
         websocket.websocket_api.async_register_command = original
 
     assert "ws_get_subentries" in calls
+    assert "ws_subentries_subscribe" in calls
     assert "ws_subentry_create" in calls
     assert "ws_subentry_update" in calls
     assert "ws_subentry_delete" in calls
@@ -91,6 +92,48 @@ def _hass_cfg(root_entry, coordinator=None):
         ),
         async_create_task=Mock(),
     )
+
+
+async def test_ws_subentries_subscribe_registers_and_forwards() -> None:
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={"device_type": "power", "source_entity_id": "sensor.x"},
+                title="t",
+                unique_id="u",
+            )
+        }
+    )
+    unsub = Mock()
+    coordinator = SimpleNamespace(
+        data={},
+        pipelines={},
+        last_update_success=True,
+        async_add_listener=Mock(return_value=unsub),
+    )
+    hass = _hass_cfg(root, coordinator=coordinator)
+    connection = _admin_connection()
+    connection.subscriptions = {}
+    connection.send_event = Mock()
+
+    await websocket.ws_subentries_subscribe.__wrapped__(hass, connection, {"id": 20})
+
+    assert connection.subscriptions[20] is unsub
+    assert connection.send_result.call_args.args[0] == 20
+    listener = coordinator.async_add_listener.call_args.args[0]
+    listener()
+    assert connection.send_event.call_args.args[0] == 20
+    assert "subentries" in connection.send_event.call_args.args[1]
+
+
+async def test_ws_subentries_subscribe_rejects_non_admin() -> None:
+    hass = _hass_cfg(_root())
+    connection = SimpleNamespace(
+        user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock()
+    )
+    await websocket.ws_subentries_subscribe.__wrapped__(hass, connection, {"id": 21})
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
 
 
 def test_validate_device_mapping_is_read_only(monkeypatch) -> None:
