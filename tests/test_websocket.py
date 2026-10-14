@@ -227,3 +227,67 @@ async def test_ws_logical_rename_updates_subentry() -> None:
     )
     hass.config_entries.async_update_subentry.assert_called_once()
     assert connection.send_result.call_args.args[1]["renamed"] is True
+
+
+async def test_ws_logical_rename_renames_entity_keeping_platform(monkeypatch) -> None:
+    """The entity rename must keep the entity's own platform domain, so a
+    binary_sensor is renamed to binary_sensor.* not sensor.*."""
+    root = _root({"sub-1": SimpleNamespace(data={}, title="t", unique_id="uid-1")})
+    hass = _hass_cfg(root)
+    connection = _admin_connection()
+
+    updated = []
+    registry = SimpleNamespace(
+        async_entries_for_config_entry=lambda reg, entry_id: [
+            SimpleNamespace(entity_id="binary_sensor.front_door", config_subentry_id="sub-1")
+        ],
+        async_get_entity_id=lambda platform, domain, unique_id: None,
+        async_update_entity=lambda entity_id, new_entity_id=None: updated.append(
+            (entity_id, new_entity_id)
+        ),
+    )
+    monkeypatch.setattr(
+        websocket,
+        "er",
+        SimpleNamespace(
+            async_get=lambda _hass: registry,
+            async_entries_for_config_entry=lambda reg, entry_id: reg.async_entries_for_config_entry(
+                reg, entry_id
+            ),
+        ),
+    )
+
+    await websocket.ws_logical_rename.__wrapped__(
+        hass,
+        connection,
+        {
+            "id": 11,
+            "subentry_id": "sub-1",
+            "logical_name": "Door",
+            "object_id": "front_door",
+            "rename_entity": True,
+        },
+    )
+
+    assert updated == [("binary_sensor.front_door", "binary_sensor.front_door")]
+    connection.send_error.assert_not_called()
+
+
+async def test_ws_logical_rename_without_rename_entity_skips_registry(monkeypatch) -> None:
+    root = _root({"sub-1": SimpleNamespace(data={}, title="t", unique_id="uid-1")})
+    hass = _hass_cfg(root)
+    connection = _admin_connection()
+
+    called = []
+    monkeypatch.setattr(
+        websocket,
+        "er",
+        SimpleNamespace(async_get=lambda _hass: called.append("get") or SimpleNamespace()),
+    )
+
+    await websocket.ws_logical_rename.__wrapped__(
+        hass, connection, {"id": 12, "subentry_id": "sub-1", "logical_name": "Kitchen"}
+    )
+
+    assert called == []
+    assert connection.send_result.call_args.args[1]["renamed"] is True
