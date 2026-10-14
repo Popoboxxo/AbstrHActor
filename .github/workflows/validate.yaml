@@ -73,6 +73,8 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm ci
+      - name: Unit-test frontend modules
+        run: npm run test:frontend
       - name: Type-check frontend
         run: npm run typecheck:frontend
       - name: Build frontend

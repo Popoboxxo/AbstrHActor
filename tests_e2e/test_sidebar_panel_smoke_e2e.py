@@ -50,3 +50,25 @@ def test_edit_button_navigates_to_device_page(logged_in_page, hass_base_url):
     edit_button.wait_for(state="visible", timeout=10000)
     edit_button.click()
     page.wait_for_url(re.compile(r"/config/devices/device/"), timeout=10000)
+
+
+def test_create_form_opens_in_edit_mode(logged_in_page, hass_base_url):
+    """[UI-2] Enabling edit mode exposes the in-panel create form; Cancel
+    closes it without writing (a write path is covered by the unit tests and
+    the websocket command tests)."""
+    page = logged_in_page
+    page.goto(f"{hass_base_url}/abstractor")
+    panel = page.locator("abstractor-panel")
+
+    edit_toggle = panel.get_by_role("button", name=re.compile(r"^edit mode$", re.IGNORECASE))
+    edit_toggle.wait_for(state="visible", timeout=10000)
+    edit_toggle.click()
+
+    panel.get_by_role("button", name=re.compile(r"^add sensor$", re.IGNORECASE)).click()
+
+    save_button = panel.get_by_role("button", name=re.compile(r"^save$", re.IGNORECASE))
+    save_button.wait_for(state="visible", timeout=10000)
+    panel.get_by_role("button", name=re.compile(r"^cancel$", re.IGNORECASE)).click()
+    page.wait_for_timeout(300)
+
+    assert panel.get_by_role("button", name=re.compile(r"^save$", re.IGNORECASE)).count() == 0
