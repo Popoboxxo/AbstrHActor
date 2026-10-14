@@ -799,9 +799,10 @@ class AbstractorPanel extends HTMLElement {
     return wrap;
   }
 
-  _entityPicker(values, multiple) {
+  _entityPicker(values, multiple, labelKey) {
     const picker = document.createElement('ha-entity-picker');
     picker.hass = this._hass;
+    picker.label = labelKey ? this._t(labelKey) : '';
     picker.allowCustomEntity = true;
     picker.multiple = !!multiple;
     picker.value = multiple ? (values || []) : ((values && values[0]) || '');
@@ -864,7 +865,7 @@ class AbstractorPanel extends HTMLElement {
     refs.device_type.value = fields.device_type;
     form.appendChild(this._field('form.deviceType', refs.device_type));
 
-    refs.sources = this._entityPicker(fields.sources, true);
+    refs.sources = this._entityPicker(fields.sources, true, 'form.sources');
     form.appendChild(this._field('form.sources', refs.sources));
 
     const numeric = document.createElement('div');
@@ -888,15 +889,15 @@ class AbstractorPanel extends HTMLElement {
     numeric.appendChild(this._checkboxField('form.fallbackOnZero', refs.fallback_on_zero));
 
     refs.net_subtract_entity_id = this._entityPicker(
-      fields.net_subtract_entity_id ? [fields.net_subtract_entity_id] : [], false
+      fields.net_subtract_entity_id ? [fields.net_subtract_entity_id] : [], false, 'form.netSubtract'
     );
     numeric.appendChild(this._field('form.netSubtract', refs.net_subtract_entity_id));
     refs.fallback_source_entity_id = this._entityPicker(
-      fields.fallback_source_entity_id ? [fields.fallback_source_entity_id] : [], false
+      fields.fallback_source_entity_id ? [fields.fallback_source_entity_id] : [], false, 'form.fallbackSource'
     );
     numeric.appendChild(this._field('form.fallbackSource', refs.fallback_source_entity_id));
     refs.fallback_condition_entity_id = this._entityPicker(
-      fields.fallback_condition_entity_id ? [fields.fallback_condition_entity_id] : [], false
+      fields.fallback_condition_entity_id ? [fields.fallback_condition_entity_id] : [], false, 'form.fallbackCondition'
     );
     numeric.appendChild(this._field('form.fallbackCondition', refs.fallback_condition_entity_id));
     refs.fallback_condition_state = this._textInput(fields.fallback_condition_state, 'text');
