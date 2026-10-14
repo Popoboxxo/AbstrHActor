@@ -5,10 +5,13 @@ import {
   AGGREGATION_MODES,
   DEVICE_TYPES,
   buildPayload,
+  buildRenamePayload,
   hasErrors,
   isBinaryType,
   isNumericType,
   subentryToFields,
+  subentryToRenameFields,
+  validateRenameForm,
   validateSensorForm,
 } from '../../frontend/src/sensor-form.js';
 
@@ -31,12 +34,6 @@ test('validateSensorForm requires a type and at least one source', () => {
   assert.equal(hasErrors(validateSensorForm({ device_type: 'power', sources: ['sensor.a'] })), false);
 });
 
-test('validateSensorForm rejects a non-slug object_id', () => {
-  const errors = validateSensorForm({ device_type: 'power', sources: ['sensor.a'], object_id: 'Bad Slug' });
-  assert.ok(errors.object_id);
-  assert.equal(hasErrors(validateSensorForm({ device_type: 'power', sources: ['sensor.a'], object_id: 'ok_id1' })), false);
-});
-
 test('validateSensorForm couples condition state to a condition entity', () => {
   const errors = validateSensorForm({
     device_type: 'power',
@@ -44,6 +41,25 @@ test('validateSensorForm couples condition state to a condition entity', () => {
     fallback_condition_state: 'on',
   });
   assert.ok(errors.fallback_condition_entity_id);
+});
+
+test('validateRenameForm requires a logical name and a slug object_id', () => {
+  assert.ok(validateRenameForm({}).logical_name);
+  assert.ok(validateRenameForm({ logical_name: 'N', object_id: 'Bad Slug' }).object_id);
+  assert.equal(hasErrors(validateRenameForm({ logical_name: 'Kitchen', object_id: 'kitchen' })), false);
+  assert.equal(hasErrors(validateRenameForm({ logical_name: 'Kitchen' })), false);
+});
+
+test('buildRenamePayload trims the name and only includes object_id when set', () => {
+  assert.deepEqual(buildRenamePayload({ logical_name: '  Kitchen  ', rename_entity: true }), {
+    logical_name: 'Kitchen',
+    rename_entity: true,
+  });
+  assert.deepEqual(buildRenamePayload({ logical_name: 'Kitchen', object_id: 'kitchen' }), {
+    logical_name: 'Kitchen',
+    rename_entity: false,
+    object_id: 'kitchen',
+  });
 });
 
 test('buildPayload: single source uses source_entity_id, multi uses source_entity_ids', () => {
@@ -91,11 +107,15 @@ test('buildPayload: invalid aggregation falls back to sum; empty optionals becom
   assert.equal(data.aggregation, 'sum');
   assert.equal(data.net_subtract_entity_id, null);
   assert.equal(data.fallback_condition_state, null);
-  assert.equal(data.object_id, null);
-  assert.equal(data.logical_name, '');
 });
 
-test('subentryToFields pre-fills from a subentry payload', () => {
+test('buildPayload never owns logical identity', () => {
+  const data = buildPayload({ device_type: 'power', sources: ['sensor.a'], logical_name: 'X', object_id: 'x' });
+  assert.equal('logical_name' in data, false);
+  assert.equal('object_id' in data, false);
+});
+
+test('subentryToFields pre-fills config fields only', () => {
   const fields = subentryToFields({
     device_type: 'water',
     source_entity_ids: ['sensor.w1', 'sensor.w2'],
@@ -106,16 +126,14 @@ test('subentryToFields pre-fills from a subentry payload', () => {
   });
   assert.equal(fields.device_type, 'water');
   assert.deepEqual(fields.sources, ['sensor.w1', 'sensor.w2']);
-  assert.equal(fields.logical_name, 'Tank');
-  assert.equal(fields.object_id, 'tank');
   assert.equal(fields.aggregation, 'min');
   assert.equal(fields.spike_filter, true);
   assert.equal(fields.net_subtract_entity_id, '');
+  assert.equal('logical_name' in fields, false);
+  assert.equal('object_id' in fields, false);
 });
 
-test('round-trip: task payload types survive buildPayload unchanged', () => {
-  const data = buildPayload({ device_type: 'power', sources: ['sensor.a'] });
-  assert.equal(typeof data.device_type, 'string');
-  assert.equal(typeof data.logical_name, 'string');
-  assert.equal(data.object_id, null);
+test('subentryToRenameFields pre-fills name and object id', () => {
+  const fields = subentryToRenameFields({ logical_name: 'Tank', object_id: 'tank' });
+  assert.deepEqual(fields, { logical_name: 'Tank', object_id: 'tank', rename_entity: false });
 });

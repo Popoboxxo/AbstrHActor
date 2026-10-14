@@ -1,4 +1,5 @@
-// Pure form logic for the Abstractor panel's sensor create/edit dialogs.
+// Pure form logic for the Abstractor panel's sensor create/edit and rename
+// dialogs.
 //
 // Deliberately DOM-free and websocket-free so it can be unit-tested with
 // `node --test` (no browser, no build) and reused by the bundled panel.
@@ -19,9 +20,9 @@ export function isBinaryType(deviceType) {
 
 const SLUG_RE = /^[a-z0-9_]+$/;
 
-// Client-side validation. Returns a map of field -> message; empty means OK.
-// The server remains authoritative (it re-runs the config-flow checks); this
-// only gives fast feedback and avoids obviously-doomed round trips.
+// Client-side validation for the config form (device type, sources, numeric
+// pipeline). Returns a map of field -> message; empty means OK. The server
+// remains authoritative; this only gives fast feedback.
 export function validateSensorForm(fields) {
   const errors = {};
   const f = fields || {};
@@ -35,13 +36,24 @@ export function validateSensorForm(fields) {
     errors.sources = 'at least one source entity is required';
   }
 
-  if (f.object_id && !SLUG_RE.test(String(f.object_id))) {
-    errors.object_id = 'object_id must be a lowercase slug ([a-z0-9_]+)';
-  }
-
   const conditionState = f.fallback_condition_state;
   if (conditionState && !f.fallback_condition_entity_id) {
     errors.fallback_condition_entity_id = 'a condition entity is required when a condition state is set';
+  }
+
+  return errors;
+}
+
+// Client-side validation for the rename dialog (logical name + object id).
+export function validateRenameForm(fields) {
+  const errors = {};
+  const f = fields || {};
+
+  if (!f.logical_name || !String(f.logical_name).trim()) {
+    errors.logical_name = 'a logical name is required';
+  }
+  if (f.object_id && !SLUG_RE.test(String(f.object_id))) {
+    errors.object_id = 'object_id must be a lowercase slug ([a-z0-9_]+)';
   }
 
   return errors;
@@ -54,7 +66,8 @@ export function hasErrors(errors) {
 // Build the `data` payload for `abstractor/subentry/create` /
 // `abstractor/subentry/update`. Optional entity/text fields are emitted as
 // null when empty so the update path can clear a previously set value; the
-// backend treats null/absent as "unset".
+// backend treats null/absent as "unset". Logical identity (name/object_id) is
+// owned by the rename command, not this payload.
 export function buildPayload(fields) {
   const f = fields || {};
   const sources = (f.sources || []).map((s) => String(s || '').trim()).filter(Boolean);
@@ -65,12 +78,6 @@ export function buildPayload(fields) {
     data.source_entity_ids = sources;
   } else if (sources.length === 1) {
     data.source_entity_id = sources[0];
-  }
-
-  data.logical_name = f.logical_name ? String(f.logical_name).trim() : '';
-  data.object_id = f.object_id ? String(f.object_id).trim() : null;
-  if (f.legacy_unique_id) {
-    data.legacy_unique_id = String(f.legacy_unique_id).trim();
   }
 
   if (isNumericType(f.device_type)) {
@@ -90,8 +97,21 @@ export function buildPayload(fields) {
   return data;
 }
 
-// Map a subentry (as returned by `abstractor/subentries`) back to form fields
-// so the edit dialog can be pre-filled.
+// Build the payload for `abstractor/logical_rename`.
+export function buildRenamePayload(fields) {
+  const f = fields || {};
+  const data = {
+    logical_name: String(f.logical_name || '').trim(),
+    rename_entity: !!f.rename_entity,
+  };
+  if (f.object_id) {
+    data.object_id = String(f.object_id).trim();
+  }
+  return data;
+}
+
+// Map a subentry (as returned by `abstractor/subentries`) back to config-form
+// fields so the edit dialog can be pre-filled.
 export function subentryToFields(subentry) {
   const s = subentry || {};
   const sources = Array.isArray(s.source_entity_ids)
@@ -100,8 +120,6 @@ export function subentryToFields(subentry) {
   return {
     device_type: s.device_type || 'power',
     sources,
-    logical_name: s.logical_name || '',
-    object_id: s.object_id || '',
     aggregation: s.aggregation || 'sum',
     spike_filter: !!s.spike_filter,
     invert: !!s.invert,
@@ -111,5 +129,15 @@ export function subentryToFields(subentry) {
     fallback_source_entity_id: s.fallback_source_entity_id || '',
     fallback_condition_entity_id: s.fallback_condition_entity_id || '',
     fallback_condition_state: s.fallback_condition_state || '',
+  };
+}
+
+// Map a subentry back to rename-form fields.
+export function subentryToRenameFields(subentry) {
+  const s = subentry || {};
+  return {
+    logical_name: s.logical_name || '',
+    object_id: s.object_id || '',
+    rename_entity: false,
   };
 }

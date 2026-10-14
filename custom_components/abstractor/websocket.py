@@ -317,19 +317,30 @@ async def ws_logical_rename(hass, connection, msg) -> None:
         if object_id:
             merged["object_id"] = object_id
         hass.config_entries.async_update_subentry(root_entry, sid, data=merged, title=sub.title)
-    # Optional entity registry rename.
+    # Optional entity registry rename for THIS subentry's entity. The domain
+    # is taken from the existing entity_id so a binary_sensor is renamed to
+    # binary_sensor.* rather than being forced onto sensor.*, and the entity is
+    # looked up by this subentry (not by whatever `sub` the loop last held).
     if msg.get("rename_entity") and object_id:
         registry = er.async_get(hass)
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, sub.unique_id) if sub.unique_id else None
-        # Try also other platforms by scanning registry entries.
-        if entity_id is None:
-            for ent in er.async_entries_for_config_entry(registry, root_entry.entry_id):
-                if ent.config_subentry_id == msg["subentry_id"]:
-                    entity_id = ent.entity_id
+        entity_id = None
+        for ent in er.async_entries_for_config_entry(registry, root_entry.entry_id):
+            if ent.config_subentry_id == msg["subentry_id"]:
+                entity_id = ent.entity_id
+                break
+        if entity_id is None and subentry.unique_id:
+            for platform in ("sensor", "binary_sensor"):
+                entity_id = registry.async_get_entity_id(
+                    platform, DOMAIN, subentry.unique_id
+                )
+                if entity_id:
+                    break
         if entity_id is not None:
-            new_entity_id = f"sensor.{object_id}"
+            domain = entity_id.split(".", 1)[0]
             try:
-                registry.async_update_entity(entity_id, new_entity_id=new_entity_id)
+                registry.async_update_entity(
+                    entity_id, new_entity_id=f"{domain}.{object_id}"
+                )
             except Exception as exc:  # noqa: BLE001
                 connection.send_error(msg["id"], "invalid", str(exc))
                 return

@@ -10,9 +10,12 @@ import {
   AGGREGATION_MODES,
   DEVICE_TYPES,
   buildPayload,
+  buildRenamePayload,
   hasErrors,
   isNumericType,
   subentryToFields,
+  subentryToRenameFields,
+  validateRenameForm,
   validateSensorForm,
 } from './sensor-form.js';
 
@@ -39,6 +42,7 @@ const I18N = {
     'action.edit': 'Edit',
     'action.configure': 'Configure',
     'action.delete': 'Delete',
+    'action.rename': 'Rename',
     'action.save': 'Save',
     'action.cancel': 'Cancel',
     'form.createTitle': 'Add Abstract sensor',
@@ -57,6 +61,8 @@ const I18N = {
     'form.fallbackCondition': 'Fallback condition entity',
     'form.fallbackConditionState': 'Fallback condition state',
     'confirm.delete': 'Delete this Abstract sensor?',
+    'rename.title': 'Rename Abstract sensor',
+    'rename.renameEntity': 'Also rename the entity id',
     'status.sensors': 'sensors',
     'status.loading': 'Loading...',
     'title': 'Abstractor',
@@ -105,6 +111,7 @@ const I18N = {
     'action.edit': 'Bearbeiten',
     'action.configure': 'Konfigurieren',
     'action.delete': 'Loeschen',
+    'action.rename': 'Umbenennen',
     'action.save': 'Speichern',
     'action.cancel': 'Abbrechen',
     'form.createTitle': 'Abstract-Sensor hinzufuegen',
@@ -123,6 +130,8 @@ const I18N = {
     'form.fallbackCondition': 'Fallback-Bedingungsentitaet',
     'form.fallbackConditionState': 'Fallback-Bedingungszustand',
     'confirm.delete': 'Diesen Abstract-Sensor loeschen?',
+    'rename.title': 'Abstract-Sensor umbenennen',
+    'rename.renameEntity': 'Entity-Id ebenfalls umbenennen',
     'status.sensors': 'Sensoren',
     'status.loading': 'Laedt...',
     'title': 'Abstractor',
@@ -568,6 +577,14 @@ class AbstractorPanel extends HTMLElement {
         configureButton.addEventListener('click', () => this._openSensorForm(e));
         card.appendChild(configureButton);
 
+        const renameButton = document.createElement('button');
+        renameButton.type = 'button';
+        renameButton.textContent = this._t('action.rename');
+        renameButton.style.marginTop = '8px';
+        renameButton.style.marginLeft = '8px';
+        renameButton.addEventListener('click', () => this._openRenameForm(e));
+        card.appendChild(renameButton);
+
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
         deleteButton.textContent = this._t('action.delete');
@@ -758,8 +775,6 @@ class AbstractorPanel extends HTMLElement {
     return {
       device_type: refs.device_type.value,
       sources: this._pickerValue(refs.sources, true),
-      logical_name: refs.logical_name.value,
-      object_id: refs.object_id.value,
       aggregation: refs.aggregation.value,
       spike_filter: refs.spike_filter.checked,
       invert: refs.invert.checked,
@@ -807,12 +822,6 @@ class AbstractorPanel extends HTMLElement {
 
     refs.sources = this._entityPicker(fields.sources, true);
     form.appendChild(this._field('form.sources', refs.sources));
-
-    refs.logical_name = this._textInput(fields.logical_name, 'text');
-    form.appendChild(this._field('form.logicalName', refs.logical_name));
-
-    refs.object_id = this._textInput(fields.object_id, 'text');
-    form.appendChild(this._field('form.objectId', refs.object_id));
 
     const numeric = document.createElement('div');
     refs.aggregation = document.createElement('select');
@@ -911,6 +920,95 @@ class AbstractorPanel extends HTMLElement {
       await this._fetchSubentries(true);
     } catch (err) {
       errEl.textContent = `Save failed: ${err && err.message ? err.message : err}`;
+      errEl.style.display = '';
+      saveBtn.disabled = false;
+    }
+  }
+
+  _openRenameForm(existing) {
+    if (!this._store.state.editMode) {
+      this._showError(this._t('error.adminOnly'));
+      return;
+    }
+    this._closeModal();
+    const fields = subentryToRenameFields(existing);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'drawer-backdrop';
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    const form = document.createElement('div');
+    form.className = 'drawer';
+    form.style.width = 'min(460px, 94vw)';
+
+    const title = document.createElement('h2');
+    title.textContent = this._t('rename.title');
+    form.appendChild(title);
+
+    const refs = {};
+    refs.logical_name = this._textInput(fields.logical_name, 'text');
+    form.appendChild(this._field('form.logicalName', refs.logical_name));
+    refs.object_id = this._textInput(fields.object_id, 'text');
+    form.appendChild(this._field('form.objectId', refs.object_id));
+    refs.rename_entity = this._checkbox(fields.rename_entity);
+    form.appendChild(this._checkboxField('rename.renameEntity', refs.rename_entity));
+
+    const errEl = document.createElement('div');
+    errEl.className = 'error';
+    errEl.setAttribute('role', 'alert');
+    errEl.style.display = 'none';
+    form.appendChild(errEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    actions.style.marginTop = '12px';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = this._t('action.cancel');
+    cancelBtn.addEventListener('click', () => this._closeModal());
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = this._t('action.save');
+    saveBtn.addEventListener('click', () => this._submitRenameForm(existing, refs, errEl, saveBtn));
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    form.appendChild(actions);
+
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) this._closeModal(); });
+    backdrop.appendChild(form);
+    this._modalEl = backdrop;
+    this._modalForm = form;
+    this.shadowRoot.appendChild(backdrop);
+    if (refs.logical_name.focus) refs.logical_name.focus();
+  }
+
+  async _submitRenameForm(existing, refs, errEl, saveBtn) {
+    const fields = {
+      logical_name: refs.logical_name.value,
+      object_id: refs.object_id.value,
+      rename_entity: refs.rename_entity.checked,
+    };
+    const errors = validateRenameForm(fields);
+    if (hasErrors(errors)) {
+      errEl.textContent = Object.values(errors).join('; ');
+      errEl.style.display = '';
+      return;
+    }
+    const payload = buildRenamePayload(fields);
+    saveBtn.disabled = true;
+    try {
+      await this._hass.callWS({
+        type: 'abstractor/logical_rename',
+        subentry_id: existing.subentry_id,
+        logical_name: payload.logical_name,
+        object_id: payload.object_id,
+        rename_entity: payload.rename_entity,
+      });
+      this._closeModal();
+      this._showError('');
+      await this._fetchSubentries(true);
+    } catch (err) {
+      errEl.textContent = `Rename failed: ${err && err.message ? err.message : err}`;
       errEl.style.display = '';
       saveBtn.disabled = false;
     }
