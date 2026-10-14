@@ -44,7 +44,9 @@ def test_edit_button_navigates_to_device_page(logged_in_page, hass_base_url):
     page = logged_in_page
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
-    edit_button = panel.get_by_role("button", name=re.compile("edit", re.IGNORECASE)).first
+    # Anchor to the card's exact "Edit" label: the header also has an
+    # "Edit mode" toggle whose accessible name contains "edit".
+    edit_button = panel.get_by_role("button", name=re.compile(r"^edit$", re.IGNORECASE)).first
     edit_button.wait_for(state="visible", timeout=10000)
     edit_button.click()
     page.wait_for_url(re.compile(r"/config/devices/device/"), timeout=10000)

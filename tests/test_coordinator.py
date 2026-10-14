@@ -246,6 +246,8 @@ def _update_coordinator(
     pipeline.process_sources = Mock(return_value=pipeline_value)
     pipeline.last_event = None
     coordinator.pipelines = {"subentry-1": pipeline}
+    # Real __init__ seeds these; this helper bypasses it via object.__new__.
+    coordinator.meta = {}
     coordinator._last_notified_events = {}
     coordinator.debug_switch_entity_id = None
     coordinator.notify_entity_id = None

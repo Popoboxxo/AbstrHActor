@@ -66,7 +66,11 @@ def _admin_connection():
 
 
 def _root(subentries=None, entry_id="root-1"):
-    return SimpleNamespace(entry_id=entry_id, subentries=dict(subentries or {}))
+    return SimpleNamespace(
+        entry_id=entry_id,
+        unique_id="abstractor_root",
+        subentries=dict(subentries or {}),
+    )
 
 
 def _hass_cfg(root_entry, coordinator=None):

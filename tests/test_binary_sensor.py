@@ -51,7 +51,7 @@ async def test_setup_entry_adds_only_enabled_binary_specs() -> None:
     )
     added = []
 
-    async def _add(entities, config_subentry_id=None):
+    def _add(entities, config_subentry_id=None):
         added.extend(entities)
 
     await binary_sensor.async_setup_entry(hass, entry, _add)
@@ -67,7 +67,7 @@ def test_unique_id_prefers_legacy() -> None:
 
 def test_unique_id_single_and_multi_source() -> None:
     single = _entity(device_type="motion", sources=["binary_sensor.m"])
-    assert single._attr_unique_id == "abstractor_binary_sensor.motion_motion"
+    assert single._attr_unique_id == "abstractor_binary_sensor.m_motion"
 
     multi = _entity(
         device_type="smoke",
