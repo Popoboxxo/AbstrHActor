@@ -12,9 +12,10 @@ def test_actuator_types_enabled() -> None:
     assert {"switch_state", "light_state", "cover_position"} <= enabled
 
 
-def test_riemann_disabled_by_default() -> None:
+def test_riemann_integration_spec_enabled() -> None:
     spec = SPEC_REGISTRY.get("riemann_energy")
-    assert spec.enabled is False
+    assert spec.enabled is True
+    assert spec.integration == "riemann_left"
 
 
 def test_unknown_spec_raises() -> None:

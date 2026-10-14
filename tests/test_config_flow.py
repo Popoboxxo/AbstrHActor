@@ -1414,6 +1414,7 @@ async def test_subentry_create_type_step_lists_enabled_specs(
         "power",
         "energy",
         "water",
+        "riemann_energy",
         "door_contact",
         "motion",
         "smoke",
