@@ -173,6 +173,10 @@ async def ws_subentries_subscribe(hass, connection, msg) -> None:
     else:
         connection.subscriptions[msg["id"]] = lambda: None
     connection.send_result(msg["id"])
+    # Push the current snapshot immediately: subscribeMessage only delivers
+    # events (not the result payload), so without this the panel would stay
+    # empty until the next coordinator update.
+    _forward()
 
 
 @websocket_api.websocket_command({vol.Required("type"): "abstractor/subentry/create", vol.Required("data"): dict})

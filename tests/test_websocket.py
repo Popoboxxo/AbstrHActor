@@ -120,10 +120,14 @@ async def test_ws_subentries_subscribe_registers_and_forwards() -> None:
 
     assert connection.subscriptions[20] is unsub
     assert connection.send_result.call_args.args[0] == 20
+    # The handler pushes the current snapshot immediately ...
+    assert connection.send_event.call_count == 1
+    assert "subentries" in connection.send_event.call_args.args[1]
+    # ... and again on every coordinator update via the registered listener.
     listener = coordinator.async_add_listener.call_args.args[0]
     listener()
+    assert connection.send_event.call_count == 2
     assert connection.send_event.call_args.args[0] == 20
-    assert "subentries" in connection.send_event.call_args.args[1]
 
 
 async def test_ws_subentries_subscribe_rejects_non_admin() -> None:

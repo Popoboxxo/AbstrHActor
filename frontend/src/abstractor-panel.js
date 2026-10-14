@@ -261,7 +261,10 @@ class AbstractorPanel extends HTMLElement {
   }
 
   _maybeFetch() {
-    if (this._subscribed) return; // the live subscription keeps data fresh
+    // The subscription keeps data fresh once loaded; until then (or if no
+    // subscription is available) fall back to the one-shot fetch so the panel
+    // always paints its first frame.
+    if (this._subscribed && this._store.state.loaded) return;
     if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
     const s = this._store.state;
     const stale = Date.now() - s.lastFetchAt > 10000;

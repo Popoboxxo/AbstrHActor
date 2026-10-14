@@ -324,7 +324,7 @@
       }
     }
     _maybeFetch() {
-      if (this._subscribed) return;
+      if (this._subscribed && this._store.state.loaded) return;
       if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
       const s = this._store.state;
       const stale = Date.now() - s.lastFetchAt > 1e4;
