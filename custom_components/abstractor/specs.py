@@ -88,7 +88,7 @@ def _build_default_registry() -> SpecRegistry:
         register(AbstractSpec(key, "binary_sensor", "door" if key == "door_contact" else None, None, None, False, FailContract.PASS_THROUGH, False, key.replace("_", " ").title(), enabled=True))
     register(AbstractSpec("switch_state", "switch", None, None, None, False, FailContract.PASS_THROUGH, False, "Switch", "turn_on"))
     register(AbstractSpec("light_state", "light", None, None, None, False, FailContract.PASS_THROUGH, False, "Light", "turn_on"))
-    register(AbstractSpec("cover_position", "cover", None, "%", None, True, FailContract.PASS_THROUGH, False, "Cover position", "set_cover_position", enabled=False))
+    register(AbstractSpec("cover_position", "cover", None, "%", None, False, FailContract.PASS_THROUGH, False, "Cover position", "set_cover_position"))
     return reg
 
 
