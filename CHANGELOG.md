@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] — 2026-10-15
+
+### Fixed
+
+- Binary sensors now attach to their Home Assistant device: device details are
+  provided through the entity's device info instead of overriding Home
+  Assistant's cached `device_info` property with a plain method, and each
+  binary type carries its proper device class (`door`, `motion`, `smoke`) —
+  [GH#52](https://github.com/Popoboxxo/AbstrHActor/pull/52)
+- Water sensors report the correct device class (`water`, not `energy`) —
+  [GH#52](https://github.com/Popoboxxo/AbstrHActor/pull/52)
+- More robust root-entry lookup in the management websocket API (uses the
+  shared `ROOT_UNIQUE_ID` constant instead of a hardcoded literal) —
+  [GH#52](https://github.com/Popoboxxo/AbstrHActor/pull/52)
+
 ## [1.3.0] — 2026-10-14
 
 ### Added
