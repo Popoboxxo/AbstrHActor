@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -231,13 +232,13 @@ class RiemannEnergySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Re
             model=str(entry.options.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL)),
         )
         self._energy = 0.0
-        self._last_time = None
+        self._last_time: datetime | None = None
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         last = await self.async_get_last_sensor_data()
         if last is not None and last.native_value is not None:
-            self._energy = float(last.native_value)
+            self._energy = float(last.native_value)  # type: ignore[arg-type]
         self._last_time = dt_util.utcnow()
 
     def _handle_coordinator_update(self) -> None:

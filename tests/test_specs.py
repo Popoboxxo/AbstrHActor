@@ -33,3 +33,10 @@ def test_fail_contracts() -> None:
 def test_monotonic_defaults() -> None:
     assert SPEC_REGISTRY.get("energy").monotonic_default is True
     assert SPEC_REGISTRY.get("power").monotonic_default is False
+
+
+def test_device_classes() -> None:
+    assert SPEC_REGISTRY.get("water").device_class == "water"
+    assert SPEC_REGISTRY.get("door_contact").device_class == "door"
+    assert SPEC_REGISTRY.get("motion").device_class == "motion"
+    assert SPEC_REGISTRY.get("smoke").device_class == "smoke"

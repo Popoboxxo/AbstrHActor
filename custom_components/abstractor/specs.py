@@ -82,11 +82,15 @@ def _build_default_registry() -> SpecRegistry:
     # Shipping today.
     register(AbstractSpec("power", "sensor", "power", "W", "measurement", True, FailContract.SOFT_ZERO, False, "Power"))
     register(AbstractSpec("energy", "sensor", "energy", "kWh", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Energy"))
-    register(AbstractSpec("water", "sensor", "energy", "L", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Water"))
+    register(AbstractSpec("water", "sensor", "water", "L", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Water"))
     # Roadmap (declared, not enabled; enabling is an explicit reviewed change).
     register(AbstractSpec("riemann_energy", "sensor", "energy", "kWh", "total_increasing", True, FailContract.FAIL_CLOSED, False, "Riemann energy", integration="riemann_left"))
-    for key in ("door_contact", "motion", "smoke"):
-        register(AbstractSpec(key, "binary_sensor", "door" if key == "door_contact" else None, None, None, False, FailContract.PASS_THROUGH, False, key.replace("_", " ").title(), enabled=True))
+    for key, device_class in (
+        ("door_contact", "door"),
+        ("motion", "motion"),
+        ("smoke", "smoke"),
+    ):
+        register(AbstractSpec(key, "binary_sensor", device_class, None, None, False, FailContract.PASS_THROUGH, False, key.replace("_", " ").title(), enabled=True))
     register(AbstractSpec("switch_state", "switch", None, None, None, False, FailContract.PASS_THROUGH, False, "Switch", "turn_on"))
     register(AbstractSpec("light_state", "light", None, None, None, False, FailContract.PASS_THROUGH, False, "Light", "turn_on"))
     register(AbstractSpec("cover_position", "cover", None, "%", None, False, FailContract.PASS_THROUGH, False, "Cover position", "set_cover_position"))
