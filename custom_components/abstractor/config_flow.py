@@ -607,7 +607,7 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         """
         if hasattr(self, "_get_entry"):
             return self._get_entry()
-        return self._get_reconfigure_entry()
+        return self._get_reconfigure_entry()  # type: ignore[attr-defined]
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None

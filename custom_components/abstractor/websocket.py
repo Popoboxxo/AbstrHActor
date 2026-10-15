@@ -25,6 +25,7 @@ from custom_components.abstractor.const import (
     CONF_SOURCE_ENTITY_IDS,
     CONF_TARGET_DEVICE_ID,
     DOMAIN,
+    ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
     WS_GET_SUBENTRIES,
     WS_YAML_SCAN,
@@ -68,7 +69,7 @@ def _async_root_entry(hass: HomeAssistant):
         (
             entry
             for entry in hass.config_entries.async_entries(DOMAIN)
-            if entry.unique_id == "abstractor_root"
+            if entry.unique_id == ROOT_UNIQUE_ID
         ),
         None,
     )
@@ -317,17 +318,20 @@ async def ws_logical_rename(hass, connection, msg) -> None:
         if object_id:
             merged["object_id"] = object_id
         hass.config_entries.async_update_subentry(root_entry, sid, data=merged, title=sub.title)
-    # Optional entity registry rename.
+    # Optional entity registry rename. Locate the requested subentry's own
+    # entity row (any platform) rather than assuming the "sensor" platform —
+    # binary_sensor subentries live under binary_sensor.* and a hardcoded
+    # "sensor.*" target would move/rename the wrong domain (or nothing).
     if msg.get("rename_entity") and object_id:
         registry = er.async_get(hass)
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, sub.unique_id) if sub.unique_id else None
-        # Try also other platforms by scanning registry entries.
-        if entity_id is None:
-            for ent in er.async_entries_for_config_entry(registry, root_entry.entry_id):
-                if ent.config_subentry_id == msg["subentry_id"]:
-                    entity_id = ent.entity_id
+        entity_id = None
+        for ent in er.async_entries_for_config_entry(registry, root_entry.entry_id):
+            if ent.config_subentry_id == msg["subentry_id"]:
+                entity_id = ent.entity_id
+                break
         if entity_id is not None:
-            new_entity_id = f"sensor.{object_id}"
+            domain = entity_id.split(".", 1)[0]
+            new_entity_id = f"{domain}.{object_id}"
             try:
                 registry.async_update_entity(entity_id, new_entity_id=new_entity_id)
             except Exception as exc:  # noqa: BLE001

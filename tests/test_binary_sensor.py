@@ -22,7 +22,7 @@ def _subentry(data, title="Abstract door_contact"):
 
 
 def _entity(coordinator=None, entry=None, device_type="door_contact", sources=None,
-           legacy=None, subentry_id="b1"):
+           legacy=None, subentry_id="b1", device_group_id=None):
     return binary_sensor.AbstractorBinarySensor(
         coordinator or _coordinator(),
         entry or _entry(),
@@ -30,6 +30,7 @@ def _entity(coordinator=None, entry=None, device_type="door_contact", sources=No
         sources or ["binary_sensor.door"],
         legacy,
         subentry_id=subentry_id,
+        device_group_id=device_group_id,
     )
 
 
@@ -90,20 +91,10 @@ def test_is_on_parses_common_states() -> None:
 
 
 def test_device_info_uses_group_id_when_present() -> None:
-    entry = _entry(
-        subentries={
-            "b1": _subentry(
-                {"device_type": "door_contact", "device_group_id": "grp"}
-            )
-        }
-    )
-    info = _entity(entry=entry).device_info()
+    info = _entity(device_group_id="grp").device_info
     assert ("abstractor", "grp") in info["identifiers"]
 
 
 def test_device_info_falls_back_to_subentry_id() -> None:
-    entry = _entry(
-        subentries={"b1": _subentry({"device_type": "door_contact"})}
-    )
-    info = _entity(entry=entry).device_info()
+    info = _entity().device_info
     assert ("abstractor", "b1") in info["identifiers"]

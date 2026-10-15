@@ -86,6 +86,25 @@ class AbstractorBinarySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator],
         else:
             self._attr_unique_id = f"abstractor_{device_type}_{'_'.join(sorted(identity_source_ids))}"
         self._attr_name = self._spec.display_name
+        self._attr_device_class = self._spec.device_class
+        # Entity.device_info is a cached_property returning _attr_device_info;
+        # a subclass override has to be a property too (or, as here, the
+        # attribute just set in __init__). Assigning _attr_device_info is the
+        # same pattern sensor.py uses.
+        device_key = device_group_id or subentry_id
+        device_name = str(
+            self.entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
+        ).replace("{device_type}", device_type.capitalize())
+        manufacturer = str(
+            self.entry.options.get(CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER)
+        )
+        model = str(self.entry.options.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL))
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_key)},
+            name=device_name,
+            manufacturer=manufacturer,
+            model=model,
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -95,16 +114,3 @@ class AbstractorBinarySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator],
         if value is None:
             return None
         return str(value).lower() in {"on", "true", "1", "yes", "home", "open"}
-
-    def device_info(self) -> DeviceInfo:
-        subentry = self.entry.subentries.get(self._subentry_id)
-        device_key = (subentry.data.get(CONF_DEVICE_GROUP_ID) if subentry else None) or self._subentry_id
-        device_name = str(self.entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)).replace("{device_type}", self._device_type.capitalize())
-        manufacturer = str(self.entry.options.get(CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER))
-        model = str(self.entry.options.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL))
-        return DeviceInfo(
-            identifiers={(DOMAIN, device_key)},
-            name=device_name,
-            manufacturer=manufacturer,
-            model=model,
-        )
