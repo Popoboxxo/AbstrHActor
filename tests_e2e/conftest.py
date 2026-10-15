@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from scripts.e2e_bootstrap import USERNAME, PASSWORD, bootstrap
+from scripts.e2e_bootstrap import PASSWORD, USERNAME, bootstrap
 
 
 @pytest.fixture(scope="session")
@@ -78,6 +78,16 @@ def logged_in_page(page, hass_base_url, hass_credentials, hass_bearer_token):
     # password field submits the form the same way a real user's Enter
     # keypress would, and is what actually works here.
     password_field.press("Enter")
+    # HA's default login redirects through /auth/authorize (and, on a
+    # just-bootstrapped instance, may still touch /onboarding). networkidle
+    # can fire on that intermediate page and hand a half-navigated page to
+    # the test, whose very first locator then races the still-in-flight
+    # redirect. Wait until the SPA has actually left the auth/onboarding
+    # routes before returning.
+    for _ in range(60):
+        if "/auth/" not in page.url and "/onboarding" not in page.url:
+            break
+        page.wait_for_timeout(500)
     page.wait_for_load_state("networkidle")
 
     return page

@@ -9,12 +9,12 @@ import re
 # role="link"), whose accessible name is the translated initiate_flow.user
 # string ("Add Abstract sensor" — see strings.json / translations/en.json).
 # "add.*sensor" survives either that or a raw-key fallback render.
-ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.I)
-SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.I)
+ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.IGNORECASE)
+SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.IGNORECASE)
 
 
 def _dismiss_success_dialog(page) -> None:
-    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
+    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.IGNORECASE))
     if finish_button.count():
         finish_button.first.click()
         page.wait_for_timeout(300)
@@ -37,7 +37,7 @@ def _ensure_root_entry(page, hass_base_url: str) -> None:
     # accessible role="button" to Playwright's get_by_role — get_by_text is
     # what actually finds them (confirmed via manual DOM inspection).
     page.get_by_text("Add integration", exact=False).click()
-    brand_search = page.get_by_placeholder(re.compile("search for a brand", re.I))
+    brand_search = page.get_by_placeholder(re.compile("search for a brand", re.IGNORECASE))
     brand_search.fill("Abstractor")
     brand_search.press("Enter")
     # The root entry's async_step_user form has no data fields at all (see
@@ -55,9 +55,9 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
     page.wait_for_timeout(500)
 
-    # Two-step create flow: the first step ("user") selects the device type
-    # (default "power"); the source picker lives on the second ("details")
-    # step. Submit the type step to reach it.
+    # Two-step create flow: the first step selects the sensor type (defaults
+    # to "Power"), the second collects the source(s). Submit the type step to
+    # reach the details form that carries the "Source entity" field.
     page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
     page.wait_for_timeout(500)
 
@@ -111,7 +111,7 @@ def test_add_power_device_creates_live_entity(logged_in_page, hass_base_url):
     search_box = page.locator("ha-input-search input").last
     search_box.wait_for(state="visible", timeout=15000)
     search_box.fill("Power")
-    assert page.get_by_text(re.compile("abstractor", re.I)).count() > 0, (
+    assert page.get_by_text(re.compile("abstractor", re.IGNORECASE)).count() > 0, (
         "expected at least one abstractor entity to show up in the entities list "
         "after completing the config flow"
     )

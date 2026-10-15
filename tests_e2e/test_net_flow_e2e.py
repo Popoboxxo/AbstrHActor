@@ -12,13 +12,14 @@ import re
 import time
 
 import requests
+from _nav import goto_settled
 
-ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.I)
-SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.I)
+ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.IGNORECASE)
+SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.IGNORECASE)
 
 
 def _dismiss_success_dialog(page) -> None:
-    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
+    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.IGNORECASE))
     if finish_button.count():
         finish_button.first.click()
         page.wait_for_timeout(300)
@@ -38,7 +39,7 @@ def _ensure_root_entry(page, hass_base_url: str) -> None:
     # accessible role="button" to Playwright's get_by_role — get_by_text is
     # what actually finds them (confirmed via manual DOM inspection).
     page.get_by_text("Add integration", exact=False).click()
-    brand_search = page.get_by_placeholder(re.compile("search for a brand", re.I))
+    brand_search = page.get_by_placeholder(re.compile("search for a brand", re.IGNORECASE))
     brand_search.fill("Abstractor")
     brand_search.press("Enter")
     page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
@@ -54,9 +55,9 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
     page.wait_for_timeout(500)
 
-    # Two-step create flow: the first step ("user") selects the device type
-    # (default "power"); the source picker lives on the second ("details")
-    # step. Submit the type step to reach it.
+    # Two-step create flow: the first step selects the sensor type (defaults
+    # to "Power"), the second collects the source(s). Submit the type step to
+    # reach the details form that carries the "Source entity" field.
     page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
     page.wait_for_timeout(500)
 
@@ -135,10 +136,10 @@ def test_net_flow_subtracts_discharge_from_charge(
     # via DOM inspection against a live instance). Once other tests in the
     # suite have added their own sensors, there may be more than one such
     # button — ours is the most recently created, i.e. the last one.
-    page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
+    goto_settled(page, f"{hass_base_url}/config/integrations/integration/abstractor")
     page.wait_for_load_state("networkidle")
     page.get_by_role(
-        "button", name=re.compile("reconfigure abstract sensor", re.I)
+        "button", name=re.compile("reconfigure abstract sensor", re.IGNORECASE)
     ).last.click()
     page.wait_for_timeout(500)
     # Each picker's aria-label works regardless of translation state, but
@@ -148,7 +149,7 @@ def test_net_flow_subtracts_discharge_from_charge(
     # _add_sensor_subentry above (shared "Search" placeholder + possible
     # same-name matches hidden under the modal overlay elsewhere on the
     # page).
-    net_subtract_label = re.compile("net_subtract_entity_id|Subtract entity", re.I)
+    net_subtract_label = re.compile("net_subtract_entity_id|Subtract entity", re.IGNORECASE)
     page.get_by_label(net_subtract_label).click()
     picker_dialog = page.get_by_role("dialog", name=net_subtract_label)
     search_field = picker_dialog.get_by_placeholder("Search", exact=True)

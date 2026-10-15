@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import re
 
-ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.I)
-SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.I)
+from _nav import goto_settled
+
+ADD_SENSOR_SUBENTRY_NAME = re.compile("add.*sensor", re.IGNORECASE)
+SUBMIT_BUTTON_NAME = re.compile("submit|ok", re.IGNORECASE)
 
 
 def _dismiss_success_dialog(page) -> None:
-    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.I))
+    finish_button = page.get_by_role("button", name=re.compile("finish|skip", re.IGNORECASE))
     if finish_button.count():
         finish_button.first.click()
         page.wait_for_timeout(300)
@@ -30,7 +32,7 @@ def _ensure_root_entry(page, hass_base_url: str) -> None:
 
     page.goto(f"{hass_base_url}/config/integrations/dashboard")
     page.get_by_text("Add integration", exact=False).click()
-    brand_search = page.get_by_placeholder(re.compile("search for a brand", re.I))
+    brand_search = page.get_by_placeholder(re.compile("search for a brand", re.IGNORECASE))
     brand_search.fill("Abstractor")
     brand_search.press("Enter")
     page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
@@ -46,9 +48,9 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     page.get_by_role("button", name=ADD_SENSOR_SUBENTRY_NAME).click()
     page.wait_for_timeout(500)
 
-    # Two-step create flow: the first step ("user") selects the device type
-    # (default "power"); the source picker lives on the second ("details")
-    # step. Submit the type step to reach it.
+    # Two-step create flow: the first step selects the sensor type (defaults
+    # to "Power"), the second collects the source(s). Submit the type step to
+    # reach the details form that carries the "Source entity" field.
     page.get_by_role("button", name=SUBMIT_BUTTON_NAME).click()
     page.wait_for_timeout(500)
 
@@ -82,7 +84,7 @@ def test_options_dialog_shows_translated_labels(logged_in_page, hass_base_url):
     # once other tests in a full-suite run have added their own sensors
     # against this shared HA container, more than one can match — ours is
     # the most recently created, i.e. the last one.
-    page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
+    goto_settled(page, f"{hass_base_url}/config/integrations/integration/abstractor")
     page.wait_for_load_state("networkidle")
     page.get_by_role("button", name="Reconfigure Abstract sensor").last.click()
     page.wait_for_timeout(500)
