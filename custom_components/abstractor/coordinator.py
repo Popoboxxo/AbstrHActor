@@ -150,7 +150,10 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via central polling."""
-        data: dict[str, float | None] = {}
+        # Values are numeric for sensor specs but raw state strings for
+        # pass-through specs (e.g. binary_sensor / switch / cover), hence the
+        # union.
+        data: dict[str, float | str | None] = {}
         for subentry_id, config in self.subentry_data.items():
             source_ids = config.get(CONF_SOURCE_ENTITY_IDS) or [
                 config.get(CONF_SOURCE_ENTITY_ID)
@@ -167,8 +170,8 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
             pipeline = self.pipelines.get(subentry_id)
             if pipeline is None:
                 primary = source_ids[0] if source_ids else None
-                val = self._read_state(primary)
-                data[subentry_id] = val
+                raw_val = self._read_state(primary)
+                data[subentry_id] = raw_val
                 await self._async_notify_debug(subentry_id, None)
                 previous = self.meta.get(subentry_id, SubentryMeta())
                 self.meta[subentry_id] = SubentryMeta(
@@ -176,8 +179,8 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     event_at=previous.event_at,
                     spike_rejections=previous.spike_rejections,
                     fallbacks=previous.fallbacks,
-                    unavailable_samples=previous.unavailable_samples + (1 if val is None else 0),
-                    source_states={primary: val} if primary and val is not None else {},
+                    unavailable_samples=previous.unavailable_samples + (1 if raw_val is None else 0),
+                    source_states={primary: raw_val} if primary and raw_val is not None else {},
                     stale=False,
                 )
                 continue

@@ -25,6 +25,7 @@ from custom_components.abstractor.const import (
     CONF_SOURCE_ENTITY_IDS,
     CONF_TARGET_DEVICE_ID,
     DOMAIN,
+    ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
     WS_GET_SUBENTRIES,
     WS_SUBSCRIBE_SUBENTRIES,
@@ -69,7 +70,7 @@ def _async_root_entry(hass: HomeAssistant):
         (
             entry
             for entry in hass.config_entries.async_entries(DOMAIN)
-            if entry.unique_id == "abstractor_root"
+            if entry.unique_id == ROOT_UNIQUE_ID
         ),
         None,
     )

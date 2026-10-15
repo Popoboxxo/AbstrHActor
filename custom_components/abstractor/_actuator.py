@@ -9,6 +9,8 @@ source entity, exactly like the sensor side.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.helpers.entity import DeviceInfo
@@ -33,7 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 _ON_VALUES = {"on", "true", "1", "yes", "home", "open"}
 
 
-def primary_source_id(data: dict) -> str | None:
+def primary_source_id(data: Mapping[str, Any]) -> str | None:
     """Return the first configured source entity id, or None."""
     ids = data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)]
     ids = [source for source in ids if source]
