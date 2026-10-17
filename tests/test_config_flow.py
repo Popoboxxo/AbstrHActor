@@ -35,6 +35,7 @@ from custom_components.abstractor.const import (
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_ENTITY_NAME,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
     CONF_FALLBACK_ON_ZERO,
@@ -46,8 +47,11 @@ from custom_components.abstractor.const import (
     CONF_INFLUX_TOKEN,
     CONF_INVERT,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_LOGICAL_NAME,
+    CONF_NAMING_TEMPLATE,
     CONF_NET_SUBTRACT_ENTITY_ID,
     CONF_NOTIFY_ENTITY_ID,
+    CONF_OBJECT_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -56,6 +60,7 @@ from custom_components.abstractor.const import (
     DEFAULT_DEVICE_MANUFACTURER,
     DEFAULT_DEVICE_MODEL,
     DEFAULT_DEVICE_NAME,
+    DEFAULT_NAMING_TEMPLATE,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     POLL_INTERVAL_MAX,
@@ -115,6 +120,80 @@ async def test_subentry_create_form(hass: HomeAssistant) -> None:
     assert len(subentries) == 1
     assert subentries[0].data[CONF_DEVICE_TYPE] == "power"
     assert subentries[0].data[CONF_SOURCE_ENTITY_ID] == "sensor.test_power"
+
+
+async def test_subentry_create_stores_naming_overrides(hass: HomeAssistant) -> None:
+    """Naming overrides are stored, with object_id normalised to a slug
+    (REQ-NAME-002..004)."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    typed = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        typed["flow_id"],
+        {
+            CONF_SOURCE_ENTITY_ID: "sensor.test_power",
+            CONF_LOGICAL_NAME: "Kitchen Fridge",
+            CONF_ENTITY_NAME: "Power now",
+            CONF_OBJECT_ID: "Kitchen Fridge Energy!",
+        },
+    )
+    await hass.async_block_till_done()
+    assert result2["type"] == "create_entry"
+
+    subentry = next(iter(root_entry.subentries.values()))
+    assert subentry.data[CONF_LOGICAL_NAME] == "Kitchen Fridge"
+    assert subentry.data[CONF_ENTITY_NAME] == "Power now"
+    assert subentry.data[CONF_OBJECT_ID] == "kitchen_fridge_energy"
+
+
+async def test_subentry_reconfigure_keeps_naming_when_not_resubmitted(
+    hass: HomeAssistant,
+) -> None:
+    """A reconfigure that does not repeat a naming override keeps it."""
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={})
+    root_entry.add_to_hass(hass)
+
+    create_result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    typed = await hass.config_entries.subentries.async_configure(
+        create_result["flow_id"], {CONF_DEVICE_TYPE: "power"}
+    )
+    await hass.config_entries.subentries.async_configure(
+        typed["flow_id"],
+        {
+            CONF_SOURCE_ENTITY_ID: "sensor.old_plug",
+            CONF_LOGICAL_NAME: "Fridge",
+            CONF_OBJECT_ID: "fridge_power",
+        },
+    )
+    await hass.async_block_till_done()
+    subentry_id = next(iter(root_entry.subentries))
+
+    reconfigure_result = await hass.config_entries.subentries.async_init(
+        (root_entry.entry_id, "sensor"),
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "subentry_id": subentry_id,
+        },
+    )
+    await hass.config_entries.subentries.async_configure(
+        reconfigure_result["flow_id"],
+        {CONF_DEVICE_TYPE: "power", CONF_SOURCE_ENTITY_ID: "sensor.new_plug"},
+    )
+    await hass.async_block_till_done()
+
+    updated = root_entry.subentries[subentry_id]
+    assert updated.data[CONF_LOGICAL_NAME] == "Fridge"
+    assert updated.data[CONF_OBJECT_ID] == "fridge_power"
 
 
 async def test_subentry_create_auto_generates_stable_unique_id(hass: HomeAssistant) -> None:
@@ -866,6 +945,7 @@ async def test_options_flow_renders_init_form_with_defaults(
         CONF_DEVICE_NAME,
         CONF_DEVICE_MANUFACTURER,
         CONF_DEVICE_MODEL,
+        CONF_NAMING_TEMPLATE,
     ):
         _schema_field(schema, field)
     # The device-mapping controls live only in the SUBENTRY schemas, never in
@@ -896,6 +976,22 @@ async def test_options_flow_renders_init_form_with_defaults(
     assert _mf_marker.default() == DEFAULT_DEVICE_MANUFACTURER
     _model_marker, model_validator = _schema_field(schema, CONF_DEVICE_MODEL)
     assert isinstance(model_validator, selector.TextSelector)
+
+    template_marker, template_validator = _schema_field(schema, CONF_NAMING_TEMPLATE)
+    assert template_marker.default() == DEFAULT_NAMING_TEMPLATE
+    assert DEFAULT_NAMING_TEMPLATE in template_validator.config["options"]
+
+
+async def test_options_flow_falls_back_when_template_is_missing(
+    hass: HomeAssistant,
+) -> None:
+    """A configured template that no longer exists falls back to 'default'."""
+    root_entry = _options_entry(hass, {CONF_NAMING_TEMPLATE: "ghost"})
+
+    result = await hass.config_entries.options.async_init(root_entry.entry_id)
+
+    template_marker, _ = _schema_field(result["data_schema"], CONF_NAMING_TEMPLATE)
+    assert template_marker.default() == DEFAULT_NAMING_TEMPLATE
 
 
 async def test_options_flow_renders_current_preset_interval_selected(

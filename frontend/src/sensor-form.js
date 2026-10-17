@@ -63,6 +63,21 @@ export function hasErrors(errors) {
   return !!errors && Object.keys(errors).length > 0;
 }
 
+// Preview the resulting entity_id for the rename dialog. Only meaningful when a
+// valid object_id is supplied; the registry row wins for an already-created
+// entity, so this is the suggestion applied by the rename command. The domain
+// is taken from the current entity_id (falling back to `sensor`).
+export function previewEntityId(fields, currentEntityId) {
+  const f = fields || {};
+  const objectId = String(f.object_id || '').trim();
+  if (!objectId || !SLUG_RE.test(objectId)) {
+    return '';
+  }
+  const current = String(currentEntityId || '');
+  const domain = current.includes('.') ? current.split('.')[0] : 'sensor';
+  return `${domain}.${objectId}`;
+}
+
 // Build the `data` payload for `abstractor/subentry/create` /
 // `abstractor/subentry/update`. Optional entity/text fields are emitted as
 // null when empty so the update path can clear a previously set value; the

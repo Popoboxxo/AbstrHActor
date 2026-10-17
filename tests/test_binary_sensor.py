@@ -59,7 +59,7 @@ async def test_setup_entry_adds_only_enabled_binary_specs() -> None:
 
     assert len(added) == 1
     assert added[0]._attr_unique_id.endswith("door_contact")
-    assert added[0]._attr_name == "Door Contact"
+    assert added[0]._attr_translation_key == "door_contact"
 
 
 def test_unique_id_prefers_legacy() -> None:

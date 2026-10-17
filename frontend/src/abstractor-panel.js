@@ -13,6 +13,7 @@ import {
   buildRenamePayload,
   hasErrors,
   isNumericType,
+  previewEntityId,
   subentryToFields,
   subentryToRenameFields,
   validateRenameForm,
@@ -63,6 +64,7 @@ const I18N = {
     'confirm.delete': 'Delete this Abstract sensor?',
     'rename.title': 'Rename Abstract sensor',
     'rename.renameEntity': 'Also rename the entity id',
+    'rename.previewEntityId': 'New entity id:',
     'status.sensors': 'sensors',
     'status.loading': 'Loading...',
     'title': 'Abstractor',
@@ -132,6 +134,7 @@ const I18N = {
     'confirm.delete': 'Diesen Abstract-Sensor loeschen?',
     'rename.title': 'Abstract-Sensor umbenennen',
     'rename.renameEntity': 'Entity-Id ebenfalls umbenennen',
+    'rename.previewEntityId': 'Neue Entity-Id:',
     'status.sensors': 'Sensoren',
     'status.loading': 'Laedt...',
     'title': 'Abstractor',
@@ -995,6 +998,21 @@ class AbstractorPanel extends HTMLElement {
     form.appendChild(this._field('form.logicalName', refs.logical_name));
     refs.object_id = this._textInput(fields.object_id, 'text');
     form.appendChild(this._field('form.objectId', refs.object_id));
+    const entityIdPreview = document.createElement('div');
+    entityIdPreview.className = 'hint';
+    entityIdPreview.setAttribute('aria-live', 'polite');
+    const updateEntityIdPreview = () => {
+      const entityId = previewEntityId(
+        { object_id: refs.object_id.value },
+        existing && existing.entity_id,
+      );
+      entityIdPreview.textContent = entityId
+        ? `${this._t('rename.previewEntityId')} ${entityId}`
+        : '';
+    };
+    refs.object_id.addEventListener('input', updateEntityIdPreview);
+    updateEntityIdPreview();
+    form.appendChild(entityIdPreview);
     refs.rename_entity = this._checkbox(fields.rename_entity);
     form.appendChild(this._checkboxField('rename.renameEntity', refs.rename_entity));
 

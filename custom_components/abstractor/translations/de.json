@@ -1,0 +1,242 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Abstractor einrichten",
+        "description": "Erstellt den Abstractor-Root-Eintrag. Füge anschließend einzelne abstrakte Sensoren über die Geräte-Seite der Integration hinzu."
+      }
+    },
+    "error": {
+      "source_required": "Wähle mindestens eine Quell-Entität aus."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Abstractor-Optionen",
+        "description": "Abfrageintervall, InfluxDB-Export und Gerätedarstellung konfigurieren.",
+        "data": {
+          "poll_interval": "Abfrageintervall",
+          "influx_host": "InfluxDB-Host",
+          "influx_token": "InfluxDB-Token",
+          "influx_org": "InfluxDB-Organisation",
+          "influx_bucket": "InfluxDB-Bucket",
+          "device_name": "Gerätename",
+          "device_manufacturer": "Gerätehersteller",
+          "device_model": "Gerätemodell",
+          "naming_template": "Namens-Template",
+          "debug_switch_entity_id": "Debug-Schalter-Entität",
+          "notify_entity_id": "Debug-Benachrichtigungs-Entität"
+        },
+        "data_description": {
+          "poll_interval": "Wähle eine Voreinstellung oder 'custom' für ein begrenztes Intervall.",
+          "influx_host": "Basis-URL der InfluxDB. Der Export ist nur mit Token aktiv.",
+          "influx_token": "InfluxDB-API-Token. Wird in UI und Diagnose maskiert.",
+          "influx_org": "InfluxDB-Organisation.",
+          "influx_bucket": "InfluxDB-Bucket.",
+          "device_name": "Gerätename; {device_type} wird durch den Sensortyp ersetzt.",
+          "device_manufacturer": "Hersteller in den Home-Assistant-Gerätedetails.",
+          "device_model": "Modell in den Home-Assistant-Gerätedetails.",
+          "naming_template": "Lokales Namens-Template für Geräte- und Entitätsnamen sowie die vorgeschlagene entity_id. Eigene YAML-Dateien unter config/abstractor/templates/ ablegen; 'default' nutzt das eingebaute Verhalten.",
+          "debug_switch_entity_id": "input_boolean, das Debug-Benachrichtigungen freischaltet. Leer lassen, um sie ausgeschaltet zu lassen.",
+          "notify_entity_id": "Notify-Entität, die Debug-Benachrichtigungen erhält, solange der Debug-Schalter an ist."
+        }
+      },
+      "poll_interval": {
+        "title": "Individuelles Abfrageintervall",
+        "description": "Wähle einen Wert zwischen 1 und 3600 Sekunden.",
+        "data": {
+          "poll_interval": "Abfrageintervall"
+        },
+        "data_description": {
+          "poll_interval": "Intervall in Sekunden."
+        }
+      }
+    },
+    "error": {
+      "invalid_influx_host": "InfluxDB-Host muss mit http:// oder https:// beginnen"
+    }
+  },
+  "config_subentries": {
+    "sensor": {
+      "initiate_flow": {
+        "user": "Abstrakten Sensor hinzufügen",
+        "reconfigure": "Abstrakten Sensor neu konfigurieren"
+      },
+      "entry_type": "Abstrakter Sensor",
+      "error": {
+        "device_mapping_conflict": "Dieses Gerät gehört zu einem anderen Abstractor-Sensor. Das Bündeln ist blockiert, da Home Assistant diesen Sensor und seinen Recorder-Verlauf löschen könnte. Wähle ein Gerät dieses Sensors oder erstelle ein separates Gerät."
+      },
+      "step": {
+        "user": {
+          "title": "Abstrakten Sensor hinzufügen",
+          "description": "Wähle den Typ des abstrakten Sensors.",
+          "data": {
+            "device_type": "Gerätetyp"
+          },
+          "data_description": {
+            "device_type": "Leistung, Energie, Wasser oder ein Binärsensor-Typ."
+          }
+        },
+        "details": {
+          "title": "Abstrakten Sensor konfigurieren",
+          "description": "Wähle die Hardware-Quelle(n) und für numerische Sensoren die Wert-Pipeline.",
+          "data": {
+            "source_entity_id": "Quell-Entität",
+            "source_entity_ids": "Quell-Entitäten",
+            "legacy_unique_id": "Legacy-unique_id (optional)",
+            "aggregation": "Aggregationsmodus",
+            "spike_filter": "Spike-Filter aktivieren",
+            "invert": "Wert invertieren",
+            "fallback_zero": "Auf Null zurückfallen",
+            "fallback_on_zero": "Rückfall bei Null",
+            "net_subtract_entity_id": "Entität subtrahieren (Nettofluss)",
+            "fallback_source_entity_id": "Fallback-Quell-Entität",
+            "fallback_condition_entity_id": "Fallback-Bedingungsentität",
+            "fallback_condition_state": "Fallback-Bedingungsstatus",
+            "target_device_id": "Zielgerät",
+            "create_new_device": "Separates Gerät erstellen",
+            "logical_name": "Gerätename (überschreiben)",
+            "entity_name": "Entitätsname (überschreiben)",
+            "object_id": "Entitäts-ID (überschreiben)"
+          },
+          "data_description": {
+            "source_entity_id": "Einzelner Hardware-Sensor, der abstrahiert wird.",
+            "source_entity_ids": "Wähle eine oder mehrere Entitäten zum Summieren. Nutze dies anstelle des Einzelquellen-Feldes für Aggregation.",
+            "legacy_unique_id": "Übernimmt eine bestimmte unique_id (z. B. aus einem migrierten YAML-Template-Sensor). Leer lassen, um automatisch eine zu erzeugen — so oder so ändert sich die Identität dieses Sensors nie wieder, auch wenn du später seine Quell-Hardware tauschst.",
+            "aggregation": "Wie mehrere Quellen zu einem Wert kombiniert werden: sum (Standard) addiert alle Quellen, max/min nehmen die höchste/niedrigste Quelle, first_available nimmt die erste liefernde Quelle.",
+            "spike_filter": "Verwirft Einbrüche unter den letzten gültigen Wert (empfohlen für Energie- und Wasserzähler).",
+            "invert": "Multipliziert den Wert mit -1 (z. B. Nettofluss: Laden minus Einspeisung).",
+            "fallback_zero": "Liefert 0 statt unavailable, wenn keine Quelle einen Wert liefert.",
+            "fallback_on_zero": "Nutzt die Fallback-Quelle zusätzlich, wenn das Aggregat exakt 0 ist (Template-Idiom 'primary == 0 -> fallback', z. B. ACE 1500 Entladung).",
+            "net_subtract_entity_id": "Wird nach dem Summieren vom Aggregat abgezogen, z. B. Laden minus Entladen.",
+            "fallback_source_entity_id": "Alternative Hardware-Quelle, die genutzt wird, wenn die primäre nicht verfügbar ist und die Bedingung unten erfüllt ist.",
+            "fallback_condition_entity_id": "Optionale Entität, deren Status den Fallback steuert. Leer lassen, um den Fallback immer zuzulassen.",
+            "fallback_condition_state": "Status, den die Bedingungsentität für den Fallback erfüllen muss.",
+            "target_device_id": "Fügt diesen Sensor einem vorhandenen Abstractor-Gerät hinzu.",
+            "create_new_device": "Löst diesen Sensor von seinem aktuellen Gerät und erstellt ein separates Gerät.",
+            "logical_name": "Überschreibt den Gerätenamen für die Gerätegruppe dieses Sensors. Leer lassen, um das konfigurierte Gerätenamen-Template zu nutzen.",
+            "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
+            "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion."
+          }
+        },
+        "reconfigure": {
+          "title": "Abstrakten Sensor neu konfigurieren",
+          "description": "Ändere die Quell-Entitäten, verschiebe diesen Sensor auf ein anderes Gerät oder passe die Wert-Pipeline an.",
+          "data": {
+            "device_type": "Gerätetyp",
+            "source_entity_id": "Quell-Entität",
+            "source_entity_ids": "Quell-Entitäten",
+            "legacy_unique_id": "Legacy-unique_id (optional)",
+            "aggregation": "Aggregationsmodus",
+            "spike_filter": "Spike-Filter aktivieren",
+            "invert": "Wert invertieren",
+            "fallback_zero": "Auf Null zurückfallen",
+            "fallback_on_zero": "Rückfall bei Null",
+            "net_subtract_entity_id": "Entität subtrahieren (Nettofluss)",
+            "fallback_source_entity_id": "Fallback-Quell-Entität",
+            "fallback_condition_entity_id": "Fallback-Bedingungsentität",
+            "fallback_condition_state": "Fallback-Bedingungsstatus",
+            "target_device_id": "Zielgerät",
+            "create_new_device": "Separates Gerät erstellen",
+            "logical_name": "Gerätename (überschreiben)",
+            "entity_name": "Entitätsname (überschreiben)",
+            "object_id": "Entitäts-ID (überschreiben)"
+          },
+          "data_description": {
+            "device_type": "Abstraktionsschicht für Leistung, Energie oder Wasser.",
+            "source_entity_id": "Einzelner Hardware-Sensor, der abstrahiert wird.",
+            "source_entity_ids": "Wähle eine oder mehrere Entitäten zum Summieren. Nutze dies anstelle des Einzelquellen-Feldes für Aggregation.",
+            "legacy_unique_id": "Übernimmt die unique_id eines migrierten YAML-Template-Sensors, damit der Recorder-Verlauf weiterzählt. Einmal gesetzt, wird sie zur Identität dieses Sensors und hier nicht mehr angezeigt, da eine Änderung die Entität und ihren Verlauf verwaisen ließe.",
+            "aggregation": "Wie mehrere Quellen zu einem Wert kombiniert werden: sum (Standard) addiert alle Quellen, max/min nehmen die höchste/niedrigste Quelle, first_available nimmt die erste liefernde Quelle.",
+            "spike_filter": "Verwirft Einbrüche unter den letzten gültigen Wert (empfohlen für Energie- und Wasserzähler).",
+            "invert": "Multipliziert den Wert mit -1 (z. B. Nettofluss: Laden minus Einspeisung).",
+            "fallback_zero": "Liefert 0 statt unavailable, wenn keine Quelle einen Wert liefert.",
+            "fallback_on_zero": "Nutzt die Fallback-Quelle zusätzlich, wenn das Aggregat exakt 0 ist (Template-Idiom 'primary == 0 -> fallback', z. B. ACE 1500 Entladung).",
+            "net_subtract_entity_id": "Wird nach dem Summieren vom Aggregat abgezogen, z. B. Laden minus Entladen.",
+            "fallback_source_entity_id": "Alternative Hardware-Quelle, die genutzt wird, wenn die primäre nicht verfügbar ist und die Bedingung unten erfüllt ist.",
+            "fallback_condition_entity_id": "Optionale Entität, deren Status den Fallback steuert. Leer lassen, um den Fallback immer zuzulassen.",
+            "fallback_condition_state": "Status, den die Bedingungsentität für den Fallback erfüllen muss.",
+            "target_device_id": "Fügt diesen Sensor einem vorhandenen Abstractor-Gerät hinzu.",
+            "create_new_device": "Löst diesen Sensor von seinem aktuellen Gerät und erstellt ein separates Gerät.",
+            "logical_name": "Überschreibt den Gerätenamen für die Gerätegruppe dieses Sensors. Leer lassen, um das konfigurierte Gerätenamen-Template zu nutzen.",
+            "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
+            "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion."
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Leistung"
+      },
+      "energy": {
+        "name": "Energie"
+      },
+      "water": {
+        "name": "Wasser"
+      },
+      "riemann_energy": {
+        "name": "Riemann-Energie"
+      }
+    },
+    "binary_sensor": {
+      "door_contact": {
+        "name": "Türkontakt"
+      },
+      "motion": {
+        "name": "Bewegung"
+      },
+      "smoke": {
+        "name": "Rauch"
+      }
+    },
+    "switch": {
+      "switch_state": {
+        "name": "Schalter"
+      }
+    },
+    "light": {
+      "light_state": {
+        "name": "Licht"
+      }
+    },
+    "cover": {
+      "cover_position": {
+        "name": "Abdeckungsposition"
+      }
+    }
+  },
+  "services": {
+    "export_data": {
+      "name": "Abstractor-Daten exportieren",
+      "description": "Persistiert und protokolliert einen vollständigen Snapshot aller abstrakten Sensor-Zuordnungen und -Werte."
+    },
+    "import_data": {
+      "name": "Abstractor-Daten importieren",
+      "description": "Validiert und speichert einen zuvor exportierten Snapshot. In der Installation fehlende Sensor-Subentries werden neu erstellt; bestehende Sensoren werden nie verändert oder dupliziert.",
+      "fields": {
+        "data": {
+          "name": "Snapshot",
+          "description": "Snapshot-Objekt, das von abstractor.export_data erzeugt wurde."
+        }
+      }
+    },
+    "delete_sensor": {
+      "name": "Abstrakten Sensor löschen",
+      "description": "Löscht ein abstraktes Sensor-Subentry, seine Entität und sein Gerät.",
+      "fields": {
+        "subentry_id": {
+          "name": "Subentry-ID",
+          "description": "ID des Sensor-Subentrys (im Export-Snapshot auch als entry_id pro Eintrag gelistet)."
+        },
+        "legacy_unique_id": {
+          "name": "Legacy-unique_id",
+          "description": "Alternative — die unique_id des Sensors, wie in der Entitätsregistry angezeigt. Gib entweder diese oder subentry_id an, nicht beides."
+        }
+      }
+    }
+  }
+}

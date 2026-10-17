@@ -24,6 +24,7 @@
           "device_name": "Device name",
           "device_manufacturer": "Device manufacturer",
           "device_model": "Device model",
+          "naming_template": "Naming template",
           "debug_switch_entity_id": "Debug switch entity",
           "notify_entity_id": "Debug notify entity"
         },
@@ -36,6 +37,7 @@
           "device_name": "Device name, with {device_type} replaced by the sensor type.",
           "device_manufacturer": "Manufacturer shown in Home Assistant device details.",
           "device_model": "Model shown in Home Assistant device details.",
+          "naming_template": "Local naming template applied to device and entity names, and to the suggested entity_id. Add YAML files under config/abstractor/templates/ to offer your own; use 'default' for the built-in behaviour.",
           "debug_switch_entity_id": "input_boolean that gates debug notifications. Leave empty to keep debug notifications off.",
           "notify_entity_id": "Notify entity that receives debug notifications while the debug switch is on."
         }
@@ -93,7 +95,10 @@
             "fallback_condition_entity_id": "Fallback condition entity",
             "fallback_condition_state": "Fallback condition state",
             "target_device_id": "Target device",
-            "create_new_device": "Create a separate device"
+            "create_new_device": "Create a separate device",
+            "logical_name": "Device name (override)",
+            "entity_name": "Entity name (override)",
+            "object_id": "Entity ID (override)"
           },
           "data_description": {
             "source_entity_id": "Single hardware sensor to abstract.",
@@ -109,7 +114,10 @@
             "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
             "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
             "target_device_id": "Add this sensor to an existing Abstractor device.",
-            "create_new_device": "Detach this sensor from its current device and create a separate device."
+            "create_new_device": "Detach this sensor from its current device and create a separate device.",
+            "logical_name": "Overrides the device name for this sensor's device group. Leave empty to use the configured device name template.",
+            "entity_name": "Overrides this entity's friendly name. Leave empty to use the localized default.",
+            "object_id": "Suggested entity_id (slug). Applied only when the entity is first created; renaming an existing entity uses the rename action."
           }
         },
         "reconfigure": {
@@ -130,7 +138,10 @@
             "fallback_condition_entity_id": "Fallback condition entity",
             "fallback_condition_state": "Fallback condition state",
             "target_device_id": "Target device",
-            "create_new_device": "Create a separate device"
+            "create_new_device": "Create a separate device",
+            "logical_name": "Device name (override)",
+            "entity_name": "Entity name (override)",
+            "object_id": "Entity ID (override)"
           },
           "data_description": {
             "device_type": "Power, energy, or water abstraction layer.",
@@ -147,9 +158,54 @@
             "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
             "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
             "target_device_id": "Add this sensor to an existing Abstractor device.",
-            "create_new_device": "Detach this sensor from its current device and create a separate device."
+            "create_new_device": "Detach this sensor from its current device and create a separate device.",
+            "logical_name": "Overrides the device name for this sensor's device group. Leave empty to use the configured device name template.",
+            "entity_name": "Overrides this entity's friendly name. Leave empty to use the localized default.",
+            "object_id": "Suggested entity_id (slug). Applied only when the entity is first created; renaming an existing entity uses the rename action."
           }
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Power"
+      },
+      "energy": {
+        "name": "Energy"
+      },
+      "water": {
+        "name": "Water"
+      },
+      "riemann_energy": {
+        "name": "Riemann energy"
+      }
+    },
+    "binary_sensor": {
+      "door_contact": {
+        "name": "Door Contact"
+      },
+      "motion": {
+        "name": "Motion"
+      },
+      "smoke": {
+        "name": "Smoke"
+      }
+    },
+    "switch": {
+      "switch_state": {
+        "name": "Switch"
+      }
+    },
+    "light": {
+      "light_state": {
+        "name": "Light"
+      }
+    },
+    "cover": {
+      "cover_position": {
+        "name": "Cover position"
       }
     }
   },

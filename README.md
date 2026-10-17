@@ -183,12 +183,34 @@ utility meters keep working.
 | `fallback_source_entity_id` | — | Secondary source used when the primary is unavailable. |
 | `fallback_condition_entity_id` / `fallback_condition_state` | — | Gate the fallback source on a condition entity's state. |
 
+### Naming & identity
+
+Identity (`unique_id`) is pinned at creation and never re-derived, so swapping
+hardware keeps the entity and its history. Display names are configurable and
+resolved in this order (highest wins):
+
+1. explicit per-subentry `logical_name` / `entity_name` / `object_id`;
+2. the active local naming template;
+3. the root option `device_name` (legacy `Abstract {device_type}`);
+4. the built-in default.
+
+| Field | Default | Description |
+|---|---|---|
+| `logical_name` | — | Human device name (also inherited by grouped siblings). |
+| `entity_name` | — | Overrides the data point's display name (localized otherwise). |
+| `object_id` | — | Suggested `entity_id` suffix, applied once at first creation (slugified). |
+| `naming_template` | `default` | Active template id (a root option). |
+
+Templates are YAML files in `<config>/abstractor/templates/*.yaml`; `default`
+means built-in behaviour. See [docs/NAMING_TEMPLATES.md](docs/NAMING_TEMPLATES.md)
+for the schema, placeholders, filters, `extends`, and precedence.
+
 ### Root options flow
 
 Poll interval, the optional InfluxDB exporter (`influx_host`, `influx_token`,
 `influx_org`, `influx_bucket`; host must start with `http://` or `https://`),
-and the default device name/manufacturer/model. Options apply on the automatic
-reload — no restart.
+the default device name/manufacturer/model, and the active naming template.
+Options apply on the automatic reload — no restart.
 
 ### Services
 

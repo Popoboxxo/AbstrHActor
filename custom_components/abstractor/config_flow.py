@@ -35,6 +35,7 @@ from .const import (
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_ENTITY_NAME,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
     CONF_FALLBACK_ON_ZERO,
@@ -46,8 +47,11 @@ from .const import (
     CONF_INFLUX_TOKEN,
     CONF_INVERT,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_LOGICAL_NAME,
+    CONF_NAMING_TEMPLATE,
     CONF_NET_SUBTRACT_ENTITY_ID,
     CONF_NOTIFY_ENTITY_ID,
+    CONF_OBJECT_ID,
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -57,6 +61,7 @@ from .const import (
     DEFAULT_DEVICE_MANUFACTURER,
     DEFAULT_DEVICE_MODEL,
     DEFAULT_DEVICE_NAME,
+    DEFAULT_NAMING_TEMPLATE,
     DEFAULT_OPTIONS,
     DOMAIN,
     POLL_INTERVAL_MAX,
@@ -66,6 +71,8 @@ from .const import (
     ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
 )
+from .naming import slugify
+from .naming_template import async_template_ids
 from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
@@ -293,6 +300,25 @@ def _normalize_subentry_data(
     else:
         data.pop(CONF_LEGACY_UNIQUE_ID, None)
 
+    # Naming overrides (plan §3.3): a blank submission means "not set" (fall
+    # through to the template/default); a reconfigure that does not repeat a
+    # value keeps the stored one, exactly like device_group_id below.
+    for key in (CONF_LOGICAL_NAME, CONF_ENTITY_NAME):
+        value = data.get(key)
+        if value and str(value).strip():
+            data[key] = str(value).strip()
+        elif current_data and current_data.get(key):
+            data[key] = current_data[key]
+        else:
+            data.pop(key, None)
+    object_id = data.get(CONF_OBJECT_ID)
+    if object_id and str(object_id).strip():
+        data[CONF_OBJECT_ID] = slugify(str(object_id))
+    elif current_data and current_data.get(CONF_OBJECT_ID):
+        data[CONF_OBJECT_ID] = current_data[CONF_OBJECT_ID]
+    else:
+        data.pop(CONF_OBJECT_ID, None)
+
     target_device_id = data.pop(CONF_TARGET_DEVICE_ID, None)
     create_new_device = data.pop(CONF_CREATE_NEW_DEVICE, False)
     if target_device_id:
@@ -383,6 +409,7 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
             if current_interval in POLL_INTERVAL_PRESETS
             else "custom"
         )
+        template_options = await async_template_ids(self.hass)
 
         if user_input is not None:
             submitted = dict(user_input)
@@ -392,7 +419,9 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
             ):
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=self._init_schema(current, interval_value),
+                    data_schema=self._init_schema(
+                        current, interval_value, template_options
+                    ),
                     errors={"base": "invalid_influx_host"},
                 )
             interval_value = submitted[CONF_POLL_INTERVAL]
@@ -410,13 +439,22 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=self._init_schema(current, interval_value),
+            data_schema=self._init_schema(current, interval_value, template_options),
         )
 
     @staticmethod
-    def _init_schema(current: dict[str, Any], interval_value: str) -> vol.Schema:
+    def _init_schema(
+        current: dict[str, Any],
+        interval_value: str,
+        template_options: list[str] | None = None,
+    ) -> vol.Schema:
         """Build the main options-flow schema (shared by the initial render
         and the re-render-with-errors path after a validation failure)."""
+        current_template = current.get(CONF_NAMING_TEMPLATE, DEFAULT_NAMING_TEMPLATE)
+        if template_options and current_template not in template_options:
+            # The configured template file disappeared: fall back to the
+            # built-in default so the dropdown still has a valid selection.
+            current_template = DEFAULT_NAMING_TEMPLATE
         schema: dict[Any, Any] = {
             vol.Required(
                 CONF_POLL_INTERVAL, default=interval_value
@@ -459,6 +497,15 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
                 CONF_DEVICE_MODEL,
                 default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
             ): selector.TextSelector(),
+            vol.Optional(
+                CONF_NAMING_TEMPLATE,
+                default=current_template,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=template_options or [DEFAULT_NAMING_TEMPLATE],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
         }
         # Optional entity selectors must not carry a None default: voluptuous
         # applies defaults before the selector runs, and an entity selector
@@ -1139,6 +1186,13 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         )
         if not legacy_unique_id_pinned:
             schema[vol.Optional(CONF_LEGACY_UNIQUE_ID)] = selector.TextSelector()
+        # Naming overrides (plan §3.3, REQ-NAME-002..004). Optional and blank by
+        # default, so an untouched install keeps today's device/entity names
+        # and entity_ids exactly; the values only ever affect display/address,
+        # never the sensor's unique_id.
+        schema[vol.Optional(CONF_LOGICAL_NAME)] = selector.TextSelector()
+        schema[vol.Optional(CONF_ENTITY_NAME)] = selector.TextSelector()
+        schema[vol.Optional(CONF_OBJECT_ID)] = selector.TextSelector()
         if include_numeric:
             schema[vol.Optional(CONF_AGGREGATION, default=AGGREGATION_SUM)] = (
                 selector.SelectSelector(
