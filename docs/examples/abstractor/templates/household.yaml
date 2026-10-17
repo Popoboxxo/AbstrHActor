@@ -1,0 +1,13 @@
+# Copy this file (and its parent folders) into <config>/abstractor/templates/
+# to enable it. See docs/NAMING_TEMPLATES.md for the full reference.
+schema_version: 1
+id: household
+description: "Home naming for our household"
+variables:
+  home: "Home"
+device_name: "{home} {spec_display_name}"
+entity_name:
+  default: "{spec_display_name}"
+  power: "Power draw"
+  energy: "Energy total"
+object_id: "{slug(device_name)}_{device_type}"

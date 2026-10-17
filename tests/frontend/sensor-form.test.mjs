@@ -9,6 +9,7 @@ import {
   hasErrors,
   isBinaryType,
   isNumericType,
+  previewEntityId,
   subentryToFields,
   subentryToRenameFields,
   validateRenameForm,
@@ -131,6 +132,15 @@ test('subentryToFields pre-fills config fields only', () => {
   assert.equal(fields.net_subtract_entity_id, '');
   assert.equal('logical_name' in fields, false);
   assert.equal('object_id' in fields, false);
+});
+
+test('previewEntityId keeps the current domain and validates the slug', () => {
+  assert.equal(previewEntityId({ object_id: 'kitchen_power' }, 'sensor.old'), 'sensor.kitchen_power');
+  assert.equal(previewEntityId({ object_id: 'kitchen' }, 'switch.old'), 'switch.kitchen');
+  assert.equal(previewEntityId({ object_id: 'kitchen' }, undefined), 'sensor.kitchen');
+  assert.equal(previewEntityId({ object_id: 'Bad Slug' }, 'sensor.old'), '');
+  assert.equal(previewEntityId({ object_id: '' }, 'sensor.old'), '');
+  assert.equal(previewEntityId({}, 'sensor.old'), '');
 });
 
 test('subentryToRenameFields pre-fills name and object id', () => {

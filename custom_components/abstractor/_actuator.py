@@ -19,15 +19,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
-    CONF_DEVICE_NAME,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     DEFAULT_DEVICE_MANUFACTURER,
     DEFAULT_DEVICE_MODEL,
-    DEFAULT_DEVICE_NAME,
     DOMAIN,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
+from .naming import resolve_device_name
 from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,13 +42,18 @@ def primary_source_id(data: Mapping[str, Any]) -> str | None:
 
 
 def build_device_info(
-    entry, device_type: str, subentry_id: str, device_group_id: str | None
+    entry,
+    device_type: str,
+    subentry_id: str,
+    device_group_id: str | None,
+    logical_name: str | None = None,
+    template=None,
 ) -> DeviceInfo:
     """Device grouping identical to the sensor/binary_sensor platforms."""
     device_key = device_group_id or subentry_id
-    device_name = str(
-        entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
-    ).replace("{device_type}", device_type.capitalize())
+    device_name = resolve_device_name(
+        entry.options, device_type, logical_name, template
+    )
     manufacturer = str(
         entry.options.get(CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER)
     )
@@ -77,6 +81,10 @@ class AbstractorActuatorEntity(CoordinatorEntity[AbstractorDataUpdateCoordinator
         *,
         subentry_id: str,
         device_group_id: str | None = None,
+        logical_name: str | None = None,
+        entity_name: str | None = None,
+        object_id: str | None = None,
+        template=None,
     ) -> None:
         super().__init__(coordinator)
         self.entry = entry
@@ -85,10 +93,17 @@ class AbstractorActuatorEntity(CoordinatorEntity[AbstractorDataUpdateCoordinator
         self._source_id = source_id
         spec = SPEC_REGISTRY.get(device_type)
         self._attr_unique_id = legacy_unique_id or f"abstractor_{source_id}_{device_type}"
-        self._attr_name = spec.display_name
+        if entity_name:
+            self._attr_name = entity_name
+        else:
+            # Localized default (REQ-NAME-003).
+            self._attr_translation_key = spec.type_key
         self._attr_device_info = build_device_info(
-            entry, device_type, subentry_id, device_group_id
+            entry, device_type, subentry_id, device_group_id, logical_name, template
         )
+        if object_id:
+            # Suggest the entity_id once, at creation (REQ-NAME-004).
+            self.entity_id = f"{spec.platform}.{object_id}"
 
     @property
     def _source_state(self):

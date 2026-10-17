@@ -14,17 +14,23 @@ from .const import (
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
-    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_NAMING_TEMPLATE,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     DEFAULT_DEVICE_MANUFACTURER,
     DEFAULT_DEVICE_MODEL,
-    DEFAULT_DEVICE_NAME,
     DOMAIN,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
+from .naming import (
+    effective_logical_name,
+    resolve_device_name,
+    resolve_entity_name,
+    resolve_object_id,
+)
+from .naming_template import async_get_template
 from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,6 +41,8 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator: AbstractorDataUpdateCoordinator = hass.data[DOMAIN]["coordinator"]
+    group_data = [sub.data for sub in entry.subentries.values()]
+    template = await async_get_template(hass, entry.options.get(CONF_NAMING_TEMPLATE))
     for subentry_id, subentry in entry.subentries.items():
         device_type = subentry.data.get(CONF_DEVICE_TYPE, "")
         spec = SPEC_REGISTRY.try_get(device_type)
@@ -54,6 +62,10 @@ async def async_setup_entry(
                     subentry.data.get(CONF_LEGACY_UNIQUE_ID),
                     subentry_id=subentry_id,
                     device_group_id=subentry.data.get(CONF_DEVICE_GROUP_ID),
+                    logical_name=effective_logical_name(subentry.data, group_data),
+                    entity_name=resolve_entity_name(subentry.data, spec, template),
+                    object_id=resolve_object_id(subentry.data, spec, template),
+                    template=template,
                 )
             ],
             config_subentry_id=subentry_id,
@@ -73,6 +85,10 @@ class AbstractorBinarySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator],
         *,
         subentry_id,
         device_group_id=None,
+        logical_name=None,
+        entity_name=None,
+        object_id=None,
+        template=None,
     ):
         super().__init__(coordinator)
         self.entry = entry
@@ -85,7 +101,11 @@ class AbstractorBinarySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator],
             self._attr_unique_id = f"abstractor_{identity_source_ids[0]}_{device_type}"
         else:
             self._attr_unique_id = f"abstractor_{device_type}_{'_'.join(sorted(identity_source_ids))}"
-        self._attr_name = self._spec.display_name
+        if entity_name:
+            self._attr_name = entity_name
+        else:
+            # Localized default (REQ-NAME-003).
+            self._attr_translation_key = self._spec.type_key
         self._attr_device_class = self._spec.device_class
         # Entity.device_info is a cached_property returning _attr_device_info;
         # a subclass override has to be a property too (or, as here, the
@@ -94,9 +114,9 @@ class AbstractorBinarySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator],
         # entity never attached to its device. Assigning _attr_device_info is
         # the same pattern sensor.py uses.
         device_key = device_group_id or subentry_id
-        device_name = str(
-            self.entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
-        ).replace("{device_type}", device_type.capitalize())
+        device_name = resolve_device_name(
+            self.entry.options, device_type, logical_name, template
+        )
         manufacturer = str(
             self.entry.options.get(
                 CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER
@@ -109,6 +129,8 @@ class AbstractorBinarySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator],
             manufacturer=manufacturer,
             model=model,
         )
+        if object_id:
+            self.entity_id = f"{self._spec.platform}.{object_id}"
 
     @property
     def is_on(self) -> bool | None:

@@ -46,7 +46,7 @@ async def test_switch_setup_entry_adds_only_switch_specs() -> None:
 
     assert len(added) == 1
     assert added[0]._attr_unique_id == "abstractor_switch.foo_switch_state"
-    assert added[0]._attr_name == "Switch"
+    assert added[0]._attr_translation_key == "switch_state"
 
 
 async def test_switch_is_on_parses_state() -> None:
@@ -137,7 +137,7 @@ async def test_cover_setup_entry_adds_only_cover_specs() -> None:
 
     assert len(added) == 1
     assert added[0]._attr_unique_id == "abstractor_cover.x_cover_position"
-    assert added[0]._attr_name == "Cover position"
+    assert added[0]._attr_translation_key == "cover_position"
 
 
 async def test_cover_position_and_is_closed() -> None:

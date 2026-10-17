@@ -21,17 +21,23 @@ from .const import (
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
-    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_NAMING_TEMPLATE,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     DEFAULT_DEVICE_MANUFACTURER,
     DEFAULT_DEVICE_MODEL,
-    DEFAULT_DEVICE_NAME,
     DOMAIN,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
+from .naming import (
+    effective_logical_name,
+    resolve_device_name,
+    resolve_entity_name,
+    resolve_object_id,
+)
+from .naming_template import async_get_template
 from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,6 +49,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensor platform: one entity per Abstractor subentry."""
     coordinator: AbstractorDataUpdateCoordinator = hass.data[DOMAIN]["coordinator"]
+    group_data = [sub.data for sub in entry.subentries.values()]
+    template = await async_get_template(hass, entry.options.get(CONF_NAMING_TEMPLATE))
 
     for subentry_id, subentry in entry.subentries.items():
         device_type = subentry.data.get(CONF_DEVICE_TYPE)
@@ -69,6 +77,14 @@ async def async_setup_entry(
                         subentry.data.get(CONF_LEGACY_UNIQUE_ID),
                         subentry_id=subentry_id,
                         device_group_id=subentry.data.get(CONF_DEVICE_GROUP_ID),
+                        logical_name=effective_logical_name(
+                            subentry.data, group_data
+                        ),
+                        entity_name=resolve_entity_name(
+                            subentry.data, spec, template
+                        ),
+                        object_id=resolve_object_id(subentry.data, spec, template),
+                        template=template,
                     )
                 ],
                 config_subentry_id=subentry_id,
@@ -94,6 +110,10 @@ async def async_setup_entry(
                     subentry.data.get(CONF_LEGACY_UNIQUE_ID),
                     subentry_id=subentry_id,
                     device_group_id=subentry.data.get(CONF_DEVICE_GROUP_ID),
+                    logical_name=effective_logical_name(subentry.data, group_data),
+                    entity_name=resolve_entity_name(subentry.data, spec, template),
+                    object_id=resolve_object_id(subentry.data, spec, template),
+                    template=template,
                 )
             ],
             config_subentry_id=subentry_id,
@@ -114,6 +134,10 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
         *,
         subentry_id: str,
         device_group_id: str | None,
+        logical_name: str | None = None,
+        entity_name: str | None = None,
+        object_id: str | None = None,
+        template=None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -133,15 +157,20 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
                 f"abstractor_{device_type}_{'_'.join(sorted(identity_source_ids))}"
             )
         self._spec = SPEC_REGISTRY.try_get(device_type) or SPEC_REGISTRY.get("power")
-        self._attr_name = self._spec.display_name
+        if entity_name:
+            self._attr_name = entity_name
+        else:
+            # Localized default (REQ-NAME-003): the platform translations carry
+            # the English string in en.json, other locales override it.
+            self._attr_translation_key = self._spec.type_key
         # device_group_id set -> this sensor joins an existing device (the
         # subentry that originally registered it under this identifier).
         # Not set -> this sensor gets its own device, keyed by its own
         # subentry_id — identical to today's one-device-per-sensor default.
         device_key = device_group_id or subentry_id
-        device_name = str(
-            entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
-        ).replace("{device_type}", device_type.capitalize())
+        device_name = resolve_device_name(
+            entry.options, device_type, logical_name, template
+        )
         manufacturer = str(
             entry.options.get(CONF_DEVICE_MANUFACTURER, DEFAULT_DEVICE_MANUFACTURER)
         )
@@ -155,6 +184,11 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
         registry = coordinator.hass.data[DOMAIN].get("registry")
         if registry is not None:
             registry.register_device(device_key, device_name, manufacturer, model)
+
+        if object_id:
+            # Suggest the entity_id once, at creation; the registry row wins
+            # afterwards, so this can never rename a live entity (REQ-NAME-004).
+            self.entity_id = f"sensor.{object_id}"
 
         if device_type == "power":
             self._attr_device_class = SensorDeviceClass.POWER
@@ -211,6 +245,10 @@ class RiemannEnergySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Re
         *,
         subentry_id: str,
         device_group_id: str | None = None,
+        logical_name: str | None = None,
+        entity_name: str | None = None,
+        object_id: str | None = None,
+        template=None,
     ) -> None:
         super().__init__(coordinator)
         self.entry = entry
@@ -218,11 +256,14 @@ class RiemannEnergySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Re
         self._device_type = device_type
         spec = SPEC_REGISTRY.get(device_type)
         self._attr_unique_id = legacy_unique_id or f"abstractor_{subentry_id}_riemann"
-        self._attr_name = spec.display_name
+        if entity_name:
+            self._attr_name = entity_name
+        else:
+            self._attr_translation_key = spec.type_key
         device_key = device_group_id or subentry_id
-        device_name = str(
-            entry.options.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME)
-        ).replace("{device_type}", device_type.capitalize())
+        device_name = resolve_device_name(
+            entry.options, device_type, logical_name, template
+        )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_key)},
             name=device_name,
@@ -231,6 +272,8 @@ class RiemannEnergySensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Re
             ),
             model=str(entry.options.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL)),
         )
+        if object_id:
+            self.entity_id = f"sensor.{object_id}"
         self._energy = 0.0
         self._last_time: datetime | None = None
 

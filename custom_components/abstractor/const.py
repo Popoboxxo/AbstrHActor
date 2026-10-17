@@ -37,6 +37,14 @@ CONF_INFLUX_BUCKET: Final = "influx_bucket"
 CONF_DEVICE_NAME: Final = "device_name"
 CONF_DEVICE_MANUFACTURER: Final = "device_manufacturer"
 CONF_DEVICE_MODEL: Final = "device_model"
+# Naming & identity (see docs/plan-naming-identity-templates.md). All opt-in:
+# absent means "fall through to the next resolution step", so existing
+# installs keep their exact device/entity names and entity_ids.
+CONF_LOGICAL_NAME: Final = "logical_name"
+CONF_OBJECT_ID: Final = "object_id"
+CONF_ENTITY_NAME: Final = "entity_name"
+CONF_NAMING_TEMPLATE: Final = "naming_template"
+DEFAULT_NAMING_TEMPLATE: Final = "default"
 # Debug notification targets (root options; both unset = feature silently off).
 CONF_DEBUG_SWITCH_ENTITY_ID: Final = "debug_switch_entity_id"
 CONF_NOTIFY_ENTITY_ID: Final = "notify_entity_id"

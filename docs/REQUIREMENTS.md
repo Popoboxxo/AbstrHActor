@@ -51,3 +51,14 @@ Dadurch wird ein nahtloser Hardware-Tausch bei Defekten möglich, ohne dass Logi
 - **REQ-DATA-001 (Export/Import & Backup):** Um historischen Datenverlust bei Systemfehlern oder Hardware-Ausfällen absolut auszuschließen, MUSS das System eine Möglichkeit bieten, die Zustands- und Verbrauchsdaten (z.B. Zählerstände) im Notfall manuell zu exportieren und wieder zu importieren.
 - **REQ-DATA-003 (Import stellt fehlende Sensoren wieder her):** Ein Import MUSS Sensor-Subentries, die im Snapshot vorhanden aber in der Installation fehlend sind, wiederherstellen — identitätsgleich (stabile `unique_id`, Replay der Snapshot-`entry_id`s), durch dieselbe Normalisierung wie der Config Flow. Bereits existierende Subentries DÜRFEN dabei weder überschrieben noch dupliziert werden; Einträge ohne Quell-Entity werden übersprungen.
 - **REQ-DATA-002 (InfluxDB Telemetry Push):** Die Integration SOLL eine optionale, dedizierte InfluxDB-Anbindung bieten. Damit können die abstrahierten Sensorwerte (nach der Filter-Pipeline) unabhängig vom HA-Recorder in einen eigenen InfluxDB-Bucket gepusht werden (für isolierte Langzeit-Analysen und maximale Datensicherheit).
+
+## 8. Naming & Identity (REQ-NAME)
+
+Konzept: `docs/plan-naming-identity-templates.md`; Nutzer-Doku: `docs/NAMING_TEMPLATES.md`.
+
+- **REQ-NAME-001 (Identitäts-Trennung):** Die `unique_id` DARF NICHT aus einem Namen, Template oder Locale abgeleitet werden; sie wird bei der Erstellung fixiert und ist danach unveränderlich.
+- **REQ-NAME-002 (Gerätenamen):** Der Geräte-Anzeigename MUSS der dokumentierten Auflösungskette folgen (explizite Subentry-Angabe > aktives Template > Root-Option `device_name` > eingebauter Default); fehlende neue Schlüssel MÜSSEN das Legacy-Verhalten exakt reproduzieren.
+- **REQ-NAME-003 (Entitätsnamen & i18n):** Entitäts-Freundlichkeitsnamen MÜSSEN über HA's `translation_key` lokalisierbar sein; ein Per-Subentry-Override MUSS Vorrang haben.
+- **REQ-NAME-004 (Semantische Entity-IDs):** Ein explizites `object_id` SOLL die vorgeschlagene `entity_id` bei der Erstellung liefern; das Umbenennen einer bestehenden Entität MUSS explizit, idempotent und historien-erhaltend sein.
+- **REQ-NAME-005 (Lokale Templates):** Namens-/ID-Schemata MÜSSEN in sicheren, deklarativen, versionierten lokalen Template-Dateien mit Vererbung (`extends`) und fester Auflösungs-Präzedenz definierbar sein.
+- **REQ-NAME-006 (Robustheit):** Ungültige/unbekannte Templates MÜSSEN fail-safe sein (eingebauter Fallback + Warnung) und DÜRFEN niemals das Setup blockieren oder Entitäten verwaisen lassen.
