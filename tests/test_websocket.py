@@ -491,12 +491,15 @@ def test_ws_command_table_matches_registrations() -> None:
         "ws_subentry_delete",
         "ws_options_update",
         "ws_logical_rename",
+        "ws_sample_void",
+        "ws_sample_restore",
     }
     assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "read"} == {
         "ws_get_subentries",
         "ws_yaml_scan",
         "ws_get_types",
         "ws_options_read",
+        "ws_sample_history",
     }
     assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "subscribe"} == {"ws_subentries_subscribe"}
 
@@ -582,3 +585,90 @@ async def test_ws_write_still_rejects_nonadmin_after_read_opening() -> None:
     await websocket.ws_subentry_delete.__wrapped__(hass, connection, {"id": 34, "subentry_id": "sub-1"})
     connection.send_error.assert_called_once()
     hass.config_entries.async_remove_subentry.assert_not_called()
+
+
+# --- WS-5 sample control ----------------------------------------------------
+
+
+def _fake_coordinator_with_ring():
+    return SimpleNamespace(
+        data={},
+        pipelines={},
+        last_update_success=True,
+        meta={},
+        rejected_samples={
+            "sub-1": [
+                {"id": "sub-1#1", "at": "2026-11-01T00:00:00+00:00", "value": "9.0", "reason": "spike_rejected"},
+                {"id": "sub-1#2", "at": "2026-11-01T00:00:05+00:00", "value": "3.0", "reason": "spike_rejected_below_last"},
+            ]
+        },
+        void_sample_ids={"sub-1#1"},
+    )
+
+
+async def test_ws_sample_history_pages_newest_first() -> None:
+    root = _root({"sub-1": SimpleNamespace(data={"device_type": "power", "source_entity_id": "sensor.x"}, title="t", unique_id="u")})
+    hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
+    connection = _readonly_connection()
+    await websocket.ws_sample_history.__wrapped__(
+        hass, connection, {"id": 101, "subentry_id": "sub-1", "offset": 1, "limit": 1}
+    )
+    payload = connection.send_result.call_args.args[1]
+    assert payload["total"] == 2
+    assert payload["rows"] == [
+        {"id": "sub-1#1", "at": "2026-11-01T00:00:00+00:00", "value": "9.0", "reason": "spike_rejected", "voided": True}
+    ]
+
+
+async def test_ws_sample_read_open_to_nonadmin_and_history_visible() -> None:
+    """Rejections are diagnostics — the history read is not admin-gated."""
+    root = _root({"sub-1": SimpleNamespace(data={"device_type": "power"}, title="t", unique_id="u")})
+    hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
+    connection = _readonly_connection()
+    await websocket.ws_sample_history.__wrapped__(hass, connection, {"id": 102, "subentry_id": "sub-1"})
+    connection.send_error.assert_not_called()
+
+
+async def test_ws_sample_void_persists_into_options() -> None:
+    """Void lands in the runtime set AND root options (restart survival)."""
+    root = _root(options={"poll_interval": 30})
+    hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
+    connection = _admin_connection()
+    await websocket.ws_sample_void.__wrapped__(
+        hass,
+        connection,
+        {"id": 103, "subentry_id": "sub-1", "sample_id": "sub-1#2"},
+    )
+    hass.config_entries.async_update_entry.assert_called_once()
+    updated_options = hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    assert updated_options["void_sample_ids"] == ["sub-1#1", "sub-1#2"]
+    assert updated_options["poll_interval"] == 30
+
+
+async def test_ws_sample_void_rejects_invented_id_and_nonadmin() -> None:
+    root = _root()
+    hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
+    connection = _admin_connection()
+    await websocket.ws_sample_void.__wrapped__(
+        hass, connection, {"id": 104, "subentry_id": "sub-1", "sample_id": "sub-1#99"}
+    )
+    connection.send_error.assert_called_once()
+    hass.config_entries.async_update_entry.assert_not_called()
+
+    connection2 = _readonly_connection()
+    await websocket.ws_sample_void.__wrapped__(
+        hass, connection2, {"id": 105, "subentry_id": "sub-1", "sample_id": "sub-1#1"}
+    )
+    connection2.send_error.assert_called_once()
+    assert hass.config_entries.async_update_entry.call_count == 0
+
+
+async def test_ws_sample_restore_clears_option_entry() -> None:
+    root = _root(options={"void_sample_ids": ["sub-1#1"]})
+    hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
+    connection = _admin_connection()
+    await websocket.ws_sample_restore.__wrapped__(
+        hass, connection, {"id": 106, "subentry_id": "sub-1", "sample_id": "sub-1#1"}
+    )
+    updated_options = hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    assert "void_sample_ids" not in updated_options or updated_options["void_sample_ids"] == []

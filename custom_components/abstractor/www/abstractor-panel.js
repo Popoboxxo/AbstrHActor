@@ -249,7 +249,9 @@
       "drawer.updatedAt": "Updated",
       "drawer.delta": "Delta",
       "drawer.stale": "stale",
-      "drawer.sourceStates": "Source states"
+      "drawer.sourceStates": "Source states",
+      "drawer.rejections": "Rejected samples",
+      "drawer.void": "voided"
     },
     de: {
       "tab.devices": "Ger\xE4te",
@@ -332,7 +334,9 @@
       "drawer.updatedAt": "updated",
       "drawer.delta": "delta",
       "drawer.stale": "stale",
-      "drawer.sourceStates": "source states"
+      "drawer.sourceStates": "source states",
+      "drawer.rejections": "rejected samples",
+      "drawer.void": "voided"
     }
   };
   function _langFor(hass) {
@@ -730,6 +734,23 @@
               f.appendChild(s2);
               drawer.appendChild(f);
             }
+            const rejections = Array.isArray(detail.recent_rejections) ? detail.recent_rejections : [];
+            if (rejections.length) {
+              fieldLine("drawer.rejections", "");
+              for (const r of rejections) {
+                const f = document.createElement("div");
+                f.className = "field";
+                const b = document.createElement("b");
+                b.textContent = String(r.id);
+                f.appendChild(b);
+                const s2 = document.createElement("span");
+                const when = new Date(r.at);
+                const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                s2.textContent = `${String(r.reason)}: ${r.value === null || r.value === void 0 ? "?" : r.value} @ ${clock}${r.voided ? " (voided)" : ""}`;
+                f.appendChild(s2);
+                drawer.appendChild(f);
+              }
+            }
           }
           backdrop.addEventListener("click", (e) => {
             if (e.target === backdrop) {
@@ -895,6 +916,23 @@
           spark.className = "spark";
           spark.innerHTML = sparkline;
           card.appendChild(spark);
+        }
+        const rejections = Array.isArray(e.recent_rejections) ? e.recent_rejections : [];
+        if (rejections.length) {
+          const rejWrap = document.createElement("div");
+          rejWrap.className = "hint";
+          const rejTitle = document.createElement("b");
+          rejTitle.textContent = this._t("drawer.rejections");
+          rejWrap.appendChild(rejTitle);
+          for (const r of rejections) {
+            const line = document.createElement("span");
+            const when = new Date(r.at);
+            const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            const value = r.value === null || r.value === void 0 ? "?" : r.value;
+            line.textContent = ` ${r.id}: ${r.reason} (${value}, ${clock}${r.voided ? " - " + this._t("drawer.void") : ""})`;
+            rejWrap.appendChild(line);
+          }
+          card.appendChild(rejWrap);
         }
         bodyEl.appendChild(card);
       }

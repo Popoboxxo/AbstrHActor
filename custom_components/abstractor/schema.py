@@ -47,6 +47,10 @@ from .const import (
     CONF_SOURCE_ENTITY_IDS,
     CONF_SPIKE_FILTER,
     CONF_TARGET_DEVICE_ID,
+    CONF_VOID_SAMPLE_IDS,
+    CONF_WARN_ABOVE,
+    CONF_WARN_BELOW,
+    CONF_WARN_CONDITION_ENTITY_ID,
     DEFAULT_DEVICE_MANUFACTURER,
     DEFAULT_DEVICE_MODEL,
     DEFAULT_DEVICE_NAME,
@@ -57,6 +61,7 @@ from .const import (
     POLL_INTERVAL_PRESETS,
     DISPLAY_PRECISION_MAX,
     DISPLAY_PRECISION_MIN,
+    WARN_SAMPLE_IDS_MAX,
 )
 from .specs import SPEC_REGISTRY
 
@@ -165,6 +170,19 @@ def _subentry_schema_spec(
                         )
                     ),
                 ),
+                (
+                    CONF_WARN_ABOVE,
+                    False,
+                    None,
+                    selector.NumberSelector(selector.NumberSelectorConfig(step=0.1)),
+                ),
+                (
+                    CONF_WARN_BELOW,
+                    False,
+                    None,
+                    selector.NumberSelector(selector.NumberSelectorConfig(step=0.1)),
+                ),
+                (CONF_WARN_CONDITION_ENTITY_ID, False, None, selector.EntitySelector()),
             )
         )
     entries.extend(
@@ -322,6 +340,11 @@ def build_options_validator() -> vol.Schema:
             vol.Optional(CONF_NOTIFY_ENTITY_ID): vol.Any(
                 None,
                 selector.EntitySelector(selector.EntitySelectorConfig(domain="notify")),
+            ),
+            vol.Optional(CONF_VOID_SAMPLE_IDS): vol.All(
+                vol.Coerce(list),
+                [str],
+                vol.Range(max=WARN_SAMPLE_IDS_MAX),
             ),
         },
         extra=vol.PREVENT_EXTRA,

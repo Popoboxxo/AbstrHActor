@@ -101,7 +101,10 @@
             "entity_name": "Entity name (override)",
             "object_id": "Entity ID (override)",
             "display_unit": "Display unit (relabel)",
-            "display_precision": "Display precision"
+            "display_precision": "Display precision",
+            "warn_above": "Warn if above",
+            "warn_below": "Warn if below",
+            "warn_condition_entity_id": "Warn condition entity"
           },
           "data_description": {
             "source_entity_id": "Single hardware sensor to abstract.",
@@ -122,7 +125,10 @@
             "entity_name": "Overrides this entity's friendly name. Leave empty to use the localized default.",
             "object_id": "Suggested entity_id (slug). Applied only when the entity is first created; renaming an existing entity uses the rename action.",
             "display_unit": "Relabels the entity's unit only — no conversion is performed. A mismatch against the sensor type's unit is logged.",
-            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value."
+            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value.",
+            "warn_above": "Set a health warning while the value is above this threshold.",
+            "warn_below": "Set a health warning while the value is below this threshold.",
+            "warn_condition_entity_id": "Optional entity that gates both thresholds; while it is not on, thresholds never report."
           }
         },
         "reconfigure": {
@@ -148,7 +154,10 @@
             "entity_name": "Entity name (override)",
             "object_id": "Entity ID (override)",
             "display_unit": "Display unit (relabel)",
-            "display_precision": "Display precision"
+            "display_precision": "Display precision",
+            "warn_above": "Warn if above",
+            "warn_below": "Warn if below",
+            "warn_condition_entity_id": "Warn condition entity"
           },
           "data_description": {
             "device_type": "Power, energy, or water abstraction layer.",
@@ -170,7 +179,10 @@
             "entity_name": "Overrides this entity's friendly name. Leave empty to use the localized default.",
             "object_id": "Suggested entity_id (slug). Applied only when the entity is first created; renaming an existing entity uses the rename action.",
             "display_unit": "Relabels the entity's unit only — no conversion is performed. A mismatch against the sensor type's unit is logged.",
-            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value."
+            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value.",
+            "warn_above": "Set a health warning while the value is above this threshold.",
+            "warn_below": "Set a health warning while the value is below this threshold.",
+            "warn_condition_entity_id": "Optional entity that gates both thresholds; while it is not on, thresholds never report."
           }
         }
       }

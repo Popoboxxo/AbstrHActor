@@ -100,7 +100,10 @@
             "entity_name": "Entitätsname (überschreiben)",
             "object_id": "Entitäts-ID (überschreiben)",
             "display_unit": "Anzeigedatok (Relabel)",
-            "display_precision": "Anzeigagenau"
+            "display_precision": "Anzeigagenau",
+            "warn_above": "Warn if above",
+            "warn_below": "Warn if below",
+            "warn_condition_entity_id": "Warn condition entity"
           },
           "data_description": {
             "source_entity_id": "Einzelner Hardware-Sensor, der abstrahiert wird.",
@@ -121,7 +124,10 @@
             "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
             "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion.",
             "display_unit": "Renames the unit label of the entity only — no conversion. A mismatch against the unit of the sensor type is logged.",
-            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value."
+            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value.",
+            "warn_above": "Set a health warning while the value is above this threshold.",
+            "warn_below": "Set a health warning while the value is below this threshold.",
+            "warn_condition_entity_id": "Optional entity that gates both thresholds; while it is not on, thresholds never report."
           }
         },
         "reconfigure": {
@@ -147,7 +153,10 @@
             "entity_name": "Entitätsname (überschreiben)",
             "object_id": "Entitäts-ID (überschreiben)",
             "display_unit": "Anzeigedatok (Relabel)",
-            "display_precision": "Anzeigagenau"
+            "display_precision": "Anzeigagenau",
+            "warn_above": "Warn if above",
+            "warn_below": "Warn if below",
+            "warn_condition_entity_id": "Warn condition entity"
           },
           "data_description": {
             "device_type": "Abstraktionsschicht für Leistung, Energie oder Wasser.",
@@ -169,7 +178,10 @@
             "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
             "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion.",
             "display_unit": "Renames the unit label of the entity only — no conversion. A mismatch against the unit of the sensor type is logged.",
-            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value."
+            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value.",
+            "warn_above": "Set a health warning while the value is above this threshold.",
+            "warn_below": "Set a health warning while the value is below this threshold.",
+            "warn_condition_entity_id": "Optional entity that gates both thresholds; while it is not on, thresholds never report."
           }
         }
       }

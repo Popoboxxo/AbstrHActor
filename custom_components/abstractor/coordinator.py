@@ -18,8 +18,12 @@ from .const import (
     CONF_NET_SUBTRACT_ENTITY_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
+    CONF_WARN_ABOVE,
+    CONF_WARN_BELOW,
+    CONF_WARN_CONDITION_ENTITY_ID,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
+    REJECTED_RING_LIMIT,
 )
 from .filters import AbstractorFilterPipeline
 from .specs import SPEC_REGISTRY
@@ -65,6 +69,7 @@ class SubentryMeta:
     updated_at: datetime | None = None
     previous_value: float | str | None = None
     delta: float | None = None
+    warn_hit: bool = False
 
 
 class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
@@ -106,6 +111,13 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         self.meta: dict[str, SubentryMeta] = {}
         self.influx_exporter = None
         self._last_notified_events: dict[str, str] = {}
+        # WS-5 sample control: the rejected-sample ring makes the spike filter
+        # auditable (which raw value dropped, why); void_sample_ids marks
+        # ring entries the user declared expected (persisted in root options,
+        # applied on setup by __init__.py).
+        self.rejected_samples: dict[str, list[dict]] = {}
+        self._ring_seq: dict[str, int] = {}
+        self.void_sample_ids: set[str] = set()
         # Debug notification targets, applied from the root entry's options on
         # every setup (see __init__.py). Both None = the debug notify path is
         # silently off; nothing here may fail when the referenced entities do
@@ -175,6 +187,8 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         self.pipelines.pop(subentry_id, None)
         self.meta.pop(subentry_id, None)
         self._last_notified_events.pop(subentry_id, None)
+        self.rejected_samples.pop(subentry_id, None)
+        self._ring_seq.pop(subentry_id, None)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via central polling."""
@@ -213,6 +227,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     updated_at=datetime.now(UTC),
                     previous_value=raw_val,
                     delta=_numeric_delta(raw_val, previous.previous_value),
+                    warn_hit=False,
                 )
                 continue
             if pipeline:
@@ -232,6 +247,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 unavailable_samples = previous.unavailable_samples
                 if (pipeline.last_event or "").lower().startswith("spike"):
                     spike_hits += 1
+                    self._record_rejected_sample(subentry_id, raw_states, pipeline.last_event)
                 if (pipeline.last_event or "").lower().startswith("fallback"):
                     fallback_hits += 1
                 if val is None:
@@ -255,12 +271,54 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     updated_at=datetime.now(UTC),
                     previous_value=val,
                     delta=_numeric_delta(val, previous.previous_value),
+                    warn_hit=self._warn_hit(config, val),
                 )
                 await self._async_notify_debug(subentry_id, pipeline.last_event)
 
                 if self.influx_exporter and val is not None:
                     await self.influx_exporter.async_push(source_ids[0], val)
         return data
+
+    def _record_rejected_sample(
+        self, subentry_id: str, raw_states: list[str | None], reason: str
+    ) -> None:
+        """Append the rejected sample (raw value + reason) to the ring (WS-5).
+
+        ids stay stable across polls (per-subentry sequence) so the panel can
+        void a specific sample across reloads.
+        """
+        seq = self._ring_seq.get(subentry_id, 0) + 1
+        self._ring_seq[subentry_id] = seq
+        ring = self.rejected_samples.setdefault(subentry_id, [])
+        ring.append(
+            {
+                "id": f"{subentry_id}#{seq}",
+                "at": datetime.now(UTC).isoformat(),
+                "value": raw_states[0] if raw_states else None,
+                "reason": reason,
+            }
+        )
+        while len(ring) > REJECTED_RING_LIMIT:
+            ring.pop(0)
+
+    def _warn_hit(self, config: dict[str, Any], value: float | str | None) -> bool:
+        """Threshold decision for the WS-5 warn_above/warn_below options.
+
+        Only numeric values can hit. A configured ``warn_condition_entity_id``
+        gates the check like the debug switch: while that entity is not "on",
+        thresholds never report.
+        """
+        if value is None or isinstance(value, str) or isinstance(value, bool):
+            return False
+        above = config.get(CONF_WARN_ABOVE)
+        below = config.get(CONF_WARN_BELOW)
+        hit = (above is not None and value > above) or (below is not None and value < below)
+        if not hit:
+            return False
+        condition = config.get(CONF_WARN_CONDITION_ENTITY_ID)
+        if condition and not self.hass.states.is_state(condition, "on"):
+            return False
+        return True
 
     def _read_state(self, entity_id: str | None) -> str | None:
         """Read a raw HA state string for an optional entity_id."""

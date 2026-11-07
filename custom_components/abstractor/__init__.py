@@ -33,6 +33,7 @@ from .const import (
     CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
+    CONF_VOID_SAMPLE_IDS,
     CONFIG_ENTRY_VERSION,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
@@ -414,6 +415,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # debug notify path a silent no-op.
     coordinator.debug_switch_entity_id = entry.options.get(CONF_DEBUG_SWITCH_ENTITY_ID) or None
     coordinator.notify_entity_id = entry.options.get(CONF_NOTIFY_ENTITY_ID) or None
+    coordinator.void_sample_ids = {
+        str(sample_id)
+        for sample_id in (entry.options.get(CONF_VOID_SAMPLE_IDS) or ())
+    }
 
     # Polling is per sensor subentry, not per config entry: the root entry
     # itself carries no sensor configuration since device bundling landed.

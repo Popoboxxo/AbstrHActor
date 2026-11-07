@@ -31,11 +31,19 @@ from custom_components.abstractor.const import (
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_TARGET_DEVICE_ID,
+    CONF_VOID_SAMPLE_IDS,
+    CONF_WARN_ABOVE,
+    CONF_WARN_BELOW,
+    REJECTED_RING_LIMIT,
+    WARN_SAMPLE_IDS_MAX,
     DOMAIN,
     ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
     WS_GET_SUBENTRIES,
     WS_OPTIONS_READ,
+    WS_SAMPLE_HISTORY,
+    WS_SAMPLE_RESTORE,
+    WS_SAMPLE_VOID,
     WS_SUBSCRIBE_SUBENTRIES,
     WS_YAML_SCAN,
 )
@@ -63,6 +71,9 @@ WS_COMMAND_TABLE: dict[str, str] = {
     "ws_subentry_delete": "write",
     "ws_options_update": "write",
     "ws_logical_rename": "write",
+    "ws_sample_history": "read",
+    "ws_sample_void": "write",
+    "ws_sample_restore": "write",
 }
 WS_ERROR_SCHEMA = "schema_violation"
 
@@ -139,7 +150,31 @@ def _meta_payload(coordinator, subentry_id: str):
         "stale": item.stale,
         "updated_at": item.updated_at.isoformat() if item.updated_at is not None else None,
         "delta": item.delta,
+        "warn_hit": item.warn_hit,
     }
+
+
+def _recent_rejections(coordinator, subentry_id: str) -> list[dict]:
+    """Newest-first three-entry display slice of the ring, voids preserved.
+
+    The full, paginated history stays available via ``ws_sample_history``;
+    the row payload only carries the display slice so the drawer renders
+    without a second WS round-trip.
+    """
+    return _ring_rows_for_history(coordinator, subentry_id)[:3]
+
+
+def _ring_rows_for_history(coordinator, subentry_id: str) -> list[dict]:
+    """All ring entries newest-first, each with its voided state."""
+    if coordinator is None:
+        return []
+    ring = getattr(coordinator, "rejected_samples", None)
+    entries = ring.get(subentry_id, []) if isinstance(ring, dict) else []
+    voids = getattr(coordinator, "void_sample_ids", None) or set()
+    return [
+        {**entry, "voided": entry["id"] in voids}
+        for entry in reversed(entries)
+    ]
 
 
 def _build_subentries(hass):
@@ -160,11 +195,12 @@ def _build_subentries(hass):
             pipeline = pipelines.get(subentry_id)
             last_event = pipeline.last_event if pipeline is not None else None
         health = "idle"
+        meta_item = getattr(coordinator, "meta", {}).get(subentry_id) if coordinator is not None else None
         if coordinator is not None and not getattr(coordinator, "last_update_success", True):
             health = "bad"
         elif value is None:
             health = "idle"
-        elif last_event:
+        elif last_event or bool(getattr(meta_item, "warn_hit", False)):
             health = "warn"
         else:
             health = "ok"
@@ -182,8 +218,11 @@ def _build_subentries(hass):
                 "object_id": data.get("object_id"),
                 "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)],
                 "legacy_unique_id": data.get(CONF_LEGACY_UNIQUE_ID),
-                "device_group_id": data.get(CONF_DEVICE_GROUP_ID),
-                "value": value,
+        "device_group_id": data.get(CONF_DEVICE_GROUP_ID),
+        "warn_above": data.get(CONF_WARN_ABOVE),
+        "warn_below": data.get(CONF_WARN_BELOW),
+        "recent_rejections": _recent_rejections(coordinator, subentry_id),
+        "value": value,
                 "last_event": last_event,
                 "health": health,
                 "meta": _meta_payload(coordinator, subentry_id),
@@ -544,6 +583,106 @@ def _build_type_catalogue() -> dict:
     }
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_SAMPLE_HISTORY,
+        vol.Required("subentry_id"): str,
+        vol.Optional("offset", default=0): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        vol.Optional("limit", default=10): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
+    }
+)
+@websocket_api.async_response
+async def ws_sample_history(hass, connection, msg) -> None:
+    """Open read: paginated rejected-sample history (newest-first slice).
+
+    Ring ids are stable per subentry (``subentry-<n>``) so a void marker set
+    by ``ws_sample_void`` survives reloads and restarts (persisted options).
+    """
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    rows = _ring_rows_for_history(coordinator, msg["subentry_id"])
+    offset = int(msg.get("offset") or 0)
+    limit = max(1, min(int(msg.get("limit") or 10), 100))
+    connection.send_result(
+        msg["id"],
+        {"rows": rows[offset : offset + limit], "total": len(rows), "offset": offset, "limit": limit},
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_SAMPLE_VOID,
+        vol.Required("subentry_id"): str,
+        vol.Required("sample_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_sample_void(hass, connection, msg) -> None:
+    """Mark a rejected sample as expected (UF-09 of the spike-filter noise).
+
+    Write-gated; the ring entry must exist (ids cannot be invented, which
+    also bounds the persisted options list). The void state lives both in the
+    runtime coordinator set and in root options, so it survives a full
+    restart (applied on setup by __init__.py).
+    """
+    if not _require_admin(connection, msg):
+        return
+    root_entry = _async_root_entry(hass)
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    if root_entry is None or coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Abstractor root/coordinator not found")
+        return
+    ring = getattr(coordinator, "rejected_samples", {}).get(msg["subentry_id"], [])
+    if not any(entry["id"] == msg["sample_id"] for entry in ring):
+        connection.send_error(msg["id"], "not_found", f"Sample {msg['sample_id']} not in ring")
+        return
+    voids = set(getattr(coordinator, "void_sample_ids", set()))
+    voids.add(msg["sample_id"])
+    options = dict(getattr(root_entry, "options", None) or {})
+    merged = sorted(voids | {str(s) for s in options.get(CONF_VOID_SAMPLE_IDS, [])})
+    if len(merged) > WARN_SAMPLE_IDS_MAX:
+        connection.send_error(msg["id"], "invalid", "void list full (restore entries first)")
+        return
+    options[CONF_VOID_SAMPLE_IDS] = merged
+    coordinator.void_sample_ids = voids
+    hass.config_entries.async_update_entry(root_entry, options=options)
+    connection.send_result(msg["id"], {"voided": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_SAMPLE_RESTORE,
+        vol.Required("subentry_id"): str,
+        vol.Required("sample_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_sample_restore(hass, connection, msg) -> None:
+    """Undo a void marker (same write gate, id must still exist in ring)."""
+    if not _require_admin(connection, msg):
+        return
+    root_entry = _async_root_entry(hass)
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    if root_entry is None or coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Abstractor root/coordinator not found")
+        return
+    ring = getattr(coordinator, "rejected_samples", {}).get(msg["subentry_id"], [])
+    if not any(entry["id"] == msg["sample_id"] for entry in ring):
+        connection.send_error(msg["id"], "not_found", f"Sample {msg['sample_id']} not in ring")
+        return
+    voids = set(getattr(coordinator, "void_sample_ids", set()))
+    voids.discard(msg["sample_id"])
+    options = dict(getattr(root_entry, "options", None) or {})
+    merged = sorted(voids | {
+        str(sample_id)
+        for sample_id in options.get(CONF_VOID_SAMPLE_IDS, [])
+        if sample_id != msg["sample_id"]
+    })
+    options[CONF_VOID_SAMPLE_IDS] = merged
+    coordinator.void_sample_ids = voids
+    hass.config_entries.async_update_entry(root_entry, options=options)
+    connection.send_result(msg["id"], {"restored": True})
+
+
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register every websocket command, cross-checked against the table.
 
@@ -564,6 +703,9 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_options_update,
         ws_logical_rename,
         ws_options_read,
+        ws_sample_history,
+        ws_sample_void,
+        ws_sample_restore,
     )
     registered = {fn.__name__ for fn in commands}
     if registered != set(WS_COMMAND_TABLE):

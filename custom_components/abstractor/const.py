@@ -28,6 +28,16 @@ CONF_DISPLAY_UNIT: Final = "display_unit"
 CONF_DISPLAY_PRECISION: Final = "display_precision"
 DISPLAY_PRECISION_MIN: Final = 0
 DISPLAY_PRECISION_MAX: Final = 4
+# WS-5 sample control: recent rejections are surfaced instead of silently
+# counted; void/restore lets the user mark a rejected sample as reviewed
+# (persisted in root options - the only persistent per-integration state HA
+# gives us; the HA-core Store is not integration-registerable).
+REJECTED_RING_LIMIT: Final = 24
+CONF_WARN_ABOVE: Final = "warn_above"
+CONF_WARN_BELOW: Final = "warn_below"
+CONF_WARN_CONDITION_ENTITY_ID: Final = "warn_condition_entity_id"
+CONF_VOID_SAMPLE_IDS: Final = "void_sample_ids"
+WARN_SAMPLE_IDS_MAX: Final = 256
 CONF_LEGACY_UNIQUE_ID: Final = "legacy_unique_id"
 CONF_FALLBACK_SOURCE_ENTITY_ID: Final = "fallback_source_entity_id"
 CONF_FALLBACK_CONDITION_ENTITY_ID: Final = "fallback_condition_entity_id"
@@ -67,6 +77,9 @@ WS_GET_SUBENTRIES: Final = "abstractor/subentries"
 WS_SUBSCRIBE_SUBENTRIES: Final = "abstractor/subentries/subscribe"
 WS_YAML_SCAN: Final = "abstractor/yaml_scan"
 WS_OPTIONS_READ: Final = "abstractor/options/read"
+WS_SAMPLE_HISTORY: Final = "abstractor/history"
+WS_SAMPLE_VOID: Final = "abstractor/sample_void"
+WS_SAMPLE_RESTORE: Final = "abstractor/sample_restore"
 
 # Sensor Types
 TYPE_POWER = "power"
