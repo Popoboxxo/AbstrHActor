@@ -1,4 +1,5 @@
 """Tests for specs.py."""
+
 from custom_components.abstractor.specs import SPEC_REGISTRY, FailContract
 
 
@@ -12,10 +13,14 @@ def test_actuator_types_enabled() -> None:
     assert {"switch_state", "light_state", "cover_position"} <= enabled
 
 
-def test_riemann_integration_spec_enabled() -> None:
+def test_riemann_integration_spec_is_roadmap_only() -> None:
+    """Decision D-1 (plan §6.1): declared but explicitly NOT enabled — it
+    depends on the external ``riemann_left`` integration and needs a REQ-SENS-003
+    re-review against HA Core's own Riemann support before shipping."""
     spec = SPEC_REGISTRY.get("riemann_energy")
-    assert spec.enabled is True
+    assert spec.enabled is False
     assert spec.integration == "riemann_left"
+    assert "riemann_energy" not in {s.type_key for s in SPEC_REGISTRY.enabled()}
 
 
 def test_unknown_spec_raises() -> None:

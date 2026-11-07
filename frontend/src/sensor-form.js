@@ -6,9 +6,69 @@
 // The panel owns rendering; this module owns the field -> payload contract
 // and the client-side validation that mirrors the backend schema.
 
-export const DEVICE_TYPES = ['power', 'energy', 'water', 'door_contact', 'motion', 'smoke'];
-export const NUMERIC_TYPES = ['power', 'energy', 'water'];
-export const AGGREGATION_MODES = ['sum', 'max', 'min', 'first_available'];
+// WS-2 (UF-01): the type catalogue is served by the server (`abstractor/types`,
+// derived from SPEC_REGISTRY) and installed at runtime via setCatalogue(). The
+// fallback below exists only for the pure-JS unit harness and for the first
+// frames before the fetch completed — it is NOT the source of truth and must
+// never be extended by hand as a substitute for the registry.
+const CATALOGUE = {
+  device_types: [],
+  numeric_types: [],
+  aggregation_modes: [],
+  display_names: {},
+};
+
+function _replaceAll(target, values) {
+  target.length = 0;
+  values.forEach((value) => target.push(value));
+}
+
+function _replaceAllKeys(target, source) {
+  Object.keys(target).forEach((key) => delete target[key]);
+  Object.keys(source).forEach((key) => (target[key] = source[key]));
+}
+
+function _installCatalogue(source) {
+  _replaceAll(CATALOGUE.device_types, source.device_types || []);
+  _replaceAll(CATALOGUE.numeric_types, source.numeric_types || []);
+  _replaceAll(CATALOGUE.aggregation_modes, source.aggregation_modes || []);
+  _replaceAllKeys(CATALOGUE.display_names, source.display_names || {});
+}
+
+const FALLBACK_CATALOGUE = {
+  device_types: ['power', 'energy', 'water', 'door_contact', 'motion', 'smoke', 'switch_state', 'light_state', 'cover_position'],
+  numeric_types: ['power', 'energy', 'water'],
+  aggregation_modes: ['sum', 'max', 'min', 'first_available'],
+  display_names: {
+    power: 'Power',
+    energy: 'Energy',
+    water: 'Water',
+    door_contact: 'Door Contact',
+    motion: 'Motion',
+    smoke: 'Smoke',
+    switch_state: 'Switch',
+    light_state: 'Light',
+    cover_position: 'Cover position',
+  },
+};
+
+_installCatalogue(FALLBACK_CATALOGUE);
+
+export function setCatalogue(catalogue) {
+  if (catalogue && catalogue.device_types) {
+    _installCatalogue(catalogue);
+  }
+}
+
+export function getCatalogue() {
+  return CATALOGUE;
+}
+
+// Live views: setCatalogue() mutates these arrays/objects in place, so the
+// panel and the validators below observe the server catalogue.
+export const DEVICE_TYPES = CATALOGUE.device_types;
+export const NUMERIC_TYPES = CATALOGUE.numeric_types;
+export const AGGREGATION_MODES = CATALOGUE.aggregation_modes;
 
 export function isNumericType(deviceType) {
   return NUMERIC_TYPES.indexOf(deviceType) !== -1;
@@ -122,6 +182,9 @@ export function buildRenamePayload(fields) {
   if (f.object_id) {
     data.object_id = String(f.object_id).trim();
   }
+  if (f.entity_name && String(f.entity_name).trim()) {
+    data.entity_name = String(f.entity_name).trim();
+  }
   return data;
 }
 
@@ -153,6 +216,7 @@ export function subentryToRenameFields(subentry) {
   return {
     logical_name: s.logical_name || '',
     object_id: s.object_id || '',
+    entity_name: s.entity_name || '',
     rename_entity: false,
   };
 }

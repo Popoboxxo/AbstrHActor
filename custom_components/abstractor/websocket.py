@@ -19,8 +19,10 @@ from custom_components.abstractor.config_flow import (
     _normalize_subentry_data,
 )
 from custom_components.abstractor.const import (
+    AGGREGATION_MODES,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
+    CONF_ENTITY_NAME,
     CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -48,6 +50,7 @@ WS_COMMAND_TABLE: dict[str, str] = {
     "ws_get_subentries": "read",
     "ws_subentries_subscribe": "subscribe",
     "ws_yaml_scan": "read",
+    "ws_get_types": "read",
     "ws_subentry_create": "write",
     "ws_subentry_update": "write",
     "ws_subentry_delete": "write",
@@ -365,6 +368,7 @@ async def ws_options_update(hass, connection, msg) -> None:
         vol.Required("subentry_id"): str,
         vol.Required("logical_name"): str,
         vol.Optional("object_id"): str,
+        vol.Optional(CONF_ENTITY_NAME): vol.Any(None, str),
         vol.Optional("rename_entity", default=False): bool,
     }
 )
@@ -397,12 +401,20 @@ async def ws_logical_rename(hass, connection, msg) -> None:
     # If there is no group id, only the current subentry.
     if not group_id:
         targets = [msg["subentry_id"]]
+    entity_name = msg.get(CONF_ENTITY_NAME)
+    if entity_name is not None:
+        entity_name = str(entity_name).strip() or None
     for sid in targets:
         sub = root_entry.subentries[sid]
         merged = dict(sub.data)
         merged["logical_name"] = logical_name
         if object_id:
             merged["object_id"] = object_id
+        if CONF_ENTITY_NAME in msg:
+            if entity_name:
+                merged[CONF_ENTITY_NAME] = entity_name
+            else:
+                merged.pop(CONF_ENTITY_NAME, None)
         hass.config_entries.async_update_subentry(root_entry, sid, data=merged, title=sub.title)
     # Optional entity registry rename for THIS subentry's entity. The domain
     # is taken from the existing entity_id so a binary_sensor is renamed to
@@ -437,6 +449,31 @@ async def ws_yaml_scan(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"sensors": []})
 
 
+@websocket_api.websocket_command({vol.Required("type"): "abstractor/types"})
+@websocket_api.async_response
+async def ws_get_types(hass, connection, msg) -> None:
+    """Serve the shipped type catalogue (WS-2: one source of truth for the
+    panel — the JS must not hardcode a list that can drift from this)."""
+    if not _require_admin(connection, msg):
+        return
+    connection.send_result(msg["id"], _build_type_catalogue())
+
+
+def _build_type_catalogue() -> dict:
+    """Derive the panel catalogue from ``SPEC_REGISTRY`` (shipped platforms)."""
+    shipped = [
+        spec
+        for spec in SPEC_REGISTRY.enabled()
+        if spec.platform in ("sensor", "binary_sensor", "switch", "light", "cover")
+    ]
+    return {
+        "device_types": [spec.type_key for spec in shipped],
+        "numeric_types": [spec.type_key for spec in shipped if spec.numeric],
+        "aggregation_modes": list(AGGREGATION_MODES),
+        "display_names": {spec.type_key: spec.display_name for spec in shipped},
+    }
+
+
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register every websocket command, cross-checked against the table.
 
@@ -450,6 +487,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_get_subentries,
         ws_subentries_subscribe,
         ws_yaml_scan,
+        ws_get_types,
         ws_subentry_create,
         ws_subentry_update,
         ws_subentry_delete,

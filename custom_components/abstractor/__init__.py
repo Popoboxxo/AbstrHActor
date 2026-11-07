@@ -1,4 +1,5 @@
 """The Abstractor integration."""
+
 from __future__ import annotations
 
 import logging
@@ -49,15 +50,21 @@ from .frontend import async_register_panel, async_unregister_panel
 from .influx_exporter import create_influx_exporter
 from .repository.device_registry import DeviceRegistry
 from .snapshot import build_snapshot, validate_snapshot
+from .specs import SPEC_REGISTRY
 from .websocket import async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "light", "cover"]
+# WS-2 (2.3): the platform set derives from SPEC_REGISTRY (REQ-SENS-004) so the
+# WS whitelist, the forms and the platforms cannot drift apart. The canonical
+# order keeps existing registration order stable; new/removed platforms follow
+# the registry automatically.
+_PLATFORM_ORDER = ("sensor", "binary_sensor", "switch", "light", "cover")
+PLATFORMS: list[str] = [
+    platform for platform in _PLATFORM_ORDER if platform in {spec.platform for spec in SPEC_REGISTRY.enabled()}
+]
 _STORAGE_DATA = "storage"
-IMPORT_SERVICE_SCHEMA = vol.Schema(
-    {vol.Required("data"): vol.All(dict, validate_snapshot)}
-)
+IMPORT_SERVICE_SCHEMA = vol.Schema({vol.Required("data"): vol.All(dict, validate_snapshot)})
 # The sensor to delete is identified by EITHER its subentry_id (the key under
 # the root entry, also listed as `entry_id` per entry in export snapshots) OR
 # its `legacy_unique_id` (the entity's unique_id, visible in the entity
@@ -113,9 +120,7 @@ def _pre_migration_unique_id(data: Mapping[str, Any]) -> str:
         return str(explicit_legacy_id)
 
     device_type = data.get(CONF_DEVICE_TYPE, "")
-    identity_source_ids = data.get(CONF_SOURCE_ENTITY_IDS) or [
-        data.get(CONF_SOURCE_ENTITY_ID)
-    ]
+    identity_source_ids = data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)]
     identity_source_ids = [source for source in identity_source_ids if source]
     if len(identity_source_ids) == 1:
         return f"abstractor_{identity_source_ids[0]}_{device_type}"
@@ -173,9 +178,7 @@ def _async_adopt_registry_entries(
     # root. There is nothing to carry the disabled state on at that point, and
     # inventing a registry row from a guessed entity_id would be worse than
     # the rare mismatch.
-    detach_disabled_stamp = (
-        legacy_entry.disabled_by is not None and root_entry.disabled_by is None
-    )
+    detach_disabled_stamp = legacy_entry.disabled_by is not None and root_entry.disabled_by is None
 
     for device in devices:
         device_registry.async_update_device(
@@ -183,29 +186,17 @@ def _async_adopt_registry_entries(
             add_config_entry_id=root_entry.entry_id,
             add_config_subentry_id=subentry_id,
         )
-        if (
-            detach_disabled_stamp
-            and device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY
-        ):
-            device_registry.async_update_device(
-                device.id, disabled_by=dr.DeviceEntryDisabler.USER
-            )
+        if detach_disabled_stamp and device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY:
+            device_registry.async_update_device(device.id, disabled_by=dr.DeviceEntryDisabler.USER)
 
-    for entity in er.async_entries_for_config_entry(
-        entity_registry, legacy_entry.entry_id
-    ):
+    for entity in er.async_entries_for_config_entry(entity_registry, legacy_entry.entry_id):
         entity_registry.async_update_entity(
             entity.entity_id,
             config_entry_id=root_entry.entry_id,
             config_subentry_id=subentry_id,
         )
-        if (
-            detach_disabled_stamp
-            and entity.disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY
-        ):
-            entity_registry.async_update_entity(
-                entity.entity_id, disabled_by=er.RegistryEntryDisabler.USER
-            )
+        if detach_disabled_stamp and entity.disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY:
+            entity_registry.async_update_entity(entity.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
 
     if not is_promotion:
         # Nothing else to do: removing the legacy entry afterwards takes its
@@ -241,9 +232,7 @@ def _async_adopt_registry_entries(
 
 
 @callback
-def _async_attach_as_subentry(
-    hass: HomeAssistant, root_entry: ConfigEntry, legacy_entry: ConfigEntry
-) -> None:
+def _async_attach_as_subentry(hass: HomeAssistant, root_entry: ConfigEntry, legacy_entry: ConfigEntry) -> None:
     """Mirror one legacy entry into a subentry of the root entry.
 
     The subentry deliberately reuses the legacy entry's own `entry_id` as its
@@ -359,12 +348,8 @@ async def _async_reconcile_legacy_entries(hass: HomeAssistant) -> None:
     entity_ids and device identifiers are all preserved.
     """
     entries = hass.config_entries.async_entries(DOMAIN)
-    root_entry = next(
-        (entry for entry in entries if entry.unique_id == ROOT_UNIQUE_ID), None
-    )
-    legacy_entries = [
-        entry for entry in entries if entry.unique_id != ROOT_UNIQUE_ID
-    ]
+    root_entry = next((entry for entry in entries if entry.unique_id == ROOT_UNIQUE_ID), None)
+    legacy_entries = [entry for entry in entries if entry.unique_id != ROOT_UNIQUE_ID]
     if not legacy_entries:
         return
 
@@ -420,18 +405,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "registry" not in domain_data:
         domain_data["registry"] = DeviceRegistry()
 
-    coordinator.set_update_interval(
-        int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
-    )
+    coordinator.set_update_interval(int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)))
     coordinator.influx_exporter = create_influx_exporter(hass, dict(entry.options))
     # Debug notification targets (B7): re-applied on every (re)load like the
     # poll interval and the exporter, so changing the root options takes
     # effect on the reload the options update listener already triggers.
     # Unset (or empty) options leave both None, which makes the coordinator's
     # debug notify path a silent no-op.
-    coordinator.debug_switch_entity_id = entry.options.get(
-        CONF_DEBUG_SWITCH_ENTITY_ID
-    ) or None
+    coordinator.debug_switch_entity_id = entry.options.get(CONF_DEBUG_SWITCH_ENTITY_ID) or None
     coordinator.notify_entity_id = entry.options.get(CONF_NOTIFY_ENTITY_ID) or None
 
     # Polling is per sensor subentry, not per config entry: the root entry
@@ -473,9 +454,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # without reintroducing the entry binding.
         await coordinator.async_refresh()
         if not coordinator.last_update_success:
-            raise ConfigEntryNotReady(
-                "Initial data refresh failed"
-            ) from coordinator.last_exception
+            raise ConfigEntryNotReady("Initial data refresh failed") from coordinator.last_exception
     else:
         await coordinator.async_request_refresh()
 
@@ -506,6 +485,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_register_websocket(hass)
 
     return True
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry.
@@ -554,6 +534,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     return unload_ok
 
+
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate an old config entry to CONFIG_ENTRY_VERSION (REQ-NFA-004).
 
@@ -590,9 +571,11 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
     return True
 
+
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Apply options without requiring a restart."""
     await hass.config_entries.async_reload(entry.entry_id)
+
 
 @callback
 def _async_snapshot_entries(hass: HomeAssistant) -> dict[str, _SubentrySnapshotView]:
@@ -677,8 +660,7 @@ async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
     root_entry = _async_root_entry(hass)
     if root_entry is None:
         raise HomeAssistantError(
-            "Abstractor root config entry does not exist; add the Abstractor "
-            "integration before importing a snapshot"
+            "Abstractor root config entry does not exist; add the Abstractor integration before importing a snapshot"
         )
     store = hass.data[DOMAIN][_STORAGE_DATA]
     await store.async_save(payload)
@@ -694,19 +676,13 @@ async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
 def _async_root_entry(hass: HomeAssistant) -> ConfigEntry | None:
     """Return the singleton root config entry, if it exists."""
     return next(
-        (
-            entry
-            for entry in hass.config_entries.async_entries(DOMAIN)
-            if entry.unique_id == ROOT_UNIQUE_ID
-        ),
+        (entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.unique_id == ROOT_UNIQUE_ID),
         None,
     )
 
 
 @callback
-def _async_recreate_subentries(
-    hass: HomeAssistant, root_entry: ConfigEntry, payload: Mapping[str, Any]
-) -> list[str]:
+def _async_recreate_subentries(hass: HomeAssistant, root_entry: ConfigEntry, payload: Mapping[str, Any]) -> list[str]:
     """Recreate sensor subentries that the snapshot has but the root lacks.
 
     Identity comparison uses ``_pre_migration_unique_id`` on both sides: a
@@ -719,10 +695,7 @@ def _async_recreate_subentries(
         The subentry ids that were created (empty when the snapshot adds
         nothing, e.g. when re-importing over an intact installation).
     """
-    existing_ids = {
-        _pre_migration_unique_id(subentry.data)
-        for subentry in root_entry.subentries.values()
-    }
+    existing_ids = {_pre_migration_unique_id(subentry.data) for subentry in root_entry.subentries.values()}
     created: list[str] = []
     for item in payload.get("entries", []):
         # Runtime config is the data|options merge (see _async_attach_as_subentry):
@@ -730,14 +703,11 @@ def _async_recreate_subentries(
         # `options` mapping, while a pre-bundling export may have split a
         # hardware-swapped source across the two.
         merged = dict(item.get("data") or {}) | dict(item.get("options") or {})
-        sources = merged.get(CONF_SOURCE_ENTITY_IDS) or [
-            merged.get(CONF_SOURCE_ENTITY_ID)
-        ]
+        sources = merged.get(CONF_SOURCE_ENTITY_IDS) or [merged.get(CONF_SOURCE_ENTITY_ID)]
         sources = [source for source in sources if source]
         if not sources:
             _LOGGER.warning(
-                "Abstractor import: skipping snapshot entry %s because it "
-                "has no source entity",
+                "Abstractor import: skipping snapshot entry %s because it has no source entity",
                 item.get("entry_id"),
             )
             continue
@@ -746,8 +716,7 @@ def _async_recreate_subentries(
         subentry_id = item.get("entry_id") or f"abstractor_{uuid.uuid4().hex}"
         if subentry_id in root_entry.subentries:
             _LOGGER.warning(
-                "Abstractor import: skipping snapshot entry %s because a "
-                "subentry with that id already exists",
+                "Abstractor import: skipping snapshot entry %s because a subentry with that id already exists",
                 subentry_id,
             )
             continue
@@ -791,14 +760,10 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> None:
     subentry_id = call.data.get("subentry_id")
     legacy_unique_id = call.data.get(CONF_LEGACY_UNIQUE_ID)
     if subentry_id is None and legacy_unique_id is None:
-        raise ServiceValidationError(
-            "Provide either 'subentry_id' or 'legacy_unique_id'"
-        )
+        raise ServiceValidationError("Provide either 'subentry_id' or 'legacy_unique_id'")
     root_entry = _async_root_entry(hass)
     if root_entry is None:
-        raise HomeAssistantError(
-            "Abstractor root config entry does not exist; nothing to delete"
-        )
+        raise HomeAssistantError("Abstractor root config entry does not exist; nothing to delete")
     if subentry_id is None:
         subentry_id = next(
             (
@@ -809,12 +774,7 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> None:
             None,
         )
         if subentry_id is None:
-            raise ServiceValidationError(
-                f"No Abstractor sensor with legacy_unique_id "
-                f"{legacy_unique_id!r} exists"
-            )
+            raise ServiceValidationError(f"No Abstractor sensor with legacy_unique_id {legacy_unique_id!r} exists")
     if subentry_id not in root_entry.subentries:
-        raise ServiceValidationError(
-            f"Abstractor subentry {subentry_id!r} does not exist"
-        )
+        raise ServiceValidationError(f"Abstractor subentry {subentry_id!r} does not exist")
     hass.config_entries.async_remove_subentry(root_entry, subentry_id)

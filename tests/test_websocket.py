@@ -222,6 +222,52 @@ async def test_ws_options_update_reloads_root_entry() -> None:
     connection.send_result.assert_called_once_with(7, {"updated": True})
 
 
+async def test_ws_get_types_matches_registry_catalogue() -> None:
+    """The panel catalogue is derived from SPEC_REGISTRY (WS-2, no JS drift)."""
+    hass = _hass_cfg(_root())
+    connection = _admin_connection()
+    await websocket.ws_get_types.__wrapped__(hass, connection, {"id": 20})
+    connection.send_error.assert_not_called()
+    payload = connection.send_result.call_args.args[1]
+    shipped = [
+        spec
+        for spec in websocket.SPEC_REGISTRY.enabled()
+        if spec.platform in ("sensor", "binary_sensor", "switch", "light", "cover")
+    ]
+    assert payload["device_types"] == [spec.type_key for spec in shipped]
+    assert payload["numeric_types"] == [spec.type_key for spec in shipped if spec.numeric]
+    assert "riemann_energy" not in payload["device_types"]
+    assert payload["display_names"]["cover_position"] == "Cover position"
+
+
+async def test_ws_logical_rename_sets_entity_name() -> None:
+    """The rename command carries the entity_name override (UF-08 affordance)."""
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={"device_type": "power", "source_entity_id": "sensor.x"}, title="t", unique_id="u"
+            )
+        }
+    )
+    hass = _hass_cfg(root)
+    connection = _admin_connection()
+    await websocket.ws_logical_rename.__wrapped__(
+        hass,
+        connection,
+        {
+            "id": 21,
+            "subentry_id": "sub-1",
+            "logical_name": "Kitchen",
+            "entity_name": "Power usage",
+        },
+    )
+    hass.config_entries.async_update_subentry.assert_called_once()
+    persisted = hass.config_entries.async_update_subentry.call_args.kwargs["data"]
+    assert persisted["entity_name"] == "Power usage"
+    assert persisted["logical_name"] == "Kitchen"
+    assert connection.send_result.call_args.args[1] == {"renamed": True, "group_size": 1}
+
+
 async def test_ws_logical_rename_rejects_bad_slug() -> None:
     root = _root({"sub-1": SimpleNamespace(data={}, title="t", unique_id="u")})
     hass = _hass_cfg(root)
@@ -414,6 +460,7 @@ def test_ws_command_table_matches_registrations() -> None:
     assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "read"} == {
         "ws_get_subentries",
         "ws_yaml_scan",
+        "ws_get_types",
     }
     assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "subscribe"} == {"ws_subentries_subscribe"}
 

@@ -71,9 +71,7 @@ from custom_components.abstractor.const import (
 
 async def test_form(hass: HomeAssistant) -> None:
     """The top-level flow only creates the singleton root entry."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     assert result["type"] == "form"
 
     with patch(
@@ -102,9 +100,7 @@ async def test_subentry_create_form(hass: HomeAssistant) -> None:
     assert result["step_id"] == "user"
 
     # Two-step create flow: the type is chosen first, then the details.
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
     assert typed["type"] == "form"
     assert typed["step_id"] == "details"
 
@@ -132,9 +128,7 @@ async def test_subentry_create_stores_naming_overrides(hass: HomeAssistant) -> N
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
     result2 = await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
         {
@@ -164,9 +158,7 @@ async def test_subentry_reconfigure_keeps_naming_when_not_resubmitted(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        create_result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(create_result["flow_id"], {CONF_DEVICE_TYPE: "power"})
     await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
         {
@@ -206,9 +198,7 @@ async def test_subentry_create_auto_generates_stable_unique_id(hass: HomeAssista
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
     await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
         {CONF_SOURCE_ENTITY_ID: "sensor.test_power"},
@@ -233,12 +223,8 @@ async def test_subentry_reconfigure_keeps_auto_generated_id_after_source_swap(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        create_result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
-    await hass.config_entries.subentries.async_configure(
-        typed["flow_id"], {CONF_SOURCE_ENTITY_ID: "sensor.old_plug"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(create_result["flow_id"], {CONF_DEVICE_TYPE: "power"})
+    await hass.config_entries.subentries.async_configure(typed["flow_id"], {CONF_SOURCE_ENTITY_ID: "sensor.old_plug"})
     await hass.async_block_till_done()
     subentry_id, subentry = next(iter(root_entry.subentries.items()))
     original_id = subentry.data[CONF_LEGACY_UNIQUE_ID]
@@ -305,9 +291,7 @@ async def test_subentry_create_form_requires_source(hass: HomeAssistant) -> None
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
 
     result2 = await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
@@ -329,9 +313,7 @@ async def test_subentry_create_form_multi_source_dedup(hass: HomeAssistant) -> N
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
 
     result2 = await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
@@ -364,9 +346,7 @@ async def test_subentry_create_form_aggregation_mode(hass: HomeAssistant) -> Non
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
     result2 = await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
         {
@@ -393,9 +373,7 @@ async def test_subentry_create_form_aggregation_defaults_to_sum(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
     result2 = await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
         {CONF_SOURCE_ENTITY_ID: "sensor.test_power"},
@@ -416,9 +394,7 @@ async def test_subentry_create_form_legacy_unique_id(hass: HomeAssistant) -> Non
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    typed = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: "power"}
-    )
+    typed = await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: "power"})
 
     result2 = await hass.config_entries.subentries.async_configure(
         typed["flow_id"],
@@ -658,9 +634,7 @@ async def test_subentry_reconfigure_prefills_target_device_from_own_device(
         },
     )
 
-    target_marker, _target_validator = _schema_field(
-        result["data_schema"], CONF_TARGET_DEVICE_ID
-    )
+    target_marker, _target_validator = _schema_field(result["data_schema"], CONF_TARGET_DEVICE_ID)
     assert target_marker.description == {"suggested_value": own_device.id}
 
 
@@ -692,9 +666,7 @@ async def test_subentry_reconfigure_prefills_target_device_when_device_missing(
         },
     )
 
-    target_marker, _target_validator = _schema_field(
-        result["data_schema"], CONF_TARGET_DEVICE_ID
-    )
+    target_marker, _target_validator = _schema_field(result["data_schema"], CONF_TARGET_DEVICE_ID)
     assert target_marker.description == {"suggested_value": None}
 
 
@@ -792,9 +764,7 @@ async def test_subentry_reconfigure_cannot_clear_a_pinned_legacy_unique_id(
         },
     )
     # The field is not even offered any more once it is set.
-    assert CONF_LEGACY_UNIQUE_ID not in [
-        str(key) for key in result["data_schema"].schema
-    ]
+    assert CONF_LEGACY_UNIQUE_ID not in [str(key) for key in result["data_schema"].schema]
 
     result2 = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -911,9 +881,7 @@ def _schema_field(data_schema, field_name: str) -> tuple:
 
 def _options_entry(hass: HomeAssistant, options: dict | None = None) -> MockConfigEntry:
     """Create and register the singleton root entry, optionally with options."""
-    entry = MockConfigEntry(
-        domain=DOMAIN, unique_id="abstractor_root", data={}, options=options or {}
-    )
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="abstractor_root", data={}, options=options or {})
     entry.add_to_hass(hass)
     return entry
 
@@ -1093,15 +1061,11 @@ async def test_options_flow_custom_interval_reveals_bounded_number_field(
     root_entry = _options_entry(hass)
 
     result = await hass.config_entries.options.async_init(root_entry.entry_id)
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_POLL_INTERVAL: "custom"}
-    )
+    result2 = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_POLL_INTERVAL: "custom"})
 
     assert result2["type"] == "form"
     assert result2["step_id"] == "poll_interval"
-    poll_marker, poll_validator = _schema_field(
-        result2["data_schema"], CONF_POLL_INTERVAL
-    )
+    poll_marker, poll_validator = _schema_field(result2["data_schema"], CONF_POLL_INTERVAL)
     assert poll_marker.default() == DEFAULT_POLL_INTERVAL
     assert poll_validator.config["min"] == POLL_INTERVAL_MIN
     assert poll_validator.config["max"] == POLL_INTERVAL_MAX
@@ -1116,12 +1080,8 @@ async def test_options_flow_custom_interval_saves_integer(
     root_entry = _options_entry(hass)
 
     result = await hass.config_entries.options.async_init(root_entry.entry_id)
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_POLL_INTERVAL: "custom"}
-    )
-    result3 = await hass.config_entries.options.async_configure(
-        result2["flow_id"], {CONF_POLL_INTERVAL: 7}
-    )
+    result2 = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_POLL_INTERVAL: "custom"})
+    result3 = await hass.config_entries.options.async_configure(result2["flow_id"], {CONF_POLL_INTERVAL: 7})
     await hass.async_block_till_done()
 
     assert result3["type"] == "create_entry"
@@ -1141,16 +1101,12 @@ async def test_options_flow_reopen_with_custom_interval_prefills(
     poll_marker, _ = _schema_field(result["data_schema"], CONF_POLL_INTERVAL)
     assert poll_marker.default() == "custom"
 
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_POLL_INTERVAL: "custom"}
-    )
+    result2 = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_POLL_INTERVAL: "custom"})
     assert result2["step_id"] == "poll_interval"
     poll_marker2, _ = _schema_field(result2["data_schema"], CONF_POLL_INTERVAL)
     assert poll_marker2.default() == 7
 
-    result3 = await hass.config_entries.options.async_configure(
-        result2["flow_id"], {CONF_POLL_INTERVAL: 7}
-    )
+    result3 = await hass.config_entries.options.async_configure(result2["flow_id"], {CONF_POLL_INTERVAL: 7})
     assert result3["data"][CONF_POLL_INTERVAL] == 7
 
 
@@ -1176,9 +1132,7 @@ async def test_options_flow_custom_interval_preserves_other_submitted_fields(
     )
     assert result2["step_id"] == "poll_interval"
 
-    result3 = await hass.config_entries.options.async_configure(
-        result2["flow_id"], {CONF_POLL_INTERVAL: 12}
-    )
+    result3 = await hass.config_entries.options.async_configure(result2["flow_id"], {CONF_POLL_INTERVAL: 12})
     await hass.async_block_till_done()
 
     assert result3["type"] == "create_entry"
@@ -1323,17 +1277,13 @@ def _root_entry(hass: HomeAssistant) -> MockConfigEntry:
     return entry
 
 
-async def _select_create_type(
-    hass: HomeAssistant, root_entry: MockConfigEntry, device_type: str
-) -> dict[str, Any]:
+async def _select_create_type(hass: HomeAssistant, root_entry: MockConfigEntry, device_type: str) -> dict[str, Any]:
     """Start a create flow, submit the type step, return the details form."""
     result = await hass.config_entries.subentries.async_init(
         (root_entry.entry_id, "sensor"),
         context={"source": config_entries.SOURCE_USER},
     )
-    return await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_DEVICE_TYPE: device_type}
-    )
+    return await hass.config_entries.subentries.async_configure(result["flow_id"], {CONF_DEVICE_TYPE: device_type})
 
 
 def _add_sensor_subentry(
@@ -1423,9 +1373,7 @@ def _capabilities_union(
     )
 
 
-async def _start_reconfigure(
-    hass: HomeAssistant, root_entry: MockConfigEntry, subentry_id: str
-) -> dict[str, Any]:
+async def _start_reconfigure(hass: HomeAssistant, root_entry: MockConfigEntry, subentry_id: str) -> dict[str, Any]:
     """Start the reconfigure flow for a subentry and return the form result."""
     return await hass.config_entries.subentries.async_init(
         (root_entry.entry_id, "sensor"),
@@ -1510,7 +1458,8 @@ async def test_subentry_create_type_step_lists_enabled_specs(
         "power",
         "energy",
         "water",
-        "riemann_energy",
+        # riemann_energy is roadmap-only (decision D-1, WS-2): explicit
+        # enabled=False — it must not appear in the offered catalogue.
         "door_contact",
         "motion",
         "smoke",
@@ -1519,9 +1468,7 @@ async def test_subentry_create_type_step_lists_enabled_specs(
         "cover_position",
     ]
     # Only the type is asked for here; everything else lives in the details step.
-    assert [str(marker.schema) for marker in result["data_schema"].schema] == [
-        CONF_DEVICE_TYPE
-    ]
+    assert [str(marker.schema) for marker in result["data_schema"].schema] == [CONF_DEVICE_TYPE]
 
 
 async def test_subentry_create_binary_type_omits_numeric_fields(
@@ -1621,9 +1568,7 @@ async def test_subentry_create_with_target_owned_by_other_subentry_succeeds_on_u
     root_entry = _root_entry(hass)
     device_registry = dr.async_get(hass)
 
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b"
-    )
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b")
     device_b = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_b.subentry_id,
@@ -1642,9 +1587,7 @@ async def test_subentry_create_with_target_owned_by_other_subentry_succeeds_on_u
 
     assert result2["type"] == "create_entry"
     new_subentries = [
-        subentry
-        for subentry in root_entry.subentries.values()
-        if subentry.subentry_id != sub_b.subentry_id
+        subentry for subentry in root_entry.subentries.values() if subentry.subentry_id != sub_b.subentry_id
     ]
     assert len(new_subentries) == 1
     assert new_subentries[0].data[CONF_DEVICE_GROUP_ID] == "group-b"
@@ -1661,9 +1604,7 @@ async def test_subentry_create_with_cross_subentry_target_rejected_on_single_own
     root_entry = _root_entry(hass)
     device_registry = dr.async_get(hass)
 
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b"
-    )
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b")
     device_b = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_b.subentry_id,
@@ -1698,12 +1639,8 @@ async def test_subentry_reconfigure_detach_moves_entity_and_preserves_other(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="shared-group")
     # A realistically bundled device is owned by BOTH subentries (the union
     # runtime records each subentry that bundled onto it).
     grouped = device_registry.async_get_or_create(
@@ -1759,9 +1696,7 @@ async def test_subentry_reconfigure_detach_moves_entity_and_preserves_other(
     assert other.unique_id == entity_b.unique_id
     assert other.device_id == grouped.id
 
-    owners = device_registry.async_get(grouped.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners = device_registry.async_get(grouped.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_a.subentry_id not in owners
     assert sub_b.subentry_id in owners
 
@@ -1781,12 +1716,8 @@ async def test_subentry_reconfigure_detach_on_single_owner_keeps_stale_link_when
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="shared-group")
     grouped = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -1827,9 +1758,7 @@ async def test_subentry_reconfigure_detach_on_single_owner_keeps_stale_link_when
     assert result2["type"] == "abort"
     own_device = device_registry.async_get_device({(DOMAIN, sub_a.subentry_id)})
     assert entity_registry.async_get(entity_a.entity_id).device_id == own_device.id
-    owners = device_registry.async_get(grouped.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners = device_registry.async_get(grouped.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_a.subentry_id in owners
     assert sub_b.subentry_id in owners
     assert "leaving the stale ownership link" in caplog.text
@@ -1848,9 +1777,7 @@ async def test_subentry_reconfigure_detach_on_single_owner_when_alone(
         config_entry_id=root_entry.entry_id,
         identifiers={(DOMAIN, "shared-group")},
     )
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
     entity_a = _register_sensor_entity(
         hass,
         root_entry,
@@ -1886,9 +1813,7 @@ async def test_subentry_reconfigure_same_owner_target_is_noop(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="own-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="own-group")
     target = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -1932,9 +1857,7 @@ async def test_subentry_reconfigure_same_owner_repoints_between_two_devices(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -1969,13 +1892,9 @@ async def test_subentry_reconfigure_same_owner_repoints_between_two_devices(
     # The union runtime drops the last subentry link after the entity moved
     # and removes the orphaned, empty device shell along with it.
     assert device_registry.async_get(device_a.id) is None
-    owners_b = device_registry.async_get(device_b.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners_b = device_registry.async_get(device_b.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_a.subentry_id in owners_b
-    assert root_entry.subentries[sub_a.subentry_id].data[CONF_DEVICE_GROUP_ID] == (
-        "group-b"
-    )
+    assert root_entry.subentries[sub_a.subentry_id].data[CONF_DEVICE_GROUP_ID] == ("group-b")
 
 
 async def test_subentry_reconfigure_cross_subentry_bundle_rejected_on_single_owner(
@@ -1989,12 +1908,8 @@ async def test_subentry_reconfigure_cross_subentry_bundle_rejected_on_single_own
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2035,21 +1950,15 @@ async def test_subentry_reconfigure_cross_subentry_bundle_rejected_on_single_own
 
     assert result2["type"] == "form"
     assert result2["errors"] == {"base": "device_mapping_conflict"}
-    target_marker, _target_validator = _schema_field(
-        result2["data_schema"], CONF_TARGET_DEVICE_ID
-    )
+    target_marker, _target_validator = _schema_field(result2["data_schema"], CONF_TARGET_DEVICE_ID)
     assert target_marker.description == {"suggested_value": device_a.id}
 
     assert root_entry.subentries[sub_a.subentry_id].data == original_data
     assert entity_registry.async_get(entity_a.entity_id).device_id == device_a.id
     assert entity_registry.async_get(entity_b.entity_id).device_id == device_b.id
-    owners_a = device_registry.async_get(device_a.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners_a = device_registry.async_get(device_a.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_a.subentry_id in owners_a
-    owners_b = device_registry.async_get(device_b.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners_b = device_registry.async_get(device_b.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_b.subentry_id in owners_b
     assert sub_a.subentry_id not in owners_b
 
@@ -2064,12 +1973,8 @@ async def test_subentry_reconfigure_cross_subentry_bundle_moves_entity_on_union(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2113,9 +2018,7 @@ async def test_subentry_reconfigure_cross_subentry_bundle_moves_entity_on_union(
     assert other.entity_id == entity_b.entity_id
     assert other.unique_id == entity_b.unique_id
     assert other.device_id == device_b.id
-    owners_b = device_registry.async_get(device_b.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners_b = device_registry.async_get(device_b.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_a.subentry_id in owners_b
     assert sub_b.subentry_id in owners_b
     # The ordered move drops sub_a's link from the old device; the union
@@ -2139,9 +2042,7 @@ async def test_subentry_reconfigure_claims_unowned_target_on_union(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2172,13 +2073,9 @@ async def test_subentry_reconfigure_claims_unowned_target_on_union(
 
     assert result2["type"] == "abort"
     assert entity_registry.async_get(entity_a.entity_id).device_id == target.id
-    owners = device_registry.async_get(target.id).config_entries_subentries.get(
-        root_entry.entry_id, ()
-    )
+    owners = device_registry.async_get(target.id).config_entries_subentries.get(root_entry.entry_id, ())
     assert sub_a.subentry_id in owners
-    assert root_entry.subentries[sub_a.subentry_id].data[CONF_DEVICE_GROUP_ID] == (
-        "claimed-group"
-    )
+    assert root_entry.subentries[sub_a.subentry_id].data[CONF_DEVICE_GROUP_ID] == ("claimed-group")
 
 
 async def test_subentry_reconfigure_claims_unowned_target_on_single_owner(
@@ -2192,9 +2089,7 @@ async def test_subentry_reconfigure_claims_unowned_target_on_single_owner(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2285,10 +2180,7 @@ async def test_subentry_reconfigure_mapping_keeps_legacy_unique_id(
     assert result2["type"] == "abort"
     updated = root_entry.subentries[sub_a.subentry_id].data
     assert updated[CONF_LEGACY_UNIQUE_ID] == "fridge_power_template"
-    assert (
-        entity_registry.async_get_entity_id("sensor", DOMAIN, "fridge_power_template")
-        == entity_a.entity_id
-    )
+    assert entity_registry.async_get_entity_id("sensor", DOMAIN, "fridge_power_template") == entity_a.entity_id
     assert entity_registry.async_get(entity_a.entity_id).device_id == target.id
 
 
@@ -2301,9 +2193,7 @@ async def test_subentry_reconfigure_unknown_target_rejected_zero_mutation(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2346,9 +2236,7 @@ async def test_subentry_reconfigure_target_without_domain_identifier_rejected(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2393,9 +2281,7 @@ async def test_subentry_reconfigure_rejected_when_entity_registry_lacks_device_i
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2411,9 +2297,7 @@ async def test_subentry_reconfigure_rejected_when_entity_registry_lacks_device_i
     original_data = dict(root_entry.subentries[sub_a.subentry_id].data)
 
     result = await _start_reconfigure(hass, root_entry, sub_a.subentry_id)
-    with _patch_capabilities(
-        _capabilities_single_owner(entity_update_has_device_id=False)
-    ):
+    with _patch_capabilities(_capabilities_single_owner(entity_update_has_device_id=False)):
         result2 = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {
@@ -2438,9 +2322,7 @@ async def test_subentry_reconfigure_detach_without_entity_row_is_noop(
     root_entry = _root_entry(hass)
     device_registry = dr.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
 
     result = await _start_reconfigure(hass, root_entry, sub_a.subentry_id)
     result2 = await hass.config_entries.subentries.async_configure(
@@ -2468,9 +2350,7 @@ async def test_subentry_reconfigure_detach_entity_without_device_is_noop(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
     device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         identifiers={(DOMAIN, "shared-group")},
@@ -2513,9 +2393,7 @@ async def test_subentry_reconfigure_detach_with_missing_old_device_is_noop(
         config_entry_id=root_entry.entry_id,
         identifiers={(DOMAIN, "shared-group")},
     )
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
     entity_a = _register_sensor_entity(
         hass,
         root_entry,
@@ -2559,9 +2437,7 @@ async def test_subentry_reconfigure_move_with_missing_old_device_drops_nothing(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2600,9 +2476,7 @@ async def test_subentry_reconfigure_move_with_missing_old_device_drops_nothing(
 
     assert result2["type"] == "abort"
     assert entity_registry.async_get(entity_a.entity_id).device_id == target.id
-    assert root_entry.subentries[sub_a.subentry_id].data[CONF_DEVICE_GROUP_ID] == (
-        "claimed-group"
-    )
+    assert root_entry.subentries[sub_a.subentry_id].data[CONF_DEVICE_GROUP_ID] == ("claimed-group")
 
 
 async def test_subentry_reconfigure_detach_registry_error_conflicts(
@@ -2613,9 +2487,7 @@ async def test_subentry_reconfigure_detach_registry_error_conflicts(
     root_entry = _root_entry(hass)
     device_registry = dr.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
     original_data = dict(root_entry.subentries[sub_a.subentry_id].data)
 
     result = await _start_reconfigure(hass, root_entry, sub_a.subentry_id)
@@ -2650,9 +2522,7 @@ async def test_subentry_reconfigure_move_error_conflicts(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2702,12 +2572,8 @@ async def test_subentry_reconfigure_union_without_add_kwargs_conflicts(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
-    sub_b = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
+    sub_b = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.b", device_group_id="group-b")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2728,9 +2594,7 @@ async def test_subentry_reconfigure_union_without_add_kwargs_conflicts(
     original_data = dict(root_entry.subentries[sub_a.subentry_id].data)
 
     result = await _start_reconfigure(hass, root_entry, sub_a.subentry_id)
-    with _patch_capabilities(
-        _capabilities_union(add_config_entry_id=None, add_config_subentry_id=None)
-    ):
+    with _patch_capabilities(_capabilities_union(add_config_entry_id=None, add_config_subentry_id=None)):
         result2 = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {
@@ -2758,9 +2622,7 @@ async def test_subentry_reconfigure_single_owner_without_new_config_kwargs_confl
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="group-a")
     device_a = device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         config_subentry_id=sub_a.subentry_id,
@@ -2780,11 +2642,7 @@ async def test_subentry_reconfigure_single_owner_without_new_config_kwargs_confl
     original_data = dict(root_entry.subentries[sub_a.subentry_id].data)
 
     result = await _start_reconfigure(hass, root_entry, sub_a.subentry_id)
-    with _patch_capabilities(
-        _capabilities_single_owner(
-            new_config_entry_id=None, new_config_subentry_id=None
-        )
-    ):
+    with _patch_capabilities(_capabilities_single_owner(new_config_entry_id=None, new_config_subentry_id=None)):
         result2 = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {
@@ -2809,9 +2667,7 @@ async def test_subentry_reconfigure_detach_without_remove_kwargs_conflicts(
     root_entry = _root_entry(hass)
     device_registry = dr.async_get(hass)
 
-    sub_a = _add_sensor_subentry(
-        hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group"
-    )
+    sub_a = _add_sensor_subentry(hass, root_entry, source_entity_id="sensor.a", device_group_id="shared-group")
     device_registry.async_get_or_create(
         config_entry_id=root_entry.entry_id,
         identifiers={(DOMAIN, "shared-group")},
@@ -2826,9 +2682,7 @@ async def test_subentry_reconfigure_detach_without_remove_kwargs_conflicts(
     original_data = dict(root_entry.subentries[sub_a.subentry_id].data)
 
     result = await _start_reconfigure(hass, root_entry, sub_a.subentry_id)
-    with _patch_capabilities(
-        _capabilities_union(remove_config_entry_id=None, remove_config_subentry_id=None)
-    ):
+    with _patch_capabilities(_capabilities_union(remove_config_entry_id=None, remove_config_subentry_id=None)):
         result2 = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {

@@ -11,9 +11,11 @@ import {
   DEVICE_TYPES,
   buildPayload,
   buildRenamePayload,
+  getCatalogue,
   hasErrors,
   isNumericType,
   previewEntityId,
+  setCatalogue,
   subentryToFields,
   subentryToRenameFields,
   validateRenameForm,
@@ -52,6 +54,7 @@ const I18N = {
     'form.sources': 'Source entities',
     'form.logicalName': 'Logical name',
     'form.objectId': 'Entity object id',
+    'form.entityName': 'Entity name (override)',
     'form.aggregation': 'Aggregation',
     'form.spikeFilter': 'Enable spike filter',
     'form.invert': 'Invert value',
@@ -122,6 +125,7 @@ const I18N = {
     'form.sources': 'Quell-Entitaeten',
     'form.logicalName': 'Logischer Name',
     'form.objectId': 'Entity-Object-Id',
+    'form.entityName': 'Entity name (override)',
     'form.aggregation': 'Aggregation',
     'form.spikeFilter': 'Spike-Filter aktivieren',
     'form.invert': 'Wert invertieren',
@@ -220,6 +224,7 @@ class AbstractorPanel extends HTMLElement {
     this._fetchPromise = null;
     this._detail = null;
     this._filterOverride = null;
+    this._typesLoaded = false;
     this._migrateLoaded = false;
     this._migrateSensors = [];
     this._modalEl = null;
@@ -264,6 +269,17 @@ class AbstractorPanel extends HTMLElement {
     if (!force && this._store.state.loaded && now - this._store.state.lastFetchAt < 1500) return;
     this._store.setState({ loading: true, error: '' });
     try {
+      if (!this._typesLoaded) {
+        // WS-2: install the server catalogue once (SPEC_REGISTRY-derived); the
+        // JS fallback list only covers the first frames before this arrives.
+        this._typesLoaded = true;
+        try {
+          const types = await this._hass.callWS({ type: 'abstractor/types' });
+          setCatalogue(types);
+        } catch (typesErr) {
+          // keep the fallback catalogue — the server gate remains authoritative
+        }
+      }
       const result = await this._hass.callWS({ type: 'abstractor/subentries' });
       const list = (result && Array.isArray(result.subentries)) ? result.subentries : [];
       this._store.setState({ subentries: list, loaded: true, loading: false, lastFetchAt: Date.now() });
@@ -532,7 +548,7 @@ class AbstractorPanel extends HTMLElement {
     const chips = ['all', ...DEVICE_TYPES.filter((t) => present.has(t)), 'problems'];
     bodyEl.innerHTML = `
       <div class="filter-row">
-        ${chips.map((f) => `<button type="button" class="filter-chip ${filter===f?'active':''}" data-filter="${f}">${this._t('filter.' + f)}</button>`).join('')}
+        ${chips.map((f) => `<button type="button" class="filter-chip ${filter===f?'active':''}" data-filter="${f}">${this._chipLabel(f)}</button>`).join('')}
       </div>
     `;
     bodyEl.querySelectorAll('.filter-chip').forEach((b) => {
@@ -765,6 +781,17 @@ class AbstractorPanel extends HTMLElement {
     return this._filterOverride || 'all';
   }
 
+  _chipLabel(filter) {
+    // i18n vocabulary wins; otherwise the server catalogue's display name
+    // (WS-2: the shipped type list is server-derived, the JS must label it
+    // without hardcoding a second list).
+    const translated = this._t('filter.' + filter);
+    if (translated !== 'filter.' + filter) {
+      return translated;
+    }
+    return getCatalogue().display_names[filter] || filter;
+  }
+
   _field(labelKey, inputEl) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
@@ -862,7 +889,7 @@ class AbstractorPanel extends HTMLElement {
     DEVICE_TYPES.forEach((type) => {
       const opt = document.createElement('option');
       opt.value = type;
-      opt.textContent = type;
+      opt.textContent = getCatalogue().display_names[type] || type;
       refs.device_type.appendChild(opt);
     });
     refs.device_type.value = fields.device_type;
@@ -998,6 +1025,8 @@ class AbstractorPanel extends HTMLElement {
     form.appendChild(this._field('form.logicalName', refs.logical_name));
     refs.object_id = this._textInput(fields.object_id, 'text');
     form.appendChild(this._field('form.objectId', refs.object_id));
+    refs.entity_name = this._textInput(fields.entity_name, 'text');
+    form.appendChild(this._field('form.entityName', refs.entity_name));
     const entityIdPreview = document.createElement('div');
     entityIdPreview.className = 'hint';
     entityIdPreview.setAttribute('aria-live', 'polite');
@@ -1049,6 +1078,7 @@ class AbstractorPanel extends HTMLElement {
     const fields = {
       logical_name: refs.logical_name.value,
       object_id: refs.object_id.value,
+      entity_name: refs.entity_name.value,
       rename_entity: refs.rename_entity.checked,
     };
     const errors = validateRenameForm(fields);
@@ -1065,6 +1095,7 @@ class AbstractorPanel extends HTMLElement {
         subentry_id: existing.subentry_id,
         logical_name: payload.logical_name,
         object_id: payload.object_id,
+        entity_name: payload.entity_name,
         rename_entity: payload.rename_entity,
       });
       this._closeModal();

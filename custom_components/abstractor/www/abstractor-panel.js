@@ -1,8 +1,53 @@
 (() => {
   // frontend/src/sensor-form.js
-  var DEVICE_TYPES = ["power", "energy", "water", "door_contact", "motion", "smoke"];
-  var NUMERIC_TYPES = ["power", "energy", "water"];
-  var AGGREGATION_MODES = ["sum", "max", "min", "first_available"];
+  var CATALOGUE = {
+    device_types: [],
+    numeric_types: [],
+    aggregation_modes: [],
+    display_names: {}
+  };
+  function _replaceAll(target, values) {
+    target.length = 0;
+    values.forEach((value) => target.push(value));
+  }
+  function _replaceAllKeys(target, source) {
+    Object.keys(target).forEach((key) => delete target[key]);
+    Object.keys(source).forEach((key) => target[key] = source[key]);
+  }
+  function _installCatalogue(source) {
+    _replaceAll(CATALOGUE.device_types, source.device_types || []);
+    _replaceAll(CATALOGUE.numeric_types, source.numeric_types || []);
+    _replaceAll(CATALOGUE.aggregation_modes, source.aggregation_modes || []);
+    _replaceAllKeys(CATALOGUE.display_names, source.display_names || {});
+  }
+  var FALLBACK_CATALOGUE = {
+    device_types: ["power", "energy", "water", "door_contact", "motion", "smoke", "switch_state", "light_state", "cover_position"],
+    numeric_types: ["power", "energy", "water"],
+    aggregation_modes: ["sum", "max", "min", "first_available"],
+    display_names: {
+      power: "Power",
+      energy: "Energy",
+      water: "Water",
+      door_contact: "Door Contact",
+      motion: "Motion",
+      smoke: "Smoke",
+      switch_state: "Switch",
+      light_state: "Light",
+      cover_position: "Cover position"
+    }
+  };
+  _installCatalogue(FALLBACK_CATALOGUE);
+  function setCatalogue(catalogue) {
+    if (catalogue && catalogue.device_types) {
+      _installCatalogue(catalogue);
+    }
+  }
+  function getCatalogue() {
+    return CATALOGUE;
+  }
+  var DEVICE_TYPES = CATALOGUE.device_types;
+  var NUMERIC_TYPES = CATALOGUE.numeric_types;
+  var AGGREGATION_MODES = CATALOGUE.aggregation_modes;
   function isNumericType(deviceType) {
     return NUMERIC_TYPES.indexOf(deviceType) !== -1;
   }
@@ -78,6 +123,9 @@
     if (f.object_id) {
       data.object_id = String(f.object_id).trim();
     }
+    if (f.entity_name && String(f.entity_name).trim()) {
+      data.entity_name = String(f.entity_name).trim();
+    }
     return data;
   }
   function subentryToFields(subentry) {
@@ -102,6 +150,7 @@
     return {
       logical_name: s.logical_name || "",
       object_id: s.object_id || "",
+      entity_name: s.entity_name || "",
       rename_entity: false
     };
   }
@@ -138,6 +187,7 @@
       "form.sources": "Source entities",
       "form.logicalName": "Logical name",
       "form.objectId": "Entity object id",
+      "form.entityName": "Entity name (override)",
       "form.aggregation": "Aggregation",
       "form.spikeFilter": "Enable spike filter",
       "form.invert": "Invert value",
@@ -208,6 +258,7 @@
       "form.sources": "Quell-Entitaeten",
       "form.logicalName": "Logischer Name",
       "form.objectId": "Entity-Object-Id",
+      "form.entityName": "Entity name (override)",
       "form.aggregation": "Aggregation",
       "form.spikeFilter": "Spike-Filter aktivieren",
       "form.invert": "Wert invertieren",
@@ -309,6 +360,7 @@
       this._fetchPromise = null;
       this._detail = null;
       this._filterOverride = null;
+      this._typesLoaded = false;
       this._migrateLoaded = false;
       this._migrateSensors = [];
       this._modalEl = null;
@@ -354,6 +406,14 @@
       if (!force && this._store.state.loaded && now - this._store.state.lastFetchAt < 1500) return;
       this._store.setState({ loading: true, error: "" });
       try {
+        if (!this._typesLoaded) {
+          this._typesLoaded = true;
+          try {
+            const types = await this._hass.callWS({ type: "abstractor/types" });
+            setCatalogue(types);
+          } catch (typesErr) {
+          }
+        }
         const result = await this._hass.callWS({ type: "abstractor/subentries" });
         const list = result && Array.isArray(result.subentries) ? result.subentries : [];
         this._store.setState({ subentries: list, loaded: true, loading: false, lastFetchAt: Date.now() });
@@ -611,7 +671,7 @@
       const chips = ["all", ...DEVICE_TYPES.filter((t) => present.has(t)), "problems"];
       bodyEl.innerHTML = `
       <div class="filter-row">
-        ${chips.map((f) => `<button type="button" class="filter-chip ${filter === f ? "active" : ""}" data-filter="${f}">${this._t("filter." + f)}</button>`).join("")}
+        ${chips.map((f) => `<button type="button" class="filter-chip ${filter === f ? "active" : ""}" data-filter="${f}">${this._chipLabel(f)}</button>`).join("")}
       </div>
     `;
       bodyEl.querySelectorAll(".filter-chip").forEach((b) => {
@@ -828,6 +888,13 @@
     _activeFilter() {
       return this._filterOverride || "all";
     }
+    _chipLabel(filter) {
+      const translated = this._t("filter." + filter);
+      if (translated !== "filter." + filter) {
+        return translated;
+      }
+      return getCatalogue().display_names[filter] || filter;
+    }
     _field(labelKey, inputEl) {
       const wrap = document.createElement("div");
       wrap.className = "field";
@@ -913,7 +980,7 @@
       DEVICE_TYPES.forEach((type) => {
         const opt = document.createElement("option");
         opt.value = type;
-        opt.textContent = type;
+        opt.textContent = getCatalogue().display_names[type] || type;
         refs.device_type.appendChild(opt);
       });
       refs.device_type.value = fields.device_type;
@@ -1043,6 +1110,8 @@
       form.appendChild(this._field("form.logicalName", refs.logical_name));
       refs.object_id = this._textInput(fields.object_id, "text");
       form.appendChild(this._field("form.objectId", refs.object_id));
+      refs.entity_name = this._textInput(fields.entity_name, "text");
+      form.appendChild(this._field("form.entityName", refs.entity_name));
       const entityIdPreview = document.createElement("div");
       entityIdPreview.className = "hint";
       entityIdPreview.setAttribute("aria-live", "polite");
@@ -1090,6 +1159,7 @@
       const fields = {
         logical_name: refs.logical_name.value,
         object_id: refs.object_id.value,
+        entity_name: refs.entity_name.value,
         rename_entity: refs.rename_entity.checked
       };
       const errors = validateRenameForm(fields);
@@ -1106,6 +1176,7 @@
           subentry_id: existing.subentry_id,
           logical_name: payload.logical_name,
           object_id: payload.object_id,
+          entity_name: payload.entity_name,
           rename_entity: payload.rename_entity
         });
         this._closeModal();
