@@ -116,3 +116,8 @@ DEFAULT_OPTIONS: Final[dict[str, Any]] = {
     CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
 }
+
+SERVICE_EXPORT_CSV: Final = "export_csv"
+SERVICE_IMPORT_CSV: Final = "import_csv"
+SERVICE_SUMMARY: Final = "summary"
+CSV_VALUES_DIR_NAME: Final = "abstractor_values"

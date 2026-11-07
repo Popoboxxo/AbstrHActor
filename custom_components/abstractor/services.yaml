@@ -25,3 +25,30 @@ delete_sensor:
       description: Alternative — the sensor's unique_id as shown in the entity registry. Provide either this or subentry_id, not both.
       selector:
         text:
+
+export_csv:
+  name: Export Abstractor Values (CSV)
+  description: Writes the current abstracted sensor values as a UTF-8 CSV file into the integration export directory.
+  fields:
+    basename:
+      name: Basename
+      description: Optional name stem for the CSV file; the timestamp suffix is always appended.
+      required: false
+      selector:
+        text:
+import_csv:
+  name: Import Abstractor Values (CSV)
+  description: Applies abstracted values from a CSV file in the export directory (xor content) to matching live sensors.
+  fields:
+    filename:
+      name: File
+      description: Plain file name inside the integration export directory. Provide either this or content.
+      required: false
+      selector:
+        text:
+    content:
+      name: CSV content
+      description: Raw CSV text in the abstractor values format. Provide either this or filename.
+      required: false
+      selector:
+        text:

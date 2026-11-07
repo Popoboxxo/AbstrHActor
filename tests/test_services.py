@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import voluptuous as vol
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -416,3 +417,83 @@ async def test_delete_response_contract(hass: HomeAssistant) -> None:
         "history_preserved": False,
     }
     assert subentry.subentry_id not in root_entry.subentries
+
+
+async def test_csv_xor_rejected(hass: HomeAssistant) -> None:
+    """[E5] import_csv: both sources or none are rejected; traversal names too."""
+    await _setup_root(hass)
+
+    with pytest.raises(vol.MultipleInvalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_csv",
+            {"filename": "a.csv", "content": "x"},
+            blocking=True,
+        )
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "import_csv", {}, blocking=True)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_csv",
+            {"filename": "nested/../../etc/passwd"},
+            blocking=True,
+        )
+
+
+async def test_csv_size_cap_fails_loud_service(hass: HomeAssistant) -> None:
+    """[E5] a >2 MiB import is refused with ServiceValidationError, not truncated."""
+    await _setup_root(hass)
+    huge = ("n" * 70 + ";e;p;1.5;kWh;\n") * 40000
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_csv",
+            {"content": huge},
+            blocking=True,
+        )
+
+
+async def test_csv_roundtrip_is_lossless_for_numeric_sensors(
+    hass: HomeAssistant,
+) -> None:
+    """[E5] export writes the live numeric value; re-import of the written
+    file lands bit-identical (repr round-trip) and matches by entity_id."""
+    root_entry = await _setup_root(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+            CONF_LEGACY_UNIQUE_ID: "abstractor_csv_1",
+        },
+        subentry_type=SUBENTRY_TYPE_SENSOR,
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+    await hass.async_block_till_done()
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    coordinator.data[subentry.subentry_id] = 1234.567890123
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "export_csv",
+        {},
+        blocking=True,
+        return_response=True,
+    )
+    assert response["rows"] == 1
+    assert response["bytes"] >= 1
+
+    applied = await hass.services.async_call(
+        DOMAIN,
+        "import_csv",
+        {"filename": response["file"]},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    assert applied["applied"] == ["Abstract power"]
+    assert applied["skipped"] == []
+    assert coordinator.data[subentry.subentry_id] == 1234.567890123

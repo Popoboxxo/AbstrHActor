@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from asyncio import to_thread
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -35,18 +38,23 @@ from .const import (
     CONF_SOURCE_ENTITY_IDS,
     CONF_VOID_SAMPLE_IDS,
     CONFIG_ENTRY_VERSION,
+    CSV_VALUES_DIR_NAME,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     ROOT_ENTRY_TITLE,
     ROOT_UNIQUE_ID,
     SERVICE_DELETE_SENSOR,
+    SERVICE_EXPORT_CSV,
     SERVICE_EXPORT_DATA,
+    SERVICE_IMPORT_CSV,
     SERVICE_IMPORT_DATA,
+    SERVICE_SUMMARY,
     STORAGE_KEY,
     STORAGE_VERSION,
     SUBENTRY_TYPE_SENSOR,
 )
 from .coordinator import AbstractorDataUpdateCoordinator
+from .csv_values import parse, serialize
 from .frontend import async_register_panel, async_unregister_panel
 from .influx_exporter import create_influx_exporter
 from .repository.device_registry import DeviceRegistry
@@ -66,6 +74,17 @@ PLATFORMS: list[str] = [
 ]
 _STORAGE_DATA = "storage"
 IMPORT_SERVICE_SCHEMA = vol.Schema({vol.Required("data"): vol.All(dict, validate_snapshot)})
+# WS-6 E5: exactly-one-source rule for import_csv — EITHER a file already in
+# the values export directory OR raw CSV content, never both (vol.Exclusive
+# group) and never neither (the handler rejects an empty call).
+cv_nonempty_text = vol.All(str, vol.Length(min=1))
+CSV_IMPORT_SCHEMA = vol.Schema(
+    {
+        vol.Exclusive("filename", "csv_source"): cv_nonempty_text,
+        vol.Exclusive("content", "csv_source"): cv_nonempty_text,
+    }
+)
+CSV_EXPORT_SCHEMA = vol.Schema({vol.Optional("basename"): cv_nonempty_text})
 # The sensor to delete is identified by EITHER its subentry_id (the key under
 # the root entry, also listed as `entry_id` per entry in export snapshots) OR
 # its `legacy_unique_id` (the entity's unique_id, visible in the entity
@@ -484,6 +503,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=DELETE_SENSOR_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_EXPORT_CSV,
+            partial(export_csv_service, hass),
+            schema=CSV_EXPORT_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_IMPORT_CSV,
+            partial(import_csv_service, hass),
+            schema=CSV_IMPORT_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     await _save_snapshot(hass)
     await async_register_panel(hass)
     async_register_websocket(hass)
@@ -534,6 +567,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.services.async_remove(DOMAIN, SERVICE_EXPORT_DATA)
                 hass.services.async_remove(DOMAIN, SERVICE_IMPORT_DATA)
                 hass.services.async_remove(DOMAIN, SERVICE_DELETE_SENSOR)
+                hass.services.async_remove(DOMAIN, SERVICE_EXPORT_CSV)
+                hass.services.async_remove(DOMAIN, SERVICE_IMPORT_CSV)
                 await async_unregister_panel(hass)
 
     return unload_ok
@@ -825,3 +860,136 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> dict[
         "device_id": f"{DOMAIN}:{subentry_id}",
         "history_preserved": False,
     }
+
+
+def _async_csv_rows(hass: HomeAssistant, root_entry: ConfigEntry) -> list[dict[str, Any]]:
+    """Build the CSV value rows from the live installation (single source).
+
+    Values come only from the coordinator (`data` + `meta`) and units only
+    from the spec registry — the CSV never invents a second source of truth.
+    """
+    entity_registry = er.async_get(hass)
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    values = (coordinator.data or {}) if coordinator else {}
+    meta = (coordinator.meta or {}) if coordinator else {}
+    rows: list[dict[str, Any]] = []
+    for subentry_id, subentry in sorted(root_entry.subentries.items()):
+        device_type = subentry.data.get(CONF_DEVICE_TYPE) or "power"
+        spec = SPEC_REGISTRY.try_get(device_type)
+        pinned = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or subentry.unique_id
+        entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, pinned) if pinned else None
+        entry_meta = meta.get(subentry_id)
+        rows.append(
+            {
+                "logical_name": subentry.title or f"Abstract {device_type}",
+                "entity_id": entity_id or "",
+                "device_type": device_type,
+                "value": values.get(subentry_id),
+                "unit": spec.unit if spec else None,
+                "updated_at": entry_meta.updated_at if entry_meta else None,
+            }
+        )
+    return rows
+
+
+async def export_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+    """Write the current abstracted values as CSV into the export directory.
+    Registered with ``SupportsResponse.ONLY``: the flat response contract is
+    ``{directory, file, bytes, rows}``. The 2 MiB cap is enforced loudly — a
+    payload above the cap raises instead of being truncated.
+    """
+    root_entry = _async_root_entry(hass)
+    if root_entry is None:
+        raise HomeAssistantError("Abstractor root config entry does not exist; nothing to export")
+    rows = _async_csv_rows(hass, root_entry)
+    try:
+        text = serialize(rows)
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
+    raw_basename = call.data.get("basename") if call.data else None
+    basename = (
+        "".join(ch for ch in (raw_basename or "abstractor-values") if ch.isalnum() or ch in "._-")
+        or "abstractor-values"
+    )
+    filename = f"{basename}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.csv"
+    directory = Path(str(hass.config.config_dir)).joinpath(CSV_VALUES_DIR_NAME)
+
+    def _write_csv() -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / filename
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    path = await to_thread(_write_csv)
+    return {"directory": str(directory), "file": filename, "bytes": len(text.encode("utf-8")), "rows": len(rows)}
+
+
+async def import_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+    """Import abstracted values from a CSV file or raw CSV content.
+
+    Source rule is enforced by the service schema (``filename`` xor
+    ``content``); the handler rejects an empty call. Files are only read
+    from the values export directory — foreign paths are refused. The
+    2 MiB UTF-8 cap fails loud, never truncated.
+
+    The flat response contract (``SupportsResponse.OPTIONAL``) is
+    ``{applied[], skipped[], errors[]}``: rows that updated a live subentry
+    ``logical_name`` go to ``applied``, unmatched rows go to ``skipped`` and
+    ``errors`` holds reason texts capped at 20 entries (no raw values).
+    Values overwrite only the coordinator's last-known value — the next
+    poll replaces them, and no clock state is fabricated (D-8).
+    """
+    root_entry = _async_root_entry(hass)
+    if root_entry is None:
+        raise HomeAssistantError("Abstractor root config entry does not exist; nothing to import")
+    if not call.data:
+        raise ServiceValidationError("Provide either 'filename' or 'content' for import_csv")
+
+    directory = Path(str(hass.config.config_dir)).joinpath(CSV_VALUES_DIR_NAME)
+    filename = call.data.get("filename")
+    if filename is not None:
+        if "/" in filename or "\\" in filename or filename.startswith("."):
+            raise ServiceValidationError("import_csv accepts only plain file names from the export directory")
+        try:
+            text = await to_thread((directory / filename).read_text, "utf-8")
+        except OSError as err:
+            raise ServiceValidationError(f"export file {filename!r} is not readable: {err}") from err
+    else:
+        text = str(call.data["content"])
+
+    try:
+        rows = parse(text)
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
+
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    if coordinator is None:
+        raise ServiceValidationError("no Abstractor coordinator present; values cannot be applied")
+
+    entity_registry = er.async_get(hass)
+    by_entity_id: dict[str, str] = {}
+    by_logical_name: dict[str, str] = {}
+    for subentry_id, subentry in root_entry.subentries.items():
+        pinned = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or subentry.unique_id
+        if pinned:
+            entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, pinned)
+            if entity_id:
+                by_entity_id[entity_id] = subentry_id
+        logical_name = subentry.title or f"Abstract {subentry.data.get(CONF_DEVICE_TYPE) or 'power'}"
+        by_logical_name.setdefault(logical_name, subentry_id)
+
+    applied: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
+    for row in rows:
+        subentry_id = by_entity_id.get(row["entity_id"]) if row["entity_id"] else None
+        if subentry_id is None:
+            subentry_id = by_logical_name.get(row["logical_name"])
+        if subentry_id is None:
+            skipped.append(str(row["logical_name"]))
+            if len(errors) < 20:
+                errors.append(f"no live subentry matches {row['logical_name']}")
+            continue
+        coordinator.data[subentry_id] = row["value"]
+        applied.append(str(row["logical_name"]))
+    return {"applied": applied, "skipped": skipped, "errors": errors}
