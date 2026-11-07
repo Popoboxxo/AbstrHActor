@@ -45,12 +45,31 @@ async def test_ws_get_subentries_empty_when_no_root() -> None:
     connection.send_result.assert_called_once_with(42, {"subentries": []})
 
 
-async def test_ws_get_subentries_rejects_non_admin() -> None:
-    hass = _hass()
-    connection = SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
-    await websocket.ws_get_subentries.__wrapped__(hass, connection, {"id": 5})
-    connection.send_error.assert_called_once()
-    connection.send_result.assert_not_called()
+async def test_ws_get_subentries_nonadmin_reads_redacted_rows() -> None:
+    """WS-3: read path open to every user; identity keys redacted (D-5)."""
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={
+                    "device_type": "power",
+                    "source_entity_id": "sensor.x",
+                    "legacy_unique_id": "legacy-hyper",
+                    "device_group_id": "hyper2000_eg",
+                },
+                title="t",
+                unique_id="u",
+            )
+        }
+    )
+    hass = _hass_cfg(root)
+    connection = _readonly_connection()
+    await websocket.ws_get_subentries.__wrapped__(hass, connection, {"id": 6})
+    connection.send_error.assert_not_called()
+    rows = connection.send_result.call_args.args[1]["subentries"]
+    assert len(rows) == 1
+    assert rows[0]["legacy_unique_id"] is None
+    assert rows[0]["device_group_id"] is None
+    assert rows[0]["subentry_id"] == "sub-1"
 
 
 # --- write commands (M7) --------------------------------------------------
@@ -58,6 +77,11 @@ async def test_ws_get_subentries_rejects_non_admin() -> None:
 
 def _admin_connection():
     return SimpleNamespace(user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock())
+
+
+def _readonly_connection():
+    """Ordinary user connection: read paths must work, writes must not."""
+    return SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
 
 
 def _root(subentries=None, entry_id="root-1", options=None):
@@ -121,12 +145,23 @@ async def test_ws_subentries_subscribe_registers_and_forwards() -> None:
     assert connection.send_event.call_args.args[0] == 20
 
 
-async def test_ws_subentries_subscribe_rejects_non_admin() -> None:
+async def test_ws_subentries_subscribe_opens_read_for_nonadmin() -> None:
+    """WS-3: the subscription listener is a read path — open, not rejected."""
     hass = _hass_cfg(_root())
-    connection = SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
+    connection = SimpleNamespace(
+        user=SimpleNamespace(is_admin=False),
+        send_result=Mock(),
+        send_error=Mock(),
+        send_event=Mock(),
+        subscriptions={},
+    )
     await websocket.ws_subentries_subscribe.__wrapped__(hass, connection, {"id": 21})
-    connection.send_error.assert_called_once()
-    connection.send_result.assert_not_called()
+    connection.send_error.assert_not_called()
+    connection.send_result.assert_called_once_with(21)
+    # Immediate snapshot push (subscribeMessage only delivers events).
+    connection.send_event.assert_called_once()
+    event_payload = connection.send_event.call_args.args[1]
+    assert event_payload["subentries"] == []
 
 
 def test_validate_device_mapping_is_read_only(monkeypatch) -> None:
@@ -461,6 +496,7 @@ def test_ws_command_table_matches_registrations() -> None:
         "ws_get_subentries",
         "ws_yaml_scan",
         "ws_get_types",
+        "ws_options_read",
     }
     assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "subscribe"} == {"ws_subentries_subscribe"}
 
@@ -483,3 +519,66 @@ async def test_ws_logical_rename_without_rename_entity_skips_registry(monkeypatc
 
     assert called == []
     assert connection.send_result.call_args.args[1]["renamed"] is True
+
+
+async def test_ws_yaml_scan_reports_template_rows(tmp_path) -> None:
+    """WS-3: the Migrate tab scan is real, not a placeholder."""
+    (tmp_path / "templates.yaml").write_text(
+        "template:\n"
+        "  sensors:\n"
+        "    - name: Hyper2000 EG Aktuelle Leistung\n"
+        "      unique_id: hyper2000_eg_power_tpl\n"
+        "      unit_of_measurement: W\n"
+        "      entity_1:\n"
+        "        entity_id: sensor.shelly_power\n"
+        "        mapping: raw\n"
+        "    - name: OG Gesamtverbrauch\n"
+        "      entity_1:\n"
+        "        entity_id: sensor.wh_meter\n"
+        "utility_meter:\n"
+        "  source_aux:\n"
+        "    - name: Ignored Meter\n"
+        "      unique_id: meter_x\n",
+        encoding="utf-8",
+    )
+    hass = _hass_cfg(_root())
+    hass.config_dir = str(tmp_path)
+    connection = _readonly_connection()
+    await websocket.ws_yaml_scan.__wrapped__(hass, connection, {"id": 31})
+    payload = connection.send_result.call_args.args[1]
+    assert payload["scanned_paths"] == [str(tmp_path / "templates.yaml")]
+    rows = payload["sensors"]
+    assert len(rows) == 2
+    assert rows[0]["unique_id"] == "hyper2000_eg_power_tpl"
+    assert rows[0]["history_preservable"] is True
+    assert rows[0]["suggested_object_id"] == "abstractor_hyper2000_eg_aktuelle_leistung"
+    assert rows[1]["unique_id"] is None
+    assert any("unique_id" in blocker for blocker in rows[1]["blockers"])
+    assert not any(row["unique_id"] == "meter_x" for row in rows)
+
+
+async def test_ws_options_read_redacts_token_for_nonadmin() -> None:
+    """Settings read is open, but the exporter token stays admin-only."""
+    root = _root(options={"poll_interval": 30, "influx_token": "s3cr3t"})
+    hass = _hass_cfg(root)
+    connection = _readonly_connection()
+    await websocket.ws_options_read.__wrapped__(hass, connection, {"id": 32})
+    assert connection.send_result.call_args.args[1] == {"options": {"poll_interval": 30}}
+
+
+async def test_ws_options_read_shows_token_to_admin() -> None:
+    root = _root(options={"poll_interval": 30, "influx_token": "s3cr3t"})
+    hass = _hass_cfg(root)
+    connection = _admin_connection()
+    await websocket.ws_options_read.__wrapped__(hass, connection, {"id": 33})
+    assert connection.send_result.call_args.args[1] == {"options": {"poll_interval": 30, "influx_token": "s3cr3t"}}
+
+
+async def test_ws_write_still_rejects_nonadmin_after_read_opening() -> None:
+    """WS-3 opened the READ paths; the WRITE gates must not leak with them."""
+    root = _root({"sub-1": SimpleNamespace(data={"device_type": "power"}, title="t", unique_id="u")})
+    hass = _hass_cfg(root)
+    connection = _readonly_connection()
+    await websocket.ws_subentry_delete.__wrapped__(hass, connection, {"id": 34, "subentry_id": "sub-1"})
+    connection.send_error.assert_called_once()
+    hass.config_entries.async_remove_subentry.assert_not_called()

@@ -12,6 +12,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from custom_components.abstractor.config_flow import (
     _build_new_subentry_data,
@@ -23,6 +24,7 @@ from custom_components.abstractor.const import (
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
     CONF_ENTITY_NAME,
+    CONF_INFLUX_TOKEN,
     CONF_LEGACY_UNIQUE_ID,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
@@ -31,6 +33,7 @@ from custom_components.abstractor.const import (
     ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
     WS_GET_SUBENTRIES,
+    WS_OPTIONS_READ,
     WS_SUBSCRIBE_SUBENTRIES,
     WS_YAML_SCAN,
 )
@@ -39,6 +42,7 @@ from custom_components.abstractor.schema import (
     build_subentry_validator,
 )
 from custom_components.abstractor.specs import SPEC_REGISTRY
+from custom_components.abstractor.yaml_scan import scan_config_dir
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +55,7 @@ WS_COMMAND_TABLE: dict[str, str] = {
     "ws_subentries_subscribe": "subscribe",
     "ws_yaml_scan": "read",
     "ws_get_types": "read",
+    "ws_options_read": "read",
     "ws_subentry_create": "write",
     "ws_subentry_update": "write",
     "ws_subentry_delete": "write",
@@ -87,6 +92,23 @@ def _require_admin(connection, msg) -> bool:
         return True
     connection.send_error(msg["id"], "not_allowed", "Admin privileges required")
     return False
+
+
+def _is_admin(connection) -> bool:
+    """Gate-free admin check for read-path DECISIONS (no error side effect)."""
+    return bool(getattr(getattr(connection, "user", None), "is_admin", False))
+
+
+# WS-3 read redaction: identity material that only matters for the admin
+# edit/migration paths must not leak to ordinary users (decision D-5); the
+# panel renders them as empty. Write gates still use ``_require_admin``.
+READ_REDACTED_KEYS = ("legacy_unique_id", "device_group_id")
+
+
+def _redact_rows(rows: list[dict], admin: bool) -> list[dict]:
+    if admin:
+        return rows
+    return [{k: (None if k in READ_REDACTED_KEYS else v) for k, v in row.items()} for row in rows]
 
 
 def _async_root_entry(hass: HomeAssistant):
@@ -165,9 +187,13 @@ def _build_subentries(hass):
 @websocket_api.websocket_command({vol.Required("type"): WS_GET_SUBENTRIES})
 @websocket_api.async_response
 async def ws_get_subentries(hass, connection, msg) -> None:
-    if not _require_admin(connection, msg):
-        return
-    connection.send_result(msg["id"], {"subentries": _build_subentries(hass)})
+    """One-shot read of the subentry list (WS-3: visible to every user).
+
+    UF-04: the admin gate made the panel render an empty surface for
+    ordinary users. Read paths are now open; identity keys are redacted
+    server-side for non-admins (single source of truth, decision D-5).
+    """
+    connection.send_result(msg["id"], {"subentries": _redact_rows(_build_subentries(hass), _is_admin(connection))})
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_SUBSCRIBE_SUBENTRIES})
@@ -175,18 +201,18 @@ async def ws_get_subentries(hass, connection, msg) -> None:
 async def ws_subentries_subscribe(hass, connection, msg) -> None:
     """Push the subentry list on every coordinator update.
 
-    Read-only and admin-gated like the one-shot ``abstractor/subentries``. The
-    coordinator is reused across config-entry reloads (see ``__init__.py``), so
-    this listener survives the reload that every subentry add/remove triggers
+    Read-only and open to every user like the one-shot
+    ``abstractor/subentries`` (WS-3); non-admins get the same redacted rows.
+    The coordinator is reused across config-entry reloads (see ``__init__.py``),
+    so this listener survives the reload that every subentry add/remove triggers
     and a write is reflected without the panel polling.
     """
-    if not _require_admin(connection, msg):
-        return
+    admin = _is_admin(connection)
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
 
     @callback
     def _forward() -> None:
-        connection.send_event(msg["id"], {"subentries": _build_subentries(hass)})
+        connection.send_event(msg["id"], {"subentries": _redact_rows(_build_subentries(hass), admin)})
 
     if coordinator is not None:
         connection.subscriptions[msg["id"]] = coordinator.async_add_listener(_forward)
@@ -445,8 +471,27 @@ async def ws_logical_rename(hass, connection, msg) -> None:
 @websocket_api.websocket_command({vol.Required("type"): WS_YAML_SCAN})
 @websocket_api.async_response
 async def ws_yaml_scan(hass, connection, msg) -> None:
-    """Read-only placeholder scan result for the Migrate tab."""
-    connection.send_result(msg["id"], {"sensors": []})
+    """Read-only scan of hand-written ``template:`` sensor packages (UF-05).
+
+    Scans the config root's top-level ``*.yaml`` files (never ``data/`` or
+    secret files) and reports migration-candidate rows for the Migrate tab.
+    Open to every user like the other read paths; it exposes only config the
+    user can already see.
+    """
+    try:
+        rows, scanned = scan_config_dir(str(hass.config_dir))
+    except OSError as exc:
+        _LOGGER.error("Abstractor YAML scan failed: %s", exc)
+        connection.send_error(msg["id"], "invalid", f"YAML scan failed: {exc}")
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "sensors": rows,
+            "scanned_paths": scanned,
+            "scanned_at": dt_util.utcnow().isoformat(),
+        },
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): "abstractor/types"})
@@ -454,9 +499,26 @@ async def ws_yaml_scan(hass, connection, msg) -> None:
 async def ws_get_types(hass, connection, msg) -> None:
     """Serve the shipped type catalogue (WS-2: one source of truth for the
     panel — the JS must not hardcode a list that can drift from this)."""
-    if not _require_admin(connection, msg):
-        return
     connection.send_result(msg["id"], _build_type_catalogue())
+
+
+@websocket_api.websocket_command({vol.Required("type"): WS_OPTIONS_READ})
+@websocket_api.async_response
+async def ws_options_read(hass, connection, msg) -> None:
+    """Read the root entry's options (WS-3: open read with credential redaction).
+
+    The Settings tab must show the current poll interval etc. without an
+    admin round-trip (UF-04 family). Exporter credentials (``influx_token``)
+    are only visible to admins — a user may never read back their own secret.
+    """
+    root_entry = _async_root_entry(hass)
+    if root_entry is None:
+        connection.send_error(msg["id"], "not_found", "Abstractor root entry not found")
+        return
+    options = dict(getattr(root_entry, "options", None) or {})
+    if not _is_admin(connection):
+        options.pop(CONF_INFLUX_TOKEN, None)
+    connection.send_result(msg["id"], {"options": options})
 
 
 def _build_type_catalogue() -> dict:
@@ -493,6 +555,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_subentry_delete,
         ws_options_update,
         ws_logical_rename,
+        ws_options_read,
     )
     registered = {fn.__name__ for fn in commands}
     if registered != set(WS_COMMAND_TABLE):

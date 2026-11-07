@@ -16,6 +16,7 @@ verifies/finishes any remaining steps.
 Usage:
     python scripts/e2e_bootstrap.py [--base-url http://localhost:8123]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,6 +26,32 @@ import requests
 
 USERNAME = "e2e"
 PASSWORD = "e2e-bootstrap-password-not-a-secret"
+READONLY_USERNAME = "e2e-reader"
+
+
+def _ensure_readonly_user(base_url: str, access_token: str) -> None:
+    """Create the second, NON-admin user used by the admin-gate E2E tests.
+
+    Idempotent: the users list is consulted first (admin module API), so a
+    re-run against an onboarded instance does not create a duplicate. Fails
+    loudly here — a half-bootstrapped reader would silently skew the gate
+    tests instead of reporting a broken fixture.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    listing = requests.get(f"{base_url}/api/manager/config/users/get", headers=headers, timeout=10)
+    listing.raise_for_status()
+    names = {u.get("name") for u in listing.json().get("users", [])}
+    if READONLY_USERNAME in names:
+        return
+    resp = requests.post(
+        f"{base_url}/api/auth/create",
+        headers=headers,
+        json={"name": READONLY_USERNAME, "password": PASSWORD, "group": None},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    # The create response hands out the new user's auth_string; the browser
+    # tests log in with username/password instead, so it is not stored.
 
 
 def _client_id(base_url: str) -> str:
@@ -128,9 +155,7 @@ def _finish_remaining_onboarding_steps(base_url: str, access_token: str) -> str:
     done = {s["step"] for s in status if s["done"]}
 
     if "core_config" not in done:
-        requests.post(
-            f"{base_url}/api/onboarding/core_config", headers=headers, timeout=10
-        ).raise_for_status()
+        requests.post(f"{base_url}/api/onboarding/core_config", headers=headers, timeout=10).raise_for_status()
 
     if "integration" not in done:
         resp = requests.post(
@@ -147,9 +172,7 @@ def _finish_remaining_onboarding_steps(base_url: str, access_token: str) -> str:
         headers = {"Authorization": f"Bearer {access_token}"}
 
     if "analytics" not in done:
-        requests.post(
-            f"{base_url}/api/onboarding/analytics", headers=headers, timeout=10
-        ).raise_for_status()
+        requests.post(f"{base_url}/api/onboarding/analytics", headers=headers, timeout=10).raise_for_status()
 
     return access_token
 
@@ -158,11 +181,11 @@ def bootstrap(base_url: str) -> str:
     """Return a bearer access token usable for subsequent E2E API/browser auth."""
     auth_code = _create_user(base_url)
     access_token = (
-        _exchange_code_for_token(base_url, auth_code)
-        if auth_code is not None
-        else _login_for_token(base_url)
+        _exchange_code_for_token(base_url, auth_code) if auth_code is not None else _login_for_token(base_url)
     )
-    return _finish_remaining_onboarding_steps(base_url, access_token)
+    access_token = _finish_remaining_onboarding_steps(base_url, access_token)
+    _ensure_readonly_user(base_url, access_token)
+    return access_token
 
 
 def main() -> int:

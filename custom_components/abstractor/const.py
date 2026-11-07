@@ -1,4 +1,5 @@
 """Constants for the Abstractor integration."""
+
 from typing import Any, Final
 
 from .specs import SPEC_REGISTRY
@@ -59,6 +60,7 @@ SERVICE_DELETE_SENSOR: Final = "delete_sensor"
 WS_GET_SUBENTRIES: Final = "abstractor/subentries"
 WS_SUBSCRIBE_SUBENTRIES: Final = "abstractor/subentries/subscribe"
 WS_YAML_SCAN: Final = "abstractor/yaml_scan"
+WS_OPTIONS_READ: Final = "abstractor/options/read"
 
 # Sensor Types
 TYPE_POWER = "power"

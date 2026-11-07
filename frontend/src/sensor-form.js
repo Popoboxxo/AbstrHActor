@@ -220,3 +220,13 @@ export function subentryToRenameFields(subentry) {
     rename_entity: false,
   };
 }
+
+// WS-3: which header action buttons are visible for a user. Pure predicate so
+// it is unit-testable without a browser; the panel renders exactly this set.
+// Base mode (even for admins) only carries the edit-mode toggle itself; write
+// affordances (add/export/import) appear once edit mode is on.
+export function visibleHeaderActions(admin, editMode) {
+  if (!admin) return [];
+  if (!editMode) return ['editToggle'];
+  return ['editToggle', 'addSensor', 'export', 'import'];
+}

@@ -20,6 +20,7 @@ import {
   subentryToRenameFields,
   validateRenameForm,
   validateSensorForm,
+  visibleHeaderActions,
 } from './sensor-form.js';
 
 const TABS = [
@@ -100,6 +101,8 @@ const I18N = {
     'migrate.empty': 'No YAML sensors detected.',
     'migrate.colSource': 'Source',
     'migrate.colStatus': 'Status',
+    'migrate.historyOk': 'history preserved',
+    'migrate.review': 'review required',
   },
   de: {
     'tab.devices': 'Geraete',
@@ -171,6 +174,8 @@ const I18N = {
     'migrate.empty': 'Keine YAML-Sensoren gefunden.',
     'migrate.colSource': 'Quelle',
     'migrate.colStatus': 'Status',
+    'migrate.historyOk': 'Migrationshistory',
+    'migrate.review': 'Review required',
   },
 };
 
@@ -232,6 +237,8 @@ class AbstractorPanel extends HTMLElement {
     this._modalPickers = [];
     this._subscribed = false;
     this._unsub = null;
+    this._optionsLoaded = false;
+    this._options = null;
     this._store.subscribe(() => this._render());
   }
 
@@ -263,7 +270,6 @@ class AbstractorPanel extends HTMLElement {
 
   async _fetchSubentries(force) {
     if (!this._hass || !this._hass.callWS) return;
-    if (!this._store.state.admin) return;
     const now = Date.now();
     if (!force && this._store.state.loading) return;
     if (!force && this._store.state.loaded && now - this._store.state.lastFetchAt < 1500) return;
@@ -293,7 +299,6 @@ class AbstractorPanel extends HTMLElement {
     // subscription is available) fall back to the one-shot fetch so the panel
     // always paints its first frame.
     if (this._subscribed && this._store.state.loaded) return;
-    if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
     const s = this._store.state;
     const stale = Date.now() - s.lastFetchAt > 10000;
     if (!s.loading && (!s.loaded || stale)) {
@@ -303,8 +308,7 @@ class AbstractorPanel extends HTMLElement {
 
   _ensureSubscription() {
     if (this._subscribed) return;
-    if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
-    if (!this._hass.connection || !this._hass.connection.subscribeMessage) return;
+    if (!this._hass || !this._hass.connection || !this._hass.connection.subscribeMessage) return;
     this._subscribed = true;
     this._store.setState({ loading: true, error: '' });
     this._hass.connection
@@ -413,9 +417,19 @@ class AbstractorPanel extends HTMLElement {
   _render() {
     if (!this._hass) return;
     const s = this._store.state;
-    const statusText = (!s.admin)
-      ? this._t('admin.required')
-      : (s.loaded ? `${s.subentries.length} ${this._t('status.sensors')}` : this._t('status.loading'));
+    // WS-3: read visibility — ordinary users see the sensor count, too.
+    const statusText = s.loaded ? `${s.subentries.length} ${this._t('status.sensors')}` : this._t('status.loading');
+    // WS-3 (UF-06-adjacent): only the actions a user may actually use render.
+    const actions = new Set(visibleHeaderActions(s.admin, s.editMode));
+    const editToggleBtn = actions.has('editToggle')
+      ? `<button type="button" class="tab-toggle">${s.editMode ? this._t('action.disableEdit') : this._t('action.editMode')}</button>`
+      : '';
+    const addBtn = actions.has('addSensor') ? `<button type="button" class="add-sensor-button">${this._t('action.addSensor')}</button>` : '';
+    const exportBtn = actions.has('export') ? `<button type="button" class="export-button">${this._t('action.export')}</button>` : '';
+    const importBtn = actions.has('import')
+      ? `<button type="button" class="import-button">${this._t('action.import')}</button>`
+      : '';
+    const importInput = actions.has('import') ? `<input type="file" accept="application/json" class="import-file-input" hidden>` : '';
     const html = `
       <style>${this._styles()}</style>
       <div class="header">
@@ -424,11 +438,11 @@ class AbstractorPanel extends HTMLElement {
           <p class="subtitle">${statusText} · ${this._t('subtitle.readOnly')}${s.editMode ? ' · ' + this._t('subtitle.editMode') : ''}</p>
         </div>
         <div class="actions">
-          <button type="button" class="tab-toggle">${s.editMode ? this._t('action.disableEdit') : this._t('action.editMode')}</button>
-          <button type="button" class="add-sensor-button">${this._t('action.addSensor')}</button>
-          <button type="button" class="export-button">${this._t('action.export')}</button>
-          <button type="button" class="import-button">${this._t('action.import')}</button>
-          <input type="file" accept="application/json" class="import-file-input" hidden>
+          ${editToggleBtn}
+          ${addBtn}
+          ${exportBtn}
+          ${importBtn}
+          ${importInput}
         </div>
       </div>
       <div class="tabs">
@@ -453,14 +467,22 @@ class AbstractorPanel extends HTMLElement {
 
 
     // wire header
-    this.shadowRoot.querySelector('.tab-toggle').addEventListener('click', () => this._toggleEditMode());
-    this.shadowRoot.querySelector('.add-sensor-button').addEventListener('click', () => {
-      if (this._store.state.editMode) this._openSensorForm(null);
-      else this._navigate('/config/integrations/integration/abstractor');
-    });
-    this.shadowRoot.querySelector('.export-button').addEventListener('click', () => this._handleExport());
+    const tabToggle = this.shadowRoot.querySelector('.tab-toggle');
+    if (tabToggle) tabToggle.addEventListener('click', () => this._toggleEditMode());
+    const addSensor = this.shadowRoot.querySelector('.add-sensor-button');
+    if (addSensor) {
+      addSensor.addEventListener('click', () => {
+        if (this._store.state.editMode) this._openSensorForm(null);
+        else this._navigate('/config/integrations/integration/abstractor');
+      });
+    }
+    const exportButton = this.shadowRoot.querySelector('.export-button');
+    if (exportButton) exportButton.addEventListener('click', () => this._handleExport());
     const fileInput = this.shadowRoot.querySelector('.import-file-input');
-    this.shadowRoot.querySelector('.import-button').addEventListener('click', () => { if (fileInput) fileInput.click(); });
+    const importButton = this.shadowRoot.querySelector('.import-button');
+    if (importButton && fileInput) {
+      importButton.addEventListener('click', () => { if (fileInput) fileInput.click(); });
+    }
     if (fileInput) {
       fileInput.addEventListener('change', () => {
         const file = fileInput.files && fileInput.files[0];
@@ -481,6 +503,10 @@ class AbstractorPanel extends HTMLElement {
 
     if (s.activeTab === 'migrate' && !this._migrateLoaded) {
       this._fetchYamlScan();
+    }
+
+    if (s.activeTab === 'settings' && !this._optionsLoaded) {
+      this._fetchOptions();
     }
 
     if (this._detail) {
@@ -564,13 +590,8 @@ class AbstractorPanel extends HTMLElement {
       if (activeFilter === 'problems') return e.health === 'warn' || e.health === 'bad';
       return (e.device_type || '') === activeFilter;
     });
-    if (!s.admin) {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = this._t('admin.required');
-      bodyEl.appendChild(empty);
-      return;
-    }
+    // WS-3: the devices surface renders for every user now (identity rows are
+    // redacted server-side, so they simply stay empty for non-admins).
     if (!s.loaded) {
       const empty = document.createElement('div');
       empty.className = 'empty';
@@ -629,7 +650,7 @@ class AbstractorPanel extends HTMLElement {
         if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
         else this._navigate('/config/integrations/integration/abstractor');
       });
-      card.appendChild(editButton);
+      if (s.admin) card.appendChild(editButton);
 
       if (s.editMode) {
         const configureButton = document.createElement('button');
@@ -704,20 +725,32 @@ class AbstractorPanel extends HTMLElement {
     hint.className = 'hint';
     hint.textContent = this._t('settings.hint');
     bodyEl.appendChild(hint);
+    // WS-3: render the live options payload (server-redacted for non-admins)
+    // instead of only pointing at the config screen.
+    if (this._optionsLoaded && this._options) {
+      for (const [key, value] of Object.entries(this._options)) {
+        if (typeof value === 'object') continue;
+        const line = document.createElement('p');
+        line.className = 'hint';
+        line.textContent = `${key}: ${value}`;
+        bodyEl.appendChild(line);
+      }
+    }
     const actions = document.createElement('div');
     actions.className = 'actions';
     actions.style.marginTop = '8px';
-    const exportBtn = document.createElement('button');
-    exportBtn.type = 'button';
-    exportBtn.textContent = this._t('action.export');
-    exportBtn.addEventListener('click', () => this._handleExport());
-    actions.appendChild(exportBtn);
-    const importBtn = document.createElement('button');
-    importBtn.type = 'button';
-    importBtn.textContent = this._t('action.import');
-    importBtn.disabled = !this._store.state.editMode;
-    importBtn.addEventListener('click', () => this._triggerImport());
-    actions.appendChild(importBtn);
+    if (this._store.state.editMode) {
+      const exportBtn = document.createElement('button');
+      exportBtn.type = 'button';
+      exportBtn.textContent = this._t('action.export');
+      exportBtn.addEventListener('click', () => this._handleExport());
+      actions.appendChild(exportBtn);
+      const importBtn = document.createElement('button');
+      importBtn.type = 'button';
+      importBtn.textContent = this._t('action.import');
+      importBtn.addEventListener('click', () => this._triggerImport());
+      actions.appendChild(importBtn);
+    }
     bodyEl.appendChild(actions);
   }
 
@@ -747,8 +780,16 @@ class AbstractorPanel extends HTMLElement {
     } else {
       for (const e of sensors) {
         const row = tb.insertRow();
-        row.insertCell().textContent = String((e && (e.source || e.entity_id)) || '');
-        row.insertCell().textContent = String((e && e.status) || 'pending');
+        const source = e
+          ? (e.suggested_logical_name || e.unique_id || e.source || e.entity_id || '')
+          : '';
+        row.insertCell().textContent = String(source);
+        let status;
+        if (e && e.status) status = e.status;
+        else if (e && e.history_preservable) status = this._t('migrate.historyOk');
+        else if (e && Array.isArray(e.blockers) && e.blockers.length) status = e.blockers.join('; ');
+        else status = this._t('migrate.review');
+        row.insertCell().textContent = String(status);
       }
     }
   }
@@ -763,6 +804,19 @@ class AbstractorPanel extends HTMLElement {
     } catch (err) {
       this._showError('YAML scan failed: ' + (err && err.message ? err.message : err));
       this._migrateLoaded = true;
+    }
+  }
+
+  async _fetchOptions() {
+    if (!this._hass || !this._hass.callWS) return;
+    try {
+      const res = await this._hass.callWS({ type: 'abstractor/options/read' });
+      this._options = (res && res.options) || {};
+      this._optionsLoaded = true;
+      this._render();
+    } catch (err) {
+      // Options are a progressive enhancement; the hint text alone is enough.
+      this._optionsLoaded = true;
     }
   }
 

@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from scripts.e2e_bootstrap import USERNAME, PASSWORD, bootstrap
+from scripts.e2e_bootstrap import PASSWORD, READONLY_USERNAME, USERNAME, bootstrap
 
 
 @pytest.fixture(scope="session")
@@ -80,4 +80,25 @@ def logged_in_page(page, hass_base_url, hass_credentials, hass_bearer_token):
     password_field.press("Enter")
     page.wait_for_load_state("networkidle")
 
+    return page
+
+
+@pytest.fixture
+def readonly_page(page, hass_base_url):
+    """A Playwright page authenticated as the NON-admin reader user (WS-3).
+
+    Mirrors logged_in_page but with the second user the bootstrap creates.
+    Tests that request this fixture must NOT also request logged_in_page:
+    both share the per-test plugin `page`, so logging in twice in one test
+    would fight over a single browser context.
+    """
+    page.set_default_timeout(60000)
+    page.goto(hass_base_url)
+    username_field = page.locator("input[name='username']")
+    username_field.wait_for(state="visible", timeout=15000)
+    username_field.fill(READONLY_USERNAME)
+    password_field = page.locator("input[name='password']")
+    password_field.fill(PASSWORD)
+    password_field.press("Enter")
+    page.wait_for_load_state("networkidle")
     return page
