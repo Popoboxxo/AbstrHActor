@@ -38,9 +38,7 @@ async def test_register_websocket_registers_commands_without_token() -> None:
 
 async def test_ws_get_subentries_empty_when_no_root() -> None:
     hass = _hass()
-    connection = SimpleNamespace(
-        user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock()
-    )
+    connection = SimpleNamespace(user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock())
     # __wrapped__ bypasses the async_response scheduler decorator, which needs a
     # real hass to create a background task.
     await websocket.ws_get_subentries.__wrapped__(hass, connection, {"id": 42})
@@ -49,9 +47,7 @@ async def test_ws_get_subentries_empty_when_no_root() -> None:
 
 async def test_ws_get_subentries_rejects_non_admin() -> None:
     hass = _hass()
-    connection = SimpleNamespace(
-        user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock()
-    )
+    connection = SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
     await websocket.ws_get_subentries.__wrapped__(hass, connection, {"id": 5})
     connection.send_error.assert_called_once()
     connection.send_result.assert_not_called()
@@ -61,27 +57,22 @@ async def test_ws_get_subentries_rejects_non_admin() -> None:
 
 
 def _admin_connection():
-    return SimpleNamespace(
-        user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock()
-    )
+    return SimpleNamespace(user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock())
 
 
-def _root(subentries=None, entry_id="root-1"):
+def _root(subentries=None, entry_id="root-1", options=None):
     return SimpleNamespace(
         entry_id=entry_id,
         unique_id="abstractor_root",
         subentries=dict(subentries or {}),
+        options=dict(options or {}),
     )
 
 
 def _hass_cfg(root_entry, coordinator=None):
     entries = [root_entry] if root_entry is not None else []
     return SimpleNamespace(
-        data=(
-            {"abstractor": {"coordinator": coordinator}}
-            if coordinator is not None
-            else {}
-        ),
+        data=({"abstractor": {"coordinator": coordinator}} if coordinator is not None else {}),
         config_entries=SimpleNamespace(
             async_entries=lambda domain: entries,
             async_add_subentry=Mock(),
@@ -132,9 +123,7 @@ async def test_ws_subentries_subscribe_registers_and_forwards() -> None:
 
 async def test_ws_subentries_subscribe_rejects_non_admin() -> None:
     hass = _hass_cfg(_root())
-    connection = SimpleNamespace(
-        user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock()
-    )
+    connection = SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
     await websocket.ws_subentries_subscribe.__wrapped__(hass, connection, {"id": 21})
     connection.send_error.assert_called_once()
     connection.send_result.assert_not_called()
@@ -145,24 +134,18 @@ def test_validate_device_mapping_is_read_only(monkeypatch) -> None:
     # No mapping intent -> nothing to validate, no registry access.
     assert websocket._validate_device_mapping(hass, {}) == {}
 
-    monkeypatch.setattr(
-        websocket, "_device_group_id_for_device", lambda _hass, _dev: None
-    )
-    assert websocket._validate_device_mapping(
-        hass, {"target_device_id": "dev-1"}
-    ) == {"base": "device_mapping_conflict"}
+    monkeypatch.setattr(websocket, "_device_group_id_for_device", lambda _hass, _dev: None)
+    assert websocket._validate_device_mapping(hass, {"target_device_id": "dev-1"}) == {
+        "base": "device_mapping_conflict"
+    }
 
-    monkeypatch.setattr(
-        websocket, "_device_group_id_for_device", lambda _hass, _dev: "group-1"
-    )
+    monkeypatch.setattr(websocket, "_device_group_id_for_device", lambda _hass, _dev: "group-1")
     assert websocket._validate_device_mapping(hass, {"target_device_id": "dev-1"}) == {}
 
 
 async def test_ws_subentry_create_requires_admin() -> None:
     hass = _hass_cfg(_root())
-    connection = SimpleNamespace(
-        user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock()
-    )
+    connection = SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
     await websocket.ws_subentry_create.__wrapped__(
         hass, connection, {"id": 1, "data": {"source_entity_id": "sensor.x"}}
     )
@@ -204,9 +187,7 @@ async def test_ws_subentry_create_happy_path(monkeypatch) -> None:
             "legacy_unique_id": "uid-1",
         },
     )
-    monkeypatch.setattr(
-        websocket, "ConfigSubentry", lambda **kwargs: SimpleNamespace(**kwargs)
-    )
+    monkeypatch.setattr(websocket, "ConfigSubentry", lambda **kwargs: SimpleNamespace(**kwargs))
     await websocket.ws_subentry_create.__wrapped__(
         hass, connection, {"id": 4, "data": {"source_entity_id": "sensor.x"}}
     )
@@ -219,9 +200,7 @@ async def test_ws_subentry_delete_happy_path() -> None:
     root = _root({"sub-1": SimpleNamespace(data={}, title="t")})
     hass = _hass_cfg(root)
     connection = _admin_connection()
-    await websocket.ws_subentry_delete.__wrapped__(
-        hass, connection, {"id": 5, "subentry_id": "sub-1"}
-    )
+    await websocket.ws_subentry_delete.__wrapped__(hass, connection, {"id": 5, "subentry_id": "sub-1"})
     hass.config_entries.async_remove_subentry.assert_called_once()
     connection.send_result.assert_called_once_with(5, {"deleted": True})
 
@@ -229,9 +208,7 @@ async def test_ws_subentry_delete_happy_path() -> None:
 async def test_ws_subentry_update_not_found() -> None:
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_subentry_update.__wrapped__(
-        hass, connection, {"id": 6, "subentry_id": "missing", "data": {}}
-    )
+    await websocket.ws_subentry_update.__wrapped__(hass, connection, {"id": 6, "subentry_id": "missing", "data": {}})
     connection.send_error.assert_called_once()
     hass.config_entries.async_update_subentry.assert_not_called()
 
@@ -239,9 +216,7 @@ async def test_ws_subentry_update_not_found() -> None:
 async def test_ws_options_update_reloads_root_entry() -> None:
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_options_update.__wrapped__(
-        hass, connection, {"id": 7, "options": {"poll_interval": 30}}
-    )
+    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 7, "options": {"poll_interval": 30}})
     hass.config_entries.async_update_entry.assert_called_once()
     hass.async_create_task.assert_called_once()
     connection.send_result.assert_called_once_with(7, {"updated": True})
@@ -289,18 +264,14 @@ async def test_ws_logical_rename_renames_entity_keeping_platform(monkeypatch) ->
             SimpleNamespace(entity_id="binary_sensor.front_door", config_subentry_id="sub-1")
         ],
         async_get_entity_id=lambda platform, domain, unique_id: None,
-        async_update_entity=lambda entity_id, new_entity_id=None: updated.append(
-            (entity_id, new_entity_id)
-        ),
+        async_update_entity=lambda entity_id, new_entity_id=None: updated.append((entity_id, new_entity_id)),
     )
     monkeypatch.setattr(
         websocket,
         "er",
         SimpleNamespace(
             async_get=lambda _hass: registry,
-            async_entries_for_config_entry=lambda reg, entry_id: reg.async_entries_for_config_entry(
-                reg, entry_id
-            ),
+            async_entries_for_config_entry=lambda reg, entry_id: reg.async_entries_for_config_entry(reg, entry_id),
         ),
     )
 
@@ -318,6 +289,133 @@ async def test_ws_logical_rename_renames_entity_keeping_platform(monkeypatch) ->
 
     assert updated == [("binary_sensor.front_door", "binary_sensor.front_door")]
     connection.send_error.assert_not_called()
+
+
+async def test_ws_subentry_create_rejects_bad_aggregation() -> None:
+    """Shared-schema validation rejects bad pipeline values before any write."""
+    hass = _hass_cfg(_root())
+    connection = _admin_connection()
+    await websocket.ws_subentry_create.__wrapped__(
+        hass,
+        connection,
+        {
+            "id": 13,
+            "data": {
+                "source_entity_id": "sensor.x",
+                "device_type": "power",
+                "aggregation": "banana",
+            },
+        },
+    )
+    connection.send_error.assert_called_once()
+    assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
+    hass.config_entries.async_add_subentry.assert_not_called()
+
+
+async def test_ws_subentry_create_rejects_unknown_key() -> None:
+    """Unknown payload keys never reach persisted subentry data (UF-03)."""
+    hass = _hass_cfg(_root())
+    connection = _admin_connection()
+    await websocket.ws_subentry_create.__wrapped__(
+        hass,
+        connection,
+        {"id": 14, "data": {"source_entity_id": "sensor.x", "bogus_key": True}},
+    )
+    connection.send_error.assert_called_once()
+    assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
+    hass.config_entries.async_add_subentry.assert_not_called()
+
+
+async def test_ws_subentry_update_rejects_legacy_unique_id_change() -> None:
+    """The pinned legacy id can be neither changed nor cleared via the WS."""
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={
+                    "device_type": "power",
+                    "source_entity_id": "sensor.x",
+                    "legacy_unique_id": "pinned-1",
+                },
+                title="t",
+            )
+        }
+    )
+    hass = _hass_cfg(root)
+    connection = _admin_connection()
+    await websocket.ws_subentry_update.__wrapped__(
+        hass,
+        connection,
+        {
+            "id": 15,
+            "subentry_id": "sub-1",
+            "data": {"legacy_unique_id": "other-1", "source_entity_id": "sensor.x"},
+        },
+    )
+    connection.send_error.assert_called_once()
+    assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
+    hass.config_entries.async_update_subentry.assert_not_called()
+
+
+async def test_ws_options_update_rejects_out_of_range_interval() -> None:
+    """Bounds are enforced at the storage boundary, not after the reload."""
+    hass = _hass_cfg(_root())
+    connection = _admin_connection()
+    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 16, "options": {"poll_interval": 999999}})
+    connection.send_error.assert_called_once()
+    assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
+    hass.config_entries.async_update_entry.assert_not_called()
+    hass.async_create_task.assert_not_called()
+
+
+async def test_ws_options_update_rejects_unknown_option_key() -> None:
+    hass = _hass_cfg(_root())
+    connection = _admin_connection()
+    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 17, "options": {"bogus_interval": 3}})
+    connection.send_error.assert_called_once()
+    assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+async def test_ws_options_update_merges_current_options() -> None:
+    """A partial options payload keeps untouched options instead of wiping them."""
+    root = _root(options={"influx_bucket": "keep-me"})
+    hass = _hass_cfg(root)
+    connection = _admin_connection()
+    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 18, "options": {"poll_interval": 5}})
+    hass.config_entries.async_update_entry.assert_called_once()
+    persisted = hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    assert persisted == {"influx_bucket": "keep-me", "poll_interval": 5}
+    assert connection.send_result.call_args.args[1] == {"updated": True}
+
+
+def test_ws_command_table_matches_registrations() -> None:
+    """No drift: the classification table covers exactly the registered commands."""
+    calls = []
+    original = websocket.websocket_api.async_register_command
+
+    def capture(hass, handler):
+        calls.append(handler.__name__)
+
+    websocket.websocket_api.async_register_command = capture
+    try:
+        websocket.async_register_websocket(SimpleNamespace())
+    finally:
+        websocket.websocket_api.async_register_command = original
+
+    assert set(calls) == set(websocket.WS_COMMAND_TABLE)
+    writes = {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "write"}
+    assert writes == {
+        "ws_subentry_create",
+        "ws_subentry_update",
+        "ws_subentry_delete",
+        "ws_options_update",
+        "ws_logical_rename",
+    }
+    assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "read"} == {
+        "ws_get_subentries",
+        "ws_yaml_scan",
+    }
+    assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "subscribe"} == {"ws_subentries_subscribe"}
 
 
 async def test_ws_logical_rename_without_rename_entity_skips_registry(monkeypatch) -> None:

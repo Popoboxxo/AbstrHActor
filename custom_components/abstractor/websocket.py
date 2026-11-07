@@ -1,4 +1,5 @@
 """Websocket API for the Abstractor sidebar panel (Phase UI-1/2)."""
+
 from __future__ import annotations
 
 import logging
@@ -31,9 +32,29 @@ from custom_components.abstractor.const import (
     WS_SUBSCRIBE_SUBENTRIES,
     WS_YAML_SCAN,
 )
+from custom_components.abstractor.schema import (
+    build_options_validator,
+    build_subentry_validator,
+)
 from custom_components.abstractor.specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
+
+# WS-1 task 1.4 (plan): classification of every registered websocket command.
+# Read paths feed the panel; write paths mutate config entries. The table is
+# asserted to match ``async_register_websocket`` registrations (no drift) and
+# drives future gate/redaction decisions (WS-3) from one source of truth.
+WS_COMMAND_TABLE: dict[str, str] = {
+    "ws_get_subentries": "read",
+    "ws_subentries_subscribe": "subscribe",
+    "ws_yaml_scan": "read",
+    "ws_subentry_create": "write",
+    "ws_subentry_update": "write",
+    "ws_subentry_delete": "write",
+    "ws_options_update": "write",
+    "ws_logical_rename": "write",
+}
+WS_ERROR_SCHEMA = "schema_violation"
 
 
 def _validate_device_mapping(hass, user_input, current_data=None):
@@ -67,11 +88,7 @@ def _require_admin(connection, msg) -> bool:
 
 def _async_root_entry(hass: HomeAssistant):
     return next(
-        (
-            entry
-            for entry in hass.config_entries.async_entries(DOMAIN)
-            if entry.unique_id == ROOT_UNIQUE_ID
-        ),
+        (entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.unique_id == ROOT_UNIQUE_ID),
         None,
     )
 
@@ -130,8 +147,7 @@ def _build_subentries(hass):
                 "device_type": data.get(CONF_DEVICE_TYPE, "power"),
                 "logical_name": data.get("logical_name"),
                 "object_id": data.get("object_id"),
-                "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS)
-                or [data.get(CONF_SOURCE_ENTITY_ID)],
+                "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)],
                 "legacy_unique_id": data.get(CONF_LEGACY_UNIQUE_ID),
                 "device_group_id": data.get(CONF_DEVICE_GROUP_ID),
                 "value": value,
@@ -198,9 +214,19 @@ async def ws_subentry_create(hass, connection, msg) -> None:
     requested_type = data.get(CONF_DEVICE_TYPE)
     if requested_type is not None:
         spec = SPEC_REGISTRY.try_get(requested_type)
-        if spec is None or not spec.enabled or spec.platform not in {"sensor", "binary_sensor", "switch", "light", "cover"}:
+        if (
+            spec is None
+            or not spec.enabled
+            or spec.platform not in {"sensor", "binary_sensor", "switch", "light", "cover"}
+        ):
             connection.send_error(msg["id"], "invalid", f"Unsupported device_type: {requested_type}")
             return
+    try:
+        data = build_subentry_validator(requested_type)(data)
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.error("Abstractor WS create schema violation: %s", exc)
+        connection.send_error(msg["id"], WS_ERROR_SCHEMA, str(exc))
+        return
     try:
         errors = _validate_device_mapping(hass, data)
     except Exception as exc:  # noqa: BLE001
@@ -232,7 +258,11 @@ async def ws_subentry_create(hass, connection, msg) -> None:
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "abstractor/subentry/update", vol.Required("subentry_id"): str, vol.Required("data"): dict}
+    {
+        vol.Required("type"): "abstractor/subentry/update",
+        vol.Required("subentry_id"): str,
+        vol.Required("data"): dict,
+    }
 )
 @websocket_api.async_response
 async def ws_subentry_update(hass, connection, msg) -> None:
@@ -253,6 +283,13 @@ async def ws_subentry_update(hass, connection, msg) -> None:
         connection.send_error(msg["id"], "invalid", "At least one source entity is required")
         return
     current = dict(root_entry.subentries[msg["subentry_id"]].data)
+    target_type = data.get(CONF_DEVICE_TYPE) or current.get(CONF_DEVICE_TYPE, "power")
+    try:
+        data = build_subentry_validator(target_type, allow_legacy_unique_id=False)(data)
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.error("Abstractor WS update schema violation: %s", exc)
+        connection.send_error(msg["id"], WS_ERROR_SCHEMA, str(exc))
+        return
     merged = dict(current)
     merged.update(data)
     merged[CONF_SOURCE_ENTITY_IDS] = sources
@@ -267,7 +304,10 @@ async def ws_subentry_update(hass, connection, msg) -> None:
     normalized = _normalize_subentry_data(hass, merged, sources, current)
     try:
         hass.config_entries.async_update_subentry(
-            root_entry, msg["subentry_id"], data=normalized, title=root_entry.subentries[msg["subentry_id"]].title
+            root_entry,
+            msg["subentry_id"],
+            data=normalized,
+            title=root_entry.subentries[msg["subentry_id"]].title,
         )
     except Exception as exc:  # noqa: BLE001
         connection.send_error(msg["id"], "internal_error", str(exc))
@@ -276,7 +316,10 @@ async def ws_subentry_update(hass, connection, msg) -> None:
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "abstractor/subentry/delete", vol.Required("subentry_id"): str}
+    {
+        vol.Required("type"): "abstractor/subentry/delete",
+        vol.Required("subentry_id"): str,
+    }
 )
 @websocket_api.async_response
 async def ws_subentry_delete(hass, connection, msg) -> None:
@@ -294,9 +337,7 @@ async def ws_subentry_delete(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"deleted": True})
 
 
-@websocket_api.websocket_command(
-    {vol.Required("type"): "abstractor/options/update", vol.Required("options"): dict}
-)
+@websocket_api.websocket_command({vol.Required("type"): "abstractor/options/update", vol.Required("options"): dict})
 @websocket_api.async_response
 async def ws_options_update(hass, connection, msg) -> None:
     if not _require_admin(connection, msg):
@@ -305,7 +346,15 @@ async def ws_options_update(hass, connection, msg) -> None:
     if root_entry is None:
         connection.send_error(msg["id"], "not_found", "Abstractor root entry not found")
         return
-    hass.config_entries.async_update_entry(root_entry, options=dict(msg["options"]))
+    try:
+        validated = build_options_validator()(dict(msg["options"]))
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.error("Abstractor WS options schema violation: %s", exc)
+        connection.send_error(msg["id"], WS_ERROR_SCHEMA, str(exc))
+        return
+    current_options = dict(getattr(root_entry, "options", None) or {})
+    merged_options = {**current_options, **validated}
+    hass.config_entries.async_update_entry(root_entry, options=merged_options)
     hass.async_create_task(hass.config_entries.async_reload(root_entry.entry_id))
     connection.send_result(msg["id"], {"updated": True})
 
@@ -341,7 +390,8 @@ async def ws_logical_rename(hass, connection, msg) -> None:
     # together, as decided in the plan.
     group_id = current.get(CONF_DEVICE_GROUP_ID)
     targets = [
-        sid for sid, s in root_entry.subentries.items()
+        sid
+        for sid, s in root_entry.subentries.items()
         if (group_id and s.data.get(CONF_DEVICE_GROUP_ID) == group_id) or (sid == msg["subentry_id"])
     ]
     # If there is no group id, only the current subentry.
@@ -367,17 +417,13 @@ async def ws_logical_rename(hass, connection, msg) -> None:
                 break
         if entity_id is None and subentry.unique_id:
             for platform in ("sensor", "binary_sensor"):
-                entity_id = registry.async_get_entity_id(
-                    platform, DOMAIN, subentry.unique_id
-                )
+                entity_id = registry.async_get_entity_id(platform, DOMAIN, subentry.unique_id)
                 if entity_id:
                     break
         if entity_id is not None:
             domain = entity_id.split(".", 1)[0]
             try:
-                registry.async_update_entity(
-                    entity_id, new_entity_id=f"{domain}.{object_id}"
-                )
+                registry.async_update_entity(entity_id, new_entity_id=f"{domain}.{object_id}")
             except Exception as exc:  # noqa: BLE001
                 connection.send_error(msg["id"], "invalid", str(exc))
                 return
@@ -392,13 +438,30 @@ async def ws_yaml_scan(hass, connection, msg) -> None:
 
 
 def async_register_websocket(hass: HomeAssistant) -> None:
-    # Write commands are authorized solely by the per-command ``_require_admin``
-    # gate; there is intentionally no separate edit-mode session token.
-    websocket_api.async_register_command(hass, ws_get_subentries)
-    websocket_api.async_register_command(hass, ws_subentries_subscribe)
-    websocket_api.async_register_command(hass, ws_subentry_create)
-    websocket_api.async_register_command(hass, ws_subentry_update)
-    websocket_api.async_register_command(hass, ws_subentry_delete)
-    websocket_api.async_register_command(hass, ws_options_update)
-    websocket_api.async_register_command(hass, ws_logical_rename)
-    websocket_api.async_register_command(hass, ws_yaml_scan)
+    """Register every websocket command, cross-checked against the table.
+
+    Write commands are authorized solely by the per-command ``_require_admin``
+    gate; there is intentionally no separate edit-mode session token. The
+    ``WS_COMMAND_TABLE`` classification is asserted against the actual
+    registrations so a new command cannot silently miss its gate/redaction
+    classification (WS-3 builds on that table).
+    """
+    commands = (
+        ws_get_subentries,
+        ws_subentries_subscribe,
+        ws_yaml_scan,
+        ws_subentry_create,
+        ws_subentry_update,
+        ws_subentry_delete,
+        ws_options_update,
+        ws_logical_rename,
+    )
+    registered = {fn.__name__ for fn in commands}
+    if registered != set(WS_COMMAND_TABLE):
+        _LOGGER.error(
+            "Abstractor WS command table drift: %s",
+            sorted(registered ^ set(WS_COMMAND_TABLE)),
+        )
+        raise ValueError("Abstractor websocket command table drift")
+    for fn in commands:
+        websocket_api.async_register_command(hass, fn)
