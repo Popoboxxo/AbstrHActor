@@ -415,10 +415,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # debug notify path a silent no-op.
     coordinator.debug_switch_entity_id = entry.options.get(CONF_DEBUG_SWITCH_ENTITY_ID) or None
     coordinator.notify_entity_id = entry.options.get(CONF_NOTIFY_ENTITY_ID) or None
-    coordinator.void_sample_ids = {
-        str(sample_id)
-        for sample_id in (entry.options.get(CONF_VOID_SAMPLE_IDS) or ())
-    }
+    coordinator.void_sample_ids = {str(sample_id) for sample_id in (entry.options.get(CONF_VOID_SAMPLE_IDS) or ())}
 
     # Polling is per sensor subentry, not per config entry: the root entry
     # itself carries no sensor configuration since device bundling landed.
@@ -478,12 +475,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_IMPORT_DATA,
             partial(import_data_service, hass),
             schema=IMPORT_SERVICE_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
         )
         hass.services.async_register(
             DOMAIN,
             SERVICE_DELETE_SENSOR,
             partial(delete_sensor_service, hass),
             schema=DELETE_SENSOR_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
         )
     await _save_snapshot(hass)
     await async_register_panel(hass)
@@ -631,7 +630,7 @@ async def export_data_service(hass: HomeAssistant, call: ServiceCall) -> dict[st
     return {"snapshot": snapshot}
 
 
-async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
+async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
     """Import a snapshot: persist it and restore missing sensor subentries.
 
     Restore semantics are deliberately conservative — import restores what is
@@ -660,6 +659,13 @@ async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
             exist — there is nothing to attach restored subentries to.
         vol.Invalid: If the payload is not a valid snapshot (raised by
             ``validate_snapshot`` through the service schema).
+
+    Returns:
+        Flat response contract (``SupportsResponse.OPTIONAL`` — only sent when
+        the caller asks for a response): ``recreated`` ids, ``kept`` ids
+        (identity already present, untouched), ``skipped`` ids (no source or
+        id collision) and ``errors`` reason texts capped at 20 entries
+        without raw sensor values.
     """
     payload = validate_snapshot(call.data.get("data"))
     root_entry = _async_root_entry(hass)
@@ -670,11 +676,12 @@ async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> None:
     store = hass.data[DOMAIN][_STORAGE_DATA]
     await store.async_save(payload)
     hass.data[DOMAIN]["stored_snapshot"] = payload
-    created = _async_recreate_subentries(hass, root_entry, payload)
+    summary = _async_recreate_subentries(hass, root_entry, payload)
     _LOGGER.info(
         "Abstractor data import completed; %s sensor subentries restored",
-        len(created),
+        len(summary["recreated"]),
     )
+    return summary
 
 
 @callback
@@ -687,21 +694,32 @@ def _async_root_entry(hass: HomeAssistant) -> ConfigEntry | None:
 
 
 @callback
-def _async_recreate_subentries(hass: HomeAssistant, root_entry: ConfigEntry, payload: Mapping[str, Any]) -> list[str]:
+def _async_recreate_subentries(
+    hass: HomeAssistant, root_entry: ConfigEntry, payload: Mapping[str, Any]
+) -> dict[str, list[str]]:
     """Recreate sensor subentries that the snapshot has but the root lacks.
+
+    Returns a structured, value-free summary (the WS-6 E4 flat contract):
+
+    - ``recreated``: subentry ids newly attached by this import.
+    - ``kept``: subentry ids already present for a snapshot entry whose stable
+      identity matches (nothing was overwritten).
+    - ``skipped``: snapshot entry ids that could not be recreated (no source
+      entity, or an id collision with an existing subentry).
+    - ``errors``: human-readable reason texts (capped at 20) for the skipped
+      entries — never raw sensor values (the ha-health-o-mat #71 privacy rule).
 
     Identity comparison uses ``_pre_migration_unique_id`` on both sides: a
     set ``legacy_unique_id`` always wins, otherwise the unique id is derived
     from the source entities — the same rule sensor.py uses for its entity,
     so "already exists" means "the entity registry row with this unique id is
     already taken", never merely "some subentry with a similar name".
-
-    Returns:
-        The subentry ids that were created (empty when the snapshot adds
-        nothing, e.g. when re-importing over an intact installation).
     """
     existing_ids = {_pre_migration_unique_id(subentry.data) for subentry in root_entry.subentries.values()}
     created: list[str] = []
+    kept: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
     for item in payload.get("entries", []):
         # Runtime config is the data|options merge (see _async_attach_as_subentry):
         # modern subentry snapshots carry everything in `data` and an empty
@@ -715,8 +733,12 @@ def _async_recreate_subentries(hass: HomeAssistant, root_entry: ConfigEntry, pay
                 "Abstractor import: skipping snapshot entry %s because it has no source entity",
                 item.get("entry_id"),
             )
+            skipped.append(str(item.get("entry_id") or "unknown"))
+            if len(errors) < 20:
+                errors.append("entry has no source entity")
             continue
         if _pre_migration_unique_id(merged) in existing_ids:
+            kept.append(str(item.get("entry_id") or "already-present"))
             continue
         subentry_id = item.get("entry_id") or f"abstractor_{uuid.uuid4().hex}"
         if subentry_id in root_entry.subentries:
@@ -724,6 +746,9 @@ def _async_recreate_subentries(hass: HomeAssistant, root_entry: ConfigEntry, pay
                 "Abstractor import: skipping snapshot entry %s because a subentry with that id already exists",
                 subentry_id,
             )
+            skipped.append(subentry_id)
+            if len(errors) < 20:
+                errors.append(f"subentry id {subentry_id} already in use")
             continue
         data = _build_new_subentry_data(hass, merged, sources)
         device_type = data.get(CONF_DEVICE_TYPE, "power")
@@ -737,10 +762,10 @@ def _async_recreate_subentries(hass: HomeAssistant, root_entry: ConfigEntry, pay
         hass.config_entries.async_add_subentry(root_entry, subentry)
         existing_ids.add(_pre_migration_unique_id(data))
         created.append(subentry_id)
-    return created
+    return {"recreated": created, "kept": kept, "skipped": skipped, "errors": errors}
 
 
-async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> None:
+async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
     """Delete one Abstract sensor subentry, its entity, and its device.
 
     The sensor is identified by `subentry_id` (the key under the root entry,
@@ -754,6 +779,13 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> None:
     re-runs ``async_setup_entry`` — which prunes the deleted subentry from the
     coordinator. No extra coordinator refresh is needed beyond that standard
     teardown, the entity disappears as part of it.
+
+    Returns the flat response contract (``SupportsResponse.OPTIONAL``):
+    ``entity_id`` (the registry row removed, ``None`` when it was already
+    gone), ``device_id`` (the subentry device readable id) and
+    ``history_preserved`` — always ``False``: the entity row is removed, so
+    the recorder history stays orphaned and is not attached to any live
+    entity anymore.
 
     Raises:
         ServiceValidationError: If no key was provided, the referenced
@@ -782,4 +814,14 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> None:
             raise ServiceValidationError(f"No Abstractor sensor with legacy_unique_id {legacy_unique_id!r} exists")
     if subentry_id not in root_entry.subentries:
         raise ServiceValidationError(f"Abstractor subentry {subentry_id!r} does not exist")
+    subentry = root_entry.subentries[subentry_id]
+    pinned_unique_id = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or subentry.unique_id
+    entity_id = None
+    if pinned_unique_id:
+        entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, pinned_unique_id)
     hass.config_entries.async_remove_subentry(root_entry, subentry_id)
+    return {
+        "entity_id": entity_id,
+        "device_id": f"{DOMAIN}:{subentry_id}",
+        "history_preserved": False,
+    }

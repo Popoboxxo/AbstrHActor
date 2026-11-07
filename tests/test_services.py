@@ -38,9 +38,7 @@ def _hass(store: Mock) -> SimpleNamespace:
         title="Abstract power",
         unique_id=None,
     )
-    entry = SimpleNamespace(
-        subentries={"subentry-1": subentry}, version=1, unique_id=ROOT_UNIQUE_ID
-    )
+    entry = SimpleNamespace(subentries={"subentry-1": subentry}, version=1, unique_id=ROOT_UNIQUE_ID)
     coordinator = SimpleNamespace(data={"subentry-1": 4.0})
     return SimpleNamespace(
         data={DOMAIN: {"storage": store, "coordinator": coordinator}},
@@ -103,9 +101,7 @@ async def test_export_service_call_returns_snapshot_response(hass: HomeAssistant
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    result = await hass.services.async_call(
-        DOMAIN, SERVICE_EXPORT_DATA, {}, blocking=True, return_response=True
-    )
+    result = await hass.services.async_call(DOMAIN, SERVICE_EXPORT_DATA, {}, blocking=True, return_response=True)
 
     assert result is not None, (
         "export_data must be registered with supports_response=SupportsResponse.ONLY "
@@ -139,9 +135,7 @@ def _snapshot_entry(entry_id: str, data: dict, title: str = "Abstract power") ->
 
 async def _setup_root(hass: HomeAssistant):
     """Register + set up a singleton root entry and return it."""
-    root_entry = MockConfigEntry(
-        domain=DOMAIN, unique_id=ROOT_UNIQUE_ID, data={}, options={}
-    )
+    root_entry = MockConfigEntry(domain=DOMAIN, unique_id=ROOT_UNIQUE_ID, data={}, options={})
     root_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(root_entry.entry_id)
     await hass.async_block_till_done()
@@ -169,9 +163,7 @@ async def test_import_recreates_missing_subentries(hass: HomeAssistant) -> None:
         "values": {},
     }
 
-    await hass.services.async_call(
-        DOMAIN, "import_data", {"data": payload}, blocking=True
-    )
+    await hass.services.async_call(DOMAIN, "import_data", {"data": payload}, blocking=True)
     await hass.async_block_till_done()
 
     restored = root_entry.subentries.get("subentry-restored")
@@ -228,9 +220,7 @@ async def test_import_skips_existing_and_missing_source_entries(
         "values": {},
     }
 
-    await hass.services.async_call(
-        DOMAIN, "import_data", {"data": payload}, blocking=True
-    )
+    await hass.services.async_call(DOMAIN, "import_data", {"data": payload}, blocking=True)
     await hass.async_block_till_done()
 
     assert len(root_entry.subentries) == 1
@@ -266,9 +256,7 @@ async def test_import_without_root_entry_fails(hass: HomeAssistant) -> None:
     call = SimpleNamespace(data={"data": payload})
 
     with (
-        patch(
-            "custom_components.abstractor._async_root_entry", return_value=None
-        ),
+        patch("custom_components.abstractor._async_root_entry", return_value=None),
         pytest.raises(HomeAssistantError, match="root config entry"),
     ):
         await import_data_service(hass, call)
@@ -294,7 +282,9 @@ async def test_delete_sensor_by_subentry_id(hass: HomeAssistant) -> None:
     assert hass.states.get("sensor.abstract_power_power") is not None
 
     await hass.services.async_call(
-        DOMAIN, SERVICE_DELETE_SENSOR, {"subentry_id": subentry.subentry_id},
+        DOMAIN,
+        SERVICE_DELETE_SENSOR,
+        {"subentry_id": subentry.subentry_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -321,7 +311,9 @@ async def test_delete_sensor_by_legacy_unique_id(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     await hass.services.async_call(
-        DOMAIN, SERVICE_DELETE_SENSOR, {"legacy_unique_id": "abstractor_legacy_1"},
+        DOMAIN,
+        SERVICE_DELETE_SENSOR,
+        {"legacy_unique_id": "abstractor_legacy_1"},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -335,15 +327,92 @@ async def test_delete_sensor_unknown_ids_fail(hass: HomeAssistant) -> None:
     root_entry = await _setup_root(hass)
 
     with pytest.raises(ServiceValidationError):
-        await hass.services.async_call(
-            DOMAIN, SERVICE_DELETE_SENSOR, {"subentry_id": "nope"}, blocking=True
-        )
+        await hass.services.async_call(DOMAIN, SERVICE_DELETE_SENSOR, {"subentry_id": "nope"}, blocking=True)
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
-            DOMAIN, SERVICE_DELETE_SENSOR,
+            DOMAIN,
+            SERVICE_DELETE_SENSOR,
             {"legacy_unique_id": "abstractor_nope"},
             blocking=True,
         )
     with pytest.raises(ServiceValidationError):
         await delete_sensor_service(hass, SimpleNamespace(data={}))
     assert root_entry.subentries == {}
+
+
+async def test_import_response_contract(hass: HomeAssistant) -> None:
+    """[E4] import_data answers with the flat contract (WS-6): recreated/kept/
+    skipped/errors, capped and free of raw sensor values."""
+    root_entry = await _setup_root(hass)
+    payload = {
+        "format": "abstractor.snapshot",
+        "version": 1,
+        "entries": [
+            _snapshot_entry(
+                "subentry-restored",
+                {
+                    CONF_DEVICE_TYPE: "power",
+                    CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+                    CONF_LEGACY_UNIQUE_ID: "abstractor_legacy_1",
+                },
+            ),
+            _snapshot_entry(
+                "subentry-sourceless",
+                {CONF_DEVICE_TYPE: "power", CONF_LEGACY_UNIQUE_ID: "abstractor_x"},
+            ),
+        ],
+        "values": {},
+    }
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "import_data",
+        {"data": payload},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    assert response == {
+        "recreated": ["subentry-restored"],
+        "kept": [],
+        "skipped": ["subentry-sourceless"],
+        "errors": ["entry has no source entity"],
+    }
+    assert len(response["errors"]) <= 20
+    for text in response["errors"]:
+        assert "sensor." not in text, "privacy rule: no raw sensor values in error texts"
+
+
+async def test_delete_response_contract(hass: HomeAssistant) -> None:
+    """[E4] delete_sensor answers with the flat contract: entity_id, device_id,
+    history_preserved=false (the entity row is removed; history stays orphaned)."""
+    root_entry = await _setup_root(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+            CONF_LEGACY_UNIQUE_ID: "abstractor_legacy_1",
+        },
+        subentry_type=SUBENTRY_TYPE_SENSOR,
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+    await hass.async_block_till_done()
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        SERVICE_DELETE_SENSOR,
+        {"subentry_id": subentry.subentry_id},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    assert response == {
+        "entity_id": "sensor.abstract_power_power",
+        "device_id": f"{DOMAIN}:{subentry.subentry_id}",
+        "history_preserved": False,
+    }
+    assert subentry.subentry_id not in root_entry.subentries
