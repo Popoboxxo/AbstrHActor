@@ -23,6 +23,8 @@ from custom_components.abstractor.const import (
     AGGREGATION_MODES,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
+    CONF_DISPLAY_PRECISION,
+    CONF_DISPLAY_UNIT,
     CONF_ENTITY_NAME,
     CONF_INFLUX_TOKEN,
     CONF_LEGACY_UNIQUE_ID,
@@ -135,6 +137,8 @@ def _meta_payload(coordinator, subentry_id: str):
         "unavailable_samples": item.unavailable_samples,
         "source_states": item.source_states,
         "stale": item.stale,
+        "updated_at": item.updated_at.isoformat() if item.updated_at is not None else None,
+        "delta": item.delta,
     }
 
 
@@ -164,12 +168,16 @@ def _build_subentries(hass):
             health = "warn"
         else:
             health = "ok"
+        spec = SPEC_REGISTRY.try_get(data.get(CONF_DEVICE_TYPE, "power"))
         out.append(
             {
                 "subentry_id": subentry_id,
                 "title": subentry.title,
                 "unique_id": subentry.unique_id,
                 "device_type": data.get(CONF_DEVICE_TYPE, "power"),
+                "unit": spec.unit if spec is not None else None,
+                "display_unit": data.get(CONF_DISPLAY_UNIT),
+                "display_precision": data.get(CONF_DISPLAY_PRECISION),
                 "logical_name": data.get("logical_name"),
                 "object_id": data.get("object_id"),
                 "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)],

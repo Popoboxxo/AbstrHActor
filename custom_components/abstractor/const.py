@@ -22,6 +22,12 @@ CONF_FALLBACK_ZERO: Final = "fallback_zero"
 # aggregate is exactly 0 — mirrors "primary == 0 -> use fallback" template
 # semantics, which power's fail-soft 0 would otherwise mask forever.
 CONF_FALLBACK_ON_ZERO: Final = "fallback_on_zero"
+# WS-4 value presentation (UF-07): relabel/round the exposed number; a
+# relabel is NOT a conversion — a mismatch against the spec unit is logged.
+CONF_DISPLAY_UNIT: Final = "display_unit"
+CONF_DISPLAY_PRECISION: Final = "display_precision"
+DISPLAY_PRECISION_MIN: Final = 0
+DISPLAY_PRECISION_MAX: Final = 4
 CONF_LEGACY_UNIQUE_ID: Final = "legacy_unique_id"
 CONF_FALLBACK_SOURCE_ENTITY_ID: Final = "fallback_source_entity_id"
 CONF_FALLBACK_CONDITION_ENTITY_ID: Final = "fallback_condition_entity_id"

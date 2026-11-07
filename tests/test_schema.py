@@ -13,6 +13,8 @@ import voluptuous as vol
 from custom_components.abstractor import schema as shared
 from custom_components.abstractor.const import (
     CONF_AGGREGATION,
+    CONF_DISPLAY_PRECISION,
+    CONF_DISPLAY_UNIT,
     CONF_DEVICE_TYPE,
     CONF_LEGACY_UNIQUE_ID,
     CONF_SPIKE_FILTER,
@@ -104,3 +106,17 @@ def test_options_validator_bounds_and_unknown_keys() -> None:
     for bad in [{"poll_interval": 0}, {"poll_interval": 999999}, {"bogus": "x"}]:
         with pytest.raises(vol.error.Error):
             options_validator(bad)
+
+
+def test_subentry_validator_accepts_display_presentation() -> None:
+    """WS-4 UF-07: display_unit/display_precision are valid numeric-payload keys."""
+    validator = shared.build_subentry_validator("power")
+    payload = {CONF_DISPLAY_UNIT: "kW", CONF_DISPLAY_PRECISION: 2}
+    assert validator(payload) == payload
+
+
+def test_subentry_validator_rejects_precision_out_of_range() -> None:
+    validator = shared.build_subentry_validator("power")
+    for payload in ({CONF_DISPLAY_PRECISION: 9}, {CONF_DISPLAY_PRECISION: -1}):
+        with pytest.raises(vol.error.Error):
+            validator(payload)

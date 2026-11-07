@@ -23,6 +23,8 @@ from .const import (
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_DISPLAY_PRECISION,
+    CONF_DISPLAY_UNIT,
     CONF_ENTITY_NAME,
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
@@ -53,6 +55,8 @@ from .const import (
     POLL_INTERVAL_MAX,
     POLL_INTERVAL_MIN,
     POLL_INTERVAL_PRESETS,
+    DISPLAY_PRECISION_MAX,
+    DISPLAY_PRECISION_MIN,
 )
 from .specs import SPEC_REGISTRY
 
@@ -148,6 +152,19 @@ def _subentry_schema_spec(
                 ),
                 (CONF_FALLBACK_CONDITION_STATE, False, None, selector.TextSelector()),
                 (CONF_FALLBACK_ON_ZERO, False, False, bool),
+                (CONF_DISPLAY_UNIT, False, None, selector.TextSelector()),
+                (
+                    CONF_DISPLAY_PRECISION,
+                    False,
+                    None,
+                    selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=DISPLAY_PRECISION_MIN,
+                            max=DISPLAY_PRECISION_MAX,
+                            step=1,
+                        )
+                    ),
+                ),
             )
         )
     entries.extend(

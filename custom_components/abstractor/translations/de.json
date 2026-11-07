@@ -98,7 +98,9 @@
             "create_new_device": "Separates Gerät erstellen",
             "logical_name": "Gerätename (überschreiben)",
             "entity_name": "Entitätsname (überschreiben)",
-            "object_id": "Entitäts-ID (überschreiben)"
+            "object_id": "Entitäts-ID (überschreiben)",
+            "display_unit": "Anzeigedatok (Relabel)",
+            "display_precision": "Anzeigagenau"
           },
           "data_description": {
             "source_entity_id": "Einzelner Hardware-Sensor, der abstrahiert wird.",
@@ -117,7 +119,9 @@
             "create_new_device": "Löst diesen Sensor von seinem aktuellen Gerät und erstellt ein separates Gerät.",
             "logical_name": "Überschreibt den Gerätenamen für die Gerätegruppe dieses Sensors. Leer lassen, um das konfigurierte Gerätenamen-Template zu nutzen.",
             "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
-            "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion."
+            "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion.",
+            "display_unit": "Renames the unit label of the entity only — no conversion. A mismatch against the unit of the sensor type is logged.",
+            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value."
           }
         },
         "reconfigure": {
@@ -141,7 +145,9 @@
             "create_new_device": "Separates Gerät erstellen",
             "logical_name": "Gerätename (überschreiben)",
             "entity_name": "Entitätsname (überschreiben)",
-            "object_id": "Entitäts-ID (überschreiben)"
+            "object_id": "Entitäts-ID (überschreiben)",
+            "display_unit": "Anzeigedatok (Relabel)",
+            "display_precision": "Anzeigagenau"
           },
           "data_description": {
             "device_type": "Abstraktionsschicht für Leistung, Energie oder Wasser.",
@@ -161,7 +167,9 @@
             "create_new_device": "Löst diesen Sensor von seinem aktuellen Gerät und erstellt ein separates Gerät.",
             "logical_name": "Überschreibt den Gerätenamen für die Gerätegruppe dieses Sensors. Leer lassen, um das konfigurierte Gerätenamen-Template zu nutzen.",
             "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
-            "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion."
+            "object_id": "Vorgeschlagene entity_id (Slug). Wird nur bei der Ersterstellung angewandt; das Umbenennen einer bestehenden Entität erfolgt über die Rename-Aktion.",
+            "display_unit": "Renames the unit label of the entity only — no conversion. A mismatch against the unit of the sensor type is logged.",
+            "display_precision": "Decimal places (0-4) the exposed value is rounded to. Leave empty for the raw value."
           }
         }
       }

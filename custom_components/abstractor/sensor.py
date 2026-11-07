@@ -22,6 +22,8 @@ from .const import (
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
     CONF_DEVICE_TYPE,
+    CONF_DISPLAY_PRECISION,
+    CONF_DISPLAY_UNIT,
     CONF_LEGACY_UNIQUE_ID,
     CONF_NAMING_TEMPLATE,
     CONF_SOURCE_ENTITY_ID,
@@ -114,6 +116,8 @@ async def async_setup_entry(
                     entity_name=resolve_entity_name(subentry.data, spec, template),
                     object_id=resolve_object_id(subentry.data, spec, template),
                     template=template,
+                    display_unit=subentry.data.get(CONF_DISPLAY_UNIT),
+                    display_precision=subentry.data.get(CONF_DISPLAY_PRECISION),
                 )
             ],
             config_subentry_id=subentry_id,
@@ -138,6 +142,8 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
         entity_name: str | None = None,
         object_id: str | None = None,
         template=None,
+        display_unit: str | None = None,
+        display_precision: int | None = None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -145,6 +151,9 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
         self._subentry_id = subentry_id
         self._device_type = device_type
         self._identity_source_ids = identity_source_ids
+        self._display_precision = (
+            display_precision if isinstance(display_precision, int) else None
+        )
 
         if legacy_unique_id:
             # REQ-CORE-003: migrated YAML template sensor, keep its old id.
@@ -202,11 +211,27 @@ class AbstractorSensor(CoordinatorEntity[AbstractorDataUpdateCoordinator], Senso
             self._attr_device_class = SensorDeviceClass.WATER
             self._attr_native_unit_of_measurement = "L"
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        if display_unit:
+            # WS-4 UF-07: relabel only — a mismatch against the type's unit is
+            # logged instead of silently converting or pretending equivalence.
+            spec_unit = self._spec.unit
+            if spec_unit and spec_unit != display_unit:
+                _LOGGER.warning(
+                    "Abstractor entity %s relabels its unit from %s to %s; "
+                    "relabelling is not a conversion - check the source unit",
+                    self._attr_unique_id,
+                    spec_unit,
+                    display_unit,
+                )
+            self._attr_native_unit_of_measurement = display_unit
 
     @property
     def native_value(self):
-        """Return the state of the sensor."""
-        return self.coordinator.data.get(self._subentry_id)
+        """Return the state of the sensor, rounded per display_precision."""
+        value = self.coordinator.data.get(self._subentry_id)
+        if self._display_precision is not None and isinstance(value, (int, float)):
+            return round(value, self._display_precision)
+        return value
 
 
 def _integrate_energy(

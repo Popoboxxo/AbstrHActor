@@ -26,9 +26,34 @@ from .specs import SPEC_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _numeric_delta(current, previous) -> float | None:
+    """current - previous if both are real numbers (bools excluded), else None.
+
+    Pure helper (WS-4 UF-07): feeds the panel's delta display; pass-through
+    string states simply yield None.
+    """
+
+    def _as_number(value):
+        if isinstance(value, bool):
+            return None
+        return float(value) if isinstance(value, (int, float)) else None
+
+    current_number = _as_number(current)
+    previous_number = _as_number(previous)
+    if current_number is None or previous_number is None:
+        return None
+    return current_number - previous_number
+
+
 @dataclass
 class SubentryMeta:
-    """Runtime-only health metadata for a single subentry (never persisted)."""
+    """Runtime-only health metadata for a single subentry (never persisted).
+
+    ``updated_at``/``delta`` close the UF-07 read gap (the panel could show
+    neither freshness nor change); ``stale`` (previously a dead field) now
+    actually marks polls that delivered no value.
+    """
 
     last_event: str | None = None
     event_at: datetime | None = None
@@ -37,6 +62,9 @@ class SubentryMeta:
     unavailable_samples: int = 0
     source_states: dict[str, str] = field(default_factory=dict)
     stale: bool = False
+    updated_at: datetime | None = None
+    previous_value: float | str | None = None
+    delta: float | None = None
 
 
 class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
@@ -181,7 +209,10 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     fallbacks=previous.fallbacks,
                     unavailable_samples=previous.unavailable_samples + (1 if raw_val is None else 0),
                     source_states={primary: raw_val} if primary and raw_val is not None else {},
-                    stale=False,
+                    stale=raw_val is None,
+                    updated_at=datetime.now(UTC),
+                    previous_value=raw_val,
+                    delta=_numeric_delta(raw_val, previous.previous_value),
                 )
                 continue
             if pipeline:
@@ -220,7 +251,10 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     source_states={
                         k: v for k, v in source_states.items() if v is not None
                     },
-                    stale=False,
+                    stale=val is None,
+                    updated_at=datetime.now(UTC),
+                    previous_value=val,
+                    delta=_numeric_delta(val, previous.previous_value),
                 )
                 await self._async_notify_debug(subentry_id, pipeline.last_event)
 

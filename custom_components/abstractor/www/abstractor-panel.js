@@ -239,80 +239,100 @@
       "migrate.colSource": "Source",
       "migrate.colStatus": "Status",
       "migrate.historyOk": "history preserved",
-      "migrate.review": "review required"
+      "migrate.review": "review required",
+      "drawer.stages": "Value pipeline",
+      "drawer.spikeRejections": "Spike rejections",
+      "drawer.fallbacks": "Fallbacks",
+      "drawer.unavailableSamples": "Unavailable samples",
+      "drawer.lastEvent": "Last event",
+      "drawer.value": "Value",
+      "drawer.updatedAt": "Updated",
+      "drawer.delta": "Delta",
+      "drawer.stale": "stale",
+      "drawer.sourceStates": "Source states"
     },
     de: {
-      "tab.devices": "Geraete",
+      "tab.devices": "Ger\xE4te",
       "tab.health": "Status",
       "tab.settings": "Einstellungen",
       "tab.migrate": "Migration",
       "action.editMode": "Bearbeiten",
       "action.disableEdit": "Bearbeiten beenden",
-      "action.addSensor": "Sensor hinzufuegen",
+      "action.addSensor": "Sensor hinzuf\xE4gen",
       "action.export": "Exportieren",
       "action.import": "Importieren",
       "action.close": "Schliessen",
       "action.details": "Details",
       "action.edit": "Bearbeiten",
       "action.configure": "Konfigurieren",
-      "action.delete": "Loeschen",
+      "action.delete": "L\xF6sch",
       "action.rename": "Umbenennen",
       "action.save": "Speichern",
       "action.cancel": "Abbrechen",
-      "form.createTitle": "Abstract-Sensor hinzufuegen",
+      "form.createTitle": "Abstract-Sensor hinzuf\xE4gen",
       "form.editTitle": "Abstract-Sensor konfigurieren",
-      "form.deviceType": "Geraetetyp",
-      "form.sources": "Quell-Entitaeten",
+      "form.deviceType": "Ger\xE4tetyp",
+      "form.sources": "Quellentit\xE4ten",
       "form.logicalName": "Logischer Name",
       "form.objectId": "Entity-Object-Id",
       "form.entityName": "Entity name (override)",
       "form.aggregation": "Aggregation",
       "form.spikeFilter": "Spike-Filter aktivieren",
-      "form.invert": "Wert invertieren",
-      "form.fallbackZero": "Bei Fehler auf Null",
-      "form.fallbackOnZero": "Fallback bei Null verwenden",
-      "form.netSubtract": "Entitaet abziehen (Nettofluss)",
-      "form.fallbackSource": "Fallback-Quellentitaet",
-      "form.fallbackCondition": "Fallback-Bedingungsentitaet",
-      "form.fallbackConditionState": "Fallback-Bedingungszustand",
-      "confirm.delete": "Diesen Abstract-Sensor loeschen?",
+      "form.invert": "Value invertieren",
+      "form.fallbackZero": "Bei Fehler on Null",
+      "form.fallbackOnZero": "Fallback bei Null use",
+      "form.netSubtract": "Entity abstrakt (Net flow)",
+      "form.fallbackSource": "Fallback source entity",
+      "form.fallbackCondition": "Fallback condition entity",
+      "form.fallbackConditionState": "Fallback condition state",
+      "confirm.delete": "Really l\xF6sch this Abstract sensor?",
       "rename.title": "Abstract-Sensor umbenennen",
-      "rename.renameEntity": "Entity-Id ebenfalls umbenennen",
-      "rename.previewEntityId": "Neue Entity-Id:",
+      "rename.renameEntity": "Entity-Id also umbenennen",
+      "rename.previewEntityId": "New Entity-Id:",
       "status.sensors": "Sensoren",
       "status.loading": "Laedt...",
       "title": "Abstractor",
-      "subtitle.readOnly": "schreibgeschuetzte Basis",
+      "subtitle.readOnly": "write-protected Base",
       "subtitle.editMode": "EDIT-MODUS",
-      "filter.all": "alle",
+      "filter.all": "all",
       "filter.power": "Leistung",
       "filter.energy": "Energie",
       "filter.water": "Wasser",
-      "filter.door_contact": "Tuerkontakt",
+      "filter.door_contact": "T\xFCrkontakt",
       "filter.motion": "Bewegung",
       "filter.smoke": "Rauch",
       "filter.problems": "Probleme",
-      "empty.loading": "Abstractor-Sensoren werden geladen...",
-      "empty.none": "Keine passenden Abstractor-Sensoren.",
-      "admin.required": "Administratorzugriff erforderlich",
+      "empty.loading": "Abstractor-Sensors loading...",
+      "empty.none": "No matching Abstractor-Sensors.",
+      "admin.required": "Administrator access required",
       "common.sensor": "Abstractor-Sensor",
       "field.entity": "Entity",
       "field.uniqueId": "Unique-ID",
-      "field.source": "Quelle",
+      "field.source": "Source",
       "health.bad": "Fehler",
-      "health.warn": "Warnungen",
+      "health.warn": "Warnings",
       "health.none": "Keine",
       "health.total": "Gesamt",
-      "health.noEvent": "kein Ereignis",
-      "health.value": "Wert",
-      "settings.hint": "Schreibgeschuetzte Basis. Nutze den Bearbeiten-Modus fuer Import/erweiterte Aktionen; die Konfiguration bleibt unter HA Einstellungen -> Geraete & Dienste.",
-      "error.adminOnly": "Der Bearbeiten-Modus ist nur fuer Administratoren verfuegbar.",
-      "migrate.title": "Migration",
-      "migrate.empty": "Keine YAML-Sensoren gefunden.",
-      "migrate.colSource": "Quelle",
+      "health.noEvent": "no event",
+      "health.value": "value",
+      "settings.hint": "Read-only base. Use Edit mode for Import/advanced actions; configuration stays in HA Settings \u2192 Devices & Services.",
+      "error.adminOnly": "Edit mode is available only to administrators.",
+      "migrate.title": "Migrate",
+      "migrate.empty": "No YAML sensors detected.",
+      "migrate.colSource": "Source",
       "migrate.colStatus": "Status",
-      "migrate.historyOk": "Migrationshistory",
-      "migrate.review": "Review required"
+      "migrate.historyOk": "history preserved",
+      "migrate.review": "review required",
+      "drawer.stages": "value pipeline",
+      "drawer.spikeRejections": "spike rejections",
+      "drawer.fallbacks": "fallbacks",
+      "drawer.unavailableSamples": "unavailable samples",
+      "drawer.lastEvent": "last event",
+      "drawer.value": "value",
+      "drawer.updatedAt": "updated",
+      "drawer.delta": "delta",
+      "drawer.stale": "stale",
+      "drawer.sourceStates": "source states"
     }
   };
   function _langFor(hass) {
@@ -379,6 +399,13 @@
       this._unsub = null;
       this._optionsLoaded = false;
       this._options = null;
+      this._spark = {};
+      this._headerSignature = "";
+      this._tabsSignature = "";
+      this._errorEl = null;
+      this._backdropEl = null;
+      this._detailShown = null;
+      this._errorText = "";
       this._store.subscribe(() => this._render());
     }
     set hass(hass) {
@@ -426,6 +453,7 @@
         }
         const result = await this._hass.callWS({ type: "abstractor/subentries" });
         const list = result && Array.isArray(result.subentries) ? result.subentries : [];
+        this._noteSparkline(list);
         this._store.setState({ subentries: list, loaded: true, loading: false, lastFetchAt: Date.now() });
       } catch (err) {
         this._store.setState({ loading: false, error: "Load failed: " + (err && err.message ? err.message : err) });
@@ -447,6 +475,7 @@
       this._hass.connection.subscribeMessage(
         (event) => {
           const list = event && Array.isArray(event.subentries) ? event.subentries : [];
+          this._noteSparkline(list);
           this._store.setState({
             subentries: list,
             loaded: true,
@@ -548,66 +577,76 @@
       const exportBtn = actions.has("export") ? `<button type="button" class="export-button">${this._t("action.export")}</button>` : "";
       const importBtn = actions.has("import") ? `<button type="button" class="import-button">${this._t("action.import")}</button>` : "";
       const importInput = actions.has("import") ? `<input type="file" accept="application/json" class="import-file-input" hidden>` : "";
-      const html = `
-      <style>${this._styles()}</style>
-      <div class="header">
-        <div>
-          <h1>${this._t("title")}</h1>
-          <p class="subtitle">${statusText} \xB7 ${this._t("subtitle.readOnly")}${s.editMode ? " \xB7 " + this._t("subtitle.editMode") : ""}</p>
-        </div>
-        <div class="actions">
-          ${editToggleBtn}
-          ${addBtn}
-          ${exportBtn}
-          ${importBtn}
-          ${importInput}
-        </div>
-      </div>
-      <div class="tabs">
-        ${TABS.map((t) => `<button type="button" class="tab ${s.activeTab === t.id ? "active" : ""}" data-tab="${t.id}">${this._t(t.key)}</button>`).join("")}
-      </div>
-      <div class="body"></div>
-    `;
-      this.shadowRoot.innerHTML = html;
-      if (s.error) {
+      const headerHtml = `<div><h1>${this._t("title")}</h1><p class="subtitle">${statusText} \xB7 ${this._t("subtitle.readOnly")}${s.editMode ? " \xB7 " + this._t("subtitle.editMode") : ""}</p></div><div class="actions">${editToggleBtn}${addBtn}${exportBtn}${importBtn}${importInput}</div>`;
+      const tabsHtml = TABS.map((t) => `<button type="button" class="tab ${s.activeTab === t.id ? "active" : ""}" data-tab="${t.id}">${this._t(t.key)}</button>`).join("");
+      const firstRender = !this._bodyEl;
+      if (firstRender) {
+        this.shadowRoot.innerHTML = `<style>${this._styles()}</style><div class="header"></div><div class="tabs"></div><div class="body"></div>`;
+        this._headerEl = this.shadowRoot.querySelector(".header");
+        this._tabsEl = this.shadowRoot.querySelector(".tabs");
+        this._bodyEl = this.shadowRoot.querySelector(".body");
+      }
+      const headerChanged = firstRender || headerHtml !== this._headerSignature;
+      if (headerChanged) {
+        this._headerEl.innerHTML = headerHtml;
+        this._headerSignature = headerHtml;
+      }
+      const tabsChanged = firstRender || tabsHtml !== this._tabsSignature;
+      if (tabsChanged) {
+        this._tabsEl.innerHTML = tabsHtml;
+        this._tabsSignature = tabsHtml;
+      }
+      if (!s.error) {
+        if (this._errorEl) {
+          this.shadowRoot.removeChild(this._errorEl);
+          this._errorEl = null;
+        }
+      } else if (this._errorText !== s.error) {
+        if (this._errorEl) {
+          this.shadowRoot.removeChild(this._errorEl);
+        }
         const errorEl = document.createElement("div");
         errorEl.className = "error";
         errorEl.setAttribute("role", "alert");
         errorEl.setAttribute("aria-live", "assertive");
         errorEl.textContent = s.error;
-        const headerEl = this.shadowRoot.querySelector(".header");
-        if (headerEl) headerEl.after(errorEl);
-        else this.shadowRoot.appendChild(errorEl);
+        this.shadowRoot.appendChild(errorEl);
+        this._errorEl = errorEl;
+        this._errorText = s.error;
       }
-      const tabToggle = this.shadowRoot.querySelector(".tab-toggle");
-      if (tabToggle) tabToggle.addEventListener("click", () => this._toggleEditMode());
-      const addSensor = this.shadowRoot.querySelector(".add-sensor-button");
-      if (addSensor) {
-        addSensor.addEventListener("click", () => {
-          if (this._store.state.editMode) this._openSensorForm(null);
-          else this._navigate("/config/integrations/integration/abstractor");
+      if (headerChanged) {
+        const tabToggle = this.shadowRoot.querySelector(".tab-toggle");
+        if (tabToggle) tabToggle.addEventListener("click", () => this._toggleEditMode());
+        const addSensor = this.shadowRoot.querySelector(".add-sensor-button");
+        if (addSensor) {
+          addSensor.addEventListener("click", () => {
+            if (this._store.state.editMode) this._openSensorForm(null);
+            else this._navigate("/config/integrations/integration/abstractor");
+          });
+        }
+        const exportButton = this.shadowRoot.querySelector(".export-button");
+        if (exportButton) exportButton.addEventListener("click", () => this._handleExport());
+        const fileInput = this.shadowRoot.querySelector(".import-file-input");
+        const importButton = this.shadowRoot.querySelector(".import-button");
+        if (importButton && fileInput) {
+          importButton.addEventListener("click", () => {
+            if (fileInput) fileInput.click();
+          });
+        }
+        if (fileInput) {
+          fileInput.addEventListener("change", () => {
+            const file = fileInput.files && fileInput.files[0];
+            fileInput.value = "";
+            if (file) this._handleImportFile(file);
+          });
+        }
+      }
+      if (tabsChanged) {
+        this._tabsEl.querySelectorAll(".tab").forEach((b) => {
+          b.addEventListener("click", () => this._store.setState({ activeTab: b.getAttribute("data-tab") }));
         });
       }
-      const exportButton = this.shadowRoot.querySelector(".export-button");
-      if (exportButton) exportButton.addEventListener("click", () => this._handleExport());
-      const fileInput = this.shadowRoot.querySelector(".import-file-input");
-      const importButton = this.shadowRoot.querySelector(".import-button");
-      if (importButton && fileInput) {
-        importButton.addEventListener("click", () => {
-          if (fileInput) fileInput.click();
-        });
-      }
-      if (fileInput) {
-        fileInput.addEventListener("change", () => {
-          const file = fileInput.files && fileInput.files[0];
-          fileInput.value = "";
-          if (file) this._handleImportFile(file);
-        });
-      }
-      this.shadowRoot.querySelectorAll(".tab").forEach((b) => {
-        b.addEventListener("click", () => this._store.setState({ activeTab: b.getAttribute("data-tab") }));
-      });
-      const bodyEl = this.shadowRoot.querySelector(".body");
+      const bodyEl = this._bodyEl;
       if (s.activeTab === "devices") this._renderDevices(bodyEl);
       else if (s.activeTab === "health") this._renderHealth(bodyEl);
       else if (s.activeTab === "migrate") this._renderMigrate(bodyEl);
@@ -618,69 +657,117 @@
       if (s.activeTab === "settings" && !this._optionsLoaded) {
         this._fetchOptions();
       }
-      if (this._detail) {
-        const backdrop = document.createElement("div");
-        backdrop.className = "drawer-backdrop";
-        backdrop.setAttribute("role", "dialog");
-        backdrop.setAttribute("aria-modal", "true");
-        const drawer = document.createElement("div");
-        drawer.className = "drawer";
-        const close = document.createElement("button");
-        close.type = "button";
-        close.className = "close";
-        close.textContent = this._t("action.close");
-        close.addEventListener("click", () => {
-          this._detail = null;
-          this._render();
-        });
-        drawer.appendChild(close);
-        const h = document.createElement("h2");
-        h.textContent = this._detail.logical_name || this._detail.title;
-        drawer.appendChild(h);
-        for (const [k, v] of Object.entries(this._detail)) {
-          const f = document.createElement("div");
-          f.className = "field";
-          const b = document.createElement("b");
-          b.textContent = k;
-          f.appendChild(b);
-          const span = document.createElement("span");
-          span.textContent = v === null || v === void 0 ? "\u2014" : typeof v === "object" ? JSON.stringify(v) : String(v);
-          f.appendChild(span);
-          drawer.appendChild(f);
+      if (this._detail !== this._detailShown) {
+        if (this._backdropEl && this._backdropEl.parentNode === this.shadowRoot) {
+          this.shadowRoot.removeChild(this._backdropEl);
         }
-        backdrop.addEventListener("click", (e) => {
-          if (e.target === backdrop) {
+        this._backdropEl = null;
+        this._detailShown = this._detail;
+        if (this._detail) {
+          const backdrop = document.createElement("div");
+          backdrop.className = "drawer-backdrop";
+          backdrop.setAttribute("role", "dialog");
+          backdrop.setAttribute("aria-modal", "true");
+          const drawer = document.createElement("div");
+          drawer.className = "drawer";
+          const close = document.createElement("button");
+          close.type = "button";
+          close.className = "close";
+          close.textContent = this._t("action.close");
+          close.addEventListener("click", () => {
             this._detail = null;
             this._render();
+          });
+          drawer.appendChild(close);
+          const h = document.createElement("h2");
+          h.textContent = this._detail.logical_name || this._detail.title;
+          drawer.appendChild(h);
+          const detail = this._detail;
+          const meta = detail.meta || {};
+          const fieldLine = (labelKey, text) => {
+            if (text === null || text === void 0 || text === "") return;
+            const f = document.createElement("div");
+            f.className = "field";
+            const b = document.createElement("b");
+            b.textContent = this._t(labelKey);
+            f.appendChild(b);
+            const s2 = document.createElement("span");
+            s2.textContent = String(text);
+            f.appendChild(s2);
+            drawer.appendChild(f);
+          };
+          fieldLine("form.deviceType", getCatalogue().display_names[detail.device_type] || detail.device_type);
+          fieldLine("drawer.value", this._formatValue(detail));
+          fieldLine("drawer.updatedAt", this._updatedText(detail));
+          fieldLine("form.objectId", detail.object_id);
+          fieldLine("form.sources", Array.isArray(detail.source_entity_ids) ? detail.source_entity_ids.filter(Boolean).join(", ") : "");
+          if (Object.keys(meta).length) {
+            const h3 = document.createElement("h3");
+            h3.textContent = this._t("drawer.stages");
+            drawer.appendChild(h3);
+            fieldLine("drawer.spikeRejections", meta.spike_rejections);
+            fieldLine("drawer.fallbacks", meta.fallbacks);
+            fieldLine("drawer.unavailableSamples", meta.unavailable_samples);
+            if (meta.last_event) {
+              let eventText = String(meta.last_event);
+              if (meta.event_at) {
+                const when = new Date(meta.event_at);
+                if (!Number.isNaN(when.getTime())) {
+                  eventText += " @ " + when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                }
+              }
+              fieldLine("drawer.lastEvent", eventText);
+            }
+            const sourceStates = meta.source_states || {};
+            for (const [eid, state] of Object.entries(sourceStates)) {
+              const f = document.createElement("div");
+              f.className = "field";
+              const b = document.createElement("b");
+              b.textContent = eid;
+              f.appendChild(b);
+              const s2 = document.createElement("span");
+              s2.textContent = String(state);
+              f.appendChild(s2);
+              drawer.appendChild(f);
+            }
           }
-        });
-        backdrop.appendChild(drawer);
-        this.shadowRoot.appendChild(backdrop);
-        const focusSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-        close.focus();
-        backdrop.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            this._detail = null;
-            this._render();
-            return;
-          }
-          if (e.key !== "Tab") return;
-          const items = Array.from(drawer.querySelectorAll(focusSelector));
-          if (!items.length) return;
-          const active = this.shadowRoot.activeElement || document.activeElement;
-          const first = items[0];
-          const last = items[items.length - 1];
-          if (e.shiftKey && active === first) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && active === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        });
+          backdrop.addEventListener("click", (e) => {
+            if (e.target === backdrop) {
+              this._detail = null;
+              this._render();
+            }
+          });
+          backdrop.appendChild(drawer);
+          this._backdropEl = backdrop;
+          this.shadowRoot.appendChild(backdrop);
+          const focusSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+          close.focus();
+          backdrop.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this._detail = null;
+              this._render();
+              return;
+            }
+            if (e.key !== "Tab") return;
+            const items = Array.from(drawer.querySelectorAll(focusSelector));
+            if (!items.length) return;
+            const active = this.shadowRoot.activeElement || document.activeElement;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (e.shiftKey && active === first) {
+              e.preventDefault();
+              last.focus();
+            } else if (!e.shiftKey && active === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          });
+        }
       }
-      if (this._modalEl) this.shadowRoot.appendChild(this._modalEl);
+      if (this._modalEl && this._modalEl.parentNode !== this.shadowRoot) {
+        this.shadowRoot.appendChild(this._modalEl);
+      }
     }
     _deviceIdFor(entry) {
       if (!this._hass || !this._hass.devices) return null;
@@ -793,8 +880,22 @@
         const row = table.insertRow();
         row.insertCell().textContent = e.device_type || "";
         row.insertCell().className = "value";
-        row.cells[1].textContent = e.value === null || e.value === void 0 ? "\u2014" : String(e.value);
+        row.cells[1].textContent = this._formatValue(e);
         card.appendChild(table);
+        const freshness = this._updatedText(e);
+        if (freshness) {
+          const fresh = document.createElement("p");
+          fresh.className = "hint";
+          fresh.textContent = freshness;
+          card.appendChild(fresh);
+        }
+        const sparkline = this._sparklineSvg(e.subentry_id);
+        if (sparkline) {
+          const spark = document.createElement("div");
+          spark.className = "spark";
+          spark.innerHTML = sparkline;
+          card.appendChild(spark);
+        }
         bodyEl.appendChild(card);
       }
     }
@@ -939,6 +1040,60 @@
         return translated;
       }
       return getCatalogue().display_names[filter] || filter;
+    }
+    // --- WS-4.3: value presentation (unit/precision/freshness/delta) ---------
+    // The formatter reads the server payload's value + display_* + unit keys;
+    // precision/units are decided server-side so JS cannot drift a second set.
+    _formatValue(row) {
+      const value = row && row.value;
+      if (value === null || value === void 0) return "\u2014";
+      if (typeof value !== "number") return String(value);
+      const precision = row && typeof row.display_precision === "number" ? row.display_precision : null;
+      const text = precision === null ? String(value) : value.toFixed(precision);
+      const unit = row && row.display_unit || row && row.unit || "";
+      return unit ? `${text} ${unit}` : text;
+    }
+    _noteSparkline(list) {
+      const next = {};
+      for (const row of list) {
+        const id = row && row.subentry_id;
+        if (!id || typeof row.value !== "number") continue;
+        const hist = this._spark[id] ? this._spark[id].slice() : [];
+        if (!(hist.length && hist[hist.length - 1] === row.value)) hist.push(row.value);
+        while (hist.length > 24) hist.shift();
+        next[id] = hist;
+      }
+      this._spark = next;
+    }
+    _sparklineSvg(subentryId) {
+      const hist = this._spark[subentryId];
+      if (!hist || hist.length < 2) return null;
+      let min = Infinity;
+      let max = -Infinity;
+      for (const v of hist) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      const span = max - min || 1;
+      const width = 120;
+      const height = 26;
+      const step = width / (hist.length - 1);
+      const points = hist.map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v - min) / span * (height - 4)).toFixed(1)}`).join(" ");
+      return `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-hidden="true"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+    }
+    _updatedText(row) {
+      const iso = row && row.meta && row.meta.updated_at;
+      if (!iso) return "";
+      const when = new Date(iso);
+      if (Number.isNaN(when.getTime())) return "";
+      const clock = when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const parts = [`${this._t("drawer.updatedAt")} ${clock}`];
+      if (row.meta.stale) parts.push(this._t("drawer.stale"));
+      if (typeof row.meta.delta === "number") {
+        const sign = row.meta.delta > 0 ? "+" : "";
+        parts.push(`\u0394 ${sign}${row.meta.delta.toFixed(2)}`);
+      }
+      return parts.join(" \xB7 ");
     }
     _field(labelKey, inputEl) {
       const wrap = document.createElement("div");

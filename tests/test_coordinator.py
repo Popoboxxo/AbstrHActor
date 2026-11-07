@@ -345,3 +345,30 @@ def test_add_subentry_logs_warning_when_device_type_missing(caplog) -> None:
         assert coordinator.subentry_data["subentry-1"]["device_type"] == "power"
         assert "device_type" in caplog.text
         assert "subentry-1" in caplog.text
+
+
+async def test_poll_records_freshness_and_delta() -> None:
+    """[WS-4 UF-07] Each poll stamps updated_at; consecutive values yield a delta."""
+    coordinator = _update_coordinator(source_state="12.5", pipeline_value=7.5)
+    coordinator.influx_exporter = None
+    await coordinator._async_update_data()
+    first = coordinator.meta["subentry-1"]
+    assert first.updated_at is not None
+    assert first.delta is None  # First poll: no previous value to compare against
+    assert first.previous_value == 7.5
+
+    await coordinator._async_update_data()
+    second = coordinator.meta["subentry-1"]
+    assert second.delta == 0.0
+    assert second.stale is False
+
+
+async def test_unavailable_sample_marks_stale() -> None:
+    """UF-11: the stale field is no longer dead — it marks value-less polls."""
+    coordinator = _update_coordinator(source_state=None, pipeline_value=None)
+    coordinator.influx_exporter = None
+    data = await coordinator._async_update_data()
+    assert data["subentry-1"] is None
+    item = coordinator.meta["subentry-1"]
+    assert item.stale is True
+    assert item.updated_at is not None
