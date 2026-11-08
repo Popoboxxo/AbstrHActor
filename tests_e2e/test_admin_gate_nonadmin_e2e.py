@@ -19,7 +19,7 @@ def test_nonadmin_panel_renders_redacted_read_view(readonly_page, hass_base_url)
     read = page.evaluate(
         """
         (async () => {
-          const h = window.hass;
+          const h = document.querySelector("home-assistant").hass;
           if (!h || !h.callWS) {
             throw new Error("frontend hass object not exposed on the panel page");
           }
@@ -36,7 +36,7 @@ def test_nonadmin_panel_renders_redacted_read_view(readonly_page, hass_base_url)
     write_error = page.evaluate(
         """
         (async () => {
-          const h = window.hass;
+          const h = document.querySelector("home-assistant").hass;
           if (!h || !h.callWS) { throw new Error("frontend hass object not exposed"); }
           try {
             await h.callWS({ type: "abstractor/subentry/delete", subentry_id: "e2e-does-not-exist" });

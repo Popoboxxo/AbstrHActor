@@ -43,6 +43,27 @@ playwright install --with-deps chromium
 HASS_BASE_URL=http://localhost:8123 pytest tests_e2e/ -v
 ```
 
+### Running against an already-provisioned shared instance
+
+The local unit-test plugin (`pytest_homeassistant_custom_component`) blocks
+sockets and runs HA-entity cleanup hooks that fight a real browser/HA pair.
+When the E2E suite runs against a shared instance (not the Docker E2E image),
+disable that plugin and point the bootstrap at the existing users:
+
+```bash
+E2E_USERNAME=<admin> E2E_PASSWORD=<admin-password> \
+E2E_READONLY_USERNAME=<non-admin> E2E_READONLY_PASSWORD=<non-admin-password> \
+HASS_BASE_URL=http://127.0.0.1:8123 PYTHONPATH=. \
+pytest tests_e2e/ -v -p no:homeassistant
+```
+
+If the instance was fully onboarded by another tool, the non-admin user may be
+missing; the admin-gate test then skips with an explicit reason (core HA has no
+API to create a password credential for a new user).
+
+The canonical CI-equivalent run is the Docker stack in
+`docker-compose.e2e.yml` (fresh onboarding + `hass-virtual` demo sensors).
+
 ## What's covered
 
 | Test file | Requirement/ADR |

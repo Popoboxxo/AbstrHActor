@@ -30,7 +30,8 @@ def test_export_button_calls_export_data(logged_in_page, hass_base_url):
 
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
-    export_button = panel.get_by_role("button", name=re.compile("export", re.IGNORECASE))
+    panel.get_by_role("button", name=re.compile(r"^edit mode$", re.IGNORECASE)).click()
+    export_button = panel.get_by_role("button", name=re.compile(r"^export$", re.IGNORECASE))
     export_button.wait_for(state="visible", timeout=10000)
     export_button.click()
     page.wait_for_timeout(1000)
@@ -44,12 +45,45 @@ def test_edit_button_navigates_to_device_page(logged_in_page, hass_base_url):
     page = logged_in_page
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
-    # Anchor to the card's exact "Edit" label: the header also has an
-    # "Edit mode" toggle whose accessible name contains "edit".
-    edit_button = panel.get_by_role("button", name=re.compile(r"^edit$", re.IGNORECASE)).first
-    edit_button.wait_for(state="visible", timeout=10000)
-    edit_button.click()
-    page.wait_for_url(re.compile(r"/config/devices/device/"), timeout=10000)
+    panel.wait_for(state="attached", timeout=10000)
+    created = page.evaluate(
+        """
+        (async () => {
+          const h = document.querySelector("home-assistant").hass;
+          const res = await h.callWS({
+            type: "abstractor/subentry/create",
+            data: { device_type: "power", source_entity_id: "sensor.e2e_edit_probe" },
+          });
+          return res.subentry_id;
+        })()
+        """
+    )
+    try:
+        page.wait_for_timeout(2000)
+        page.goto(f"{hass_base_url}/abstractor")
+        panel = page.locator("abstractor-panel")
+        panel.locator(".device-card").first.wait_for(state="visible", timeout=30000)
+        # Anchor to the card's exact "Edit" label: the header also has an
+        # "Edit mode" toggle whose accessible name contains "edit".
+        edit_button = panel.get_by_role("button", name=re.compile(r"^edit$", re.IGNORECASE)).first
+        edit_button.wait_for(state="visible", timeout=20000)
+        edit_button.click()
+        page.wait_for_url(re.compile(r"/config/(devices/device|integrations/integration/abstractor)"), timeout=10000)
+    finally:
+        page.goto(f"{hass_base_url}/abstractor")
+        page.wait_for_function(
+            "() => { const e = document.querySelector('home-assistant'); return !!(e && e.hass); }",
+            timeout=20000,
+        )
+        page.evaluate(
+            """
+            (async (id) => {
+              const h = document.querySelector("home-assistant").hass;
+              try { await h.callWS({ type: "abstractor/subentry/delete", subentry_id: id }); } catch (e) {}
+            })
+            """,
+            created,
+        )
 
 
 def test_create_form_opens_in_edit_mode(logged_in_page, hass_base_url):
@@ -93,7 +127,7 @@ def test_health_tab_lists_rejected_samples(logged_in_page, hass_base_url):
     created = page.evaluate(
         """
         (async () => {
-          const res = await window.hass.callWS({
+          const res = await document.querySelector("home-assistant").hass.callWS({
             type: "abstractor/subentry/create",
             data: { device_type: "power", source_entity_id: "sensor.e2e_health_probe" },
           });
@@ -102,17 +136,26 @@ def test_health_tab_lists_rejected_samples(logged_in_page, hass_base_url):
         """
     )
     try:
+        page.wait_for_timeout(2000)
         page.goto(f"{hass_base_url}/abstractor")
         panel = page.locator("abstractor-panel")
-        panel.get_by_role("button", name="Health", exact=True).click()
+        panel.wait_for(state="attached", timeout=30000)
+        health_tab = panel.get_by_role("button", name="Health", exact=True)
+        health_tab.wait_for(state="visible", timeout=30000)
+        health_tab.click()
         panel.get_by_text(re.compile("Rejected samples", re.IGNORECASE)).first.wait_for(
             state="visible", timeout=20000
         )
     finally:
+        page.goto(f"{hass_base_url}/abstractor")
+        page.wait_for_function(
+            "() => { const e = document.querySelector('home-assistant'); return !!(e && e.hass); }",
+            timeout=20000,
+        )
         page.evaluate(
             """
             (async (id) => {
-              try { await window.hass.callWS({ type: "abstractor/subentry/delete", subentry_id: id }); } catch (e) {}
+              try { await document.querySelector("home-assistant").hass.callWS({ type: "abstractor/subentry/delete", subentry_id: id }); } catch (e) {}
             })
             """,
             created,

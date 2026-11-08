@@ -19,7 +19,7 @@ def test_panel_served_type_catalogue(logged_in_page, hass_base_url) -> None:
     catalogue = page.evaluate(
         """
         (async () => {
-          const h = window.hass;
+          const h = document.querySelector("home-assistant").hass;
           if (!h || !h.callWS) {
             throw new Error("frontend hass object not exposed on the panel page");
           }
@@ -67,7 +67,7 @@ def test_actuator_types_round_trip_through_create_and_filter(logged_in_page, has
     created = page.evaluate(
         """
         (async () => {
-          const h = window.hass;
+          const h = document.querySelector("home-assistant").hass;
           const ids = [];
           for (const [type, source] of [
             ["door_contact", "sun.sun"],
@@ -97,7 +97,7 @@ def test_actuator_types_round_trip_through_create_and_filter(logged_in_page, has
         page.evaluate(
             """
             (async (ids) => {
-              const h = window.hass;
+              const h = document.querySelector("home-assistant").hass;
               for (const id of ids) {
                 try { await h.callWS({ type: "abstractor/subentry/delete", subentry_id: id }); } catch (e) {}
               }

@@ -23,32 +23,29 @@ def _abstract_power_ids(hass_base_url: str, token: str) -> set[str]:
     return {s["entity_id"] for s in resp.json() if s["entity_id"].startswith("sensor.abstract_power")}
 
 
-def _pick_source(page, panel, name: str) -> None:
-    """Select a source entity through the labelled entity picker, tolerating
-    both the dialog and the inline combo-box presentations.
+def _set_source(panel, entity_id: str) -> None:
+    """Set the source picker's value deterministically.
 
-    The multi-select picker's search field does not expose a stable
-    placeholder, so the search input is addressed as the dialog's first input.
+    The HA entity picker's dropdown is a separate overlay component; driving
+    its search/option list is brittle on a shared instance (overlays intercept
+    pointer events). The picker is HA-owned UI, so this test pins the panel's
+    own contract: the form reads the picker value and submits it.
     """
-    field = panel.get_by_label("Source entities")
-    field.click()
-
-    dialog = page.get_by_role("dialog", name="Source entities")
-    scope = dialog if dialog.count() else panel
-    search = scope.locator("input").first
-    search.wait_for(state="visible", timeout=5000)
-    search.press_sequentially(name, delay=100)
-
-    option = scope.get_by_text(name, exact=False)
-    if option.count():
-        option.first.click()
-    else:
-        search.press("Enter")
-
-    # A multi-select picker can require an explicit confirm.
-    confirm = scope.get_by_role("button", name=re.compile(r"^(save|done|ok|close|add)$", re.IGNORECASE))
-    if confirm.count():
-        confirm.first.click()
+    picker = panel.locator("ha-entity-picker").first
+    picker.wait_for(state="attached", timeout=10000)
+    picker.evaluate(
+        """
+        (el, value) => {
+          el.value = [value];
+          el.dispatchEvent(new CustomEvent("value-changed", {
+            detail: { value: [value] },
+            bubbles: true,
+            composed: true,
+          }));
+        }
+        """,
+        entity_id,
+    )
 
 
 def test_panel_form_creates_live_entity(logged_in_page, hass_base_url, hass_bearer_token):
@@ -66,7 +63,7 @@ def test_panel_form_creates_live_entity(logged_in_page, hass_base_url, hass_bear
     save = panel.get_by_role("button", name=re.compile(r"^save$", re.IGNORECASE))
     save.wait_for(state="visible", timeout=10000)
 
-    _pick_source(page, panel, "Fridge Power")
+    _set_source(panel, "sun.sun")
     save.click()
 
     # Confirm through the states API (robust against panel/UI render timing).
@@ -94,7 +91,7 @@ def test_panel_ws_rejects_schema_violation_without_side_effects(logged_in_page, 
     rejected = page.evaluate(
         """
         (async () => {
-          const h = window.hass;
+          const h = document.querySelector("home-assistant").hass;
           if (!h || !h.callWS) {
             throw new Error("frontend hass object not exposed on the panel page");
           }

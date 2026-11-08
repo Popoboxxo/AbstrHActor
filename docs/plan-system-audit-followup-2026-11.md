@@ -251,8 +251,14 @@ Local E2E against the shared instance (coordinated, see §2.10): `bin/sync <repo
   mirrors the service contract (`entity_id`, `device_id`, `history_preserved`).
   JSON/CSV/summary actions live in the Settings tab and render their responses.
 - **WS-2.5**: E2E coverage is in `tests_e2e/test_type_catalogue_e2e.py`
-  (form options + create/filter round-trip); it requires the shared HA
-  instance and was not executed as part of the local unit run.
+  (form options + create/filter round-trip).
+- **E2E execution (2026-11-08)**: full suite via `docker-compose.e2e.yml`
+  (fresh onboarding + `hass-virtual`) → **24 passed, 1 skipped, 1 xfailed**;
+  the skip is the non-admin gate test on a fresh instance (core HA cannot
+  create a password credential for a second user — the shared-instance run
+  with a provisioned reader passed it). Shared-instance run: 21 passed, the
+  four remaining tests require `hass-virtual` demo sensors. Local/shared runs
+  use `-p no:homeassistant` (documented in `docs/E2E_TESTING.md`).
 - **O-01**: ruff check is green for `custom_components/abstractor`; the
   touched Python files are ruff-formatted. A repo-wide `ruff format` remains a
   separate chore (pre-existing 21-file debt). The `external/ReqogniLoom`

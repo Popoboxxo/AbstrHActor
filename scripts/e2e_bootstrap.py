@@ -20,38 +20,66 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
+from urllib.parse import urlparse
 
 import requests
+from websockets.sync.client import connect
 
-USERNAME = "e2e"
-PASSWORD = "e2e-bootstrap-password-not-a-secret"
-READONLY_USERNAME = "e2e-reader"
+# Overridable for shared instances that already have their own users (the
+# defaults match a fresh `scripts/e2e_bootstrap.py` provisioning run).
+USERNAME = os.environ.get("E2E_USERNAME", "e2e")
+PASSWORD = os.environ.get("E2E_PASSWORD", "e2e-bootstrap-password-not-a-secret")
+READONLY_USERNAME = os.environ.get("E2E_READONLY_USERNAME", "e2e-reader")
+READONLY_PASSWORD = os.environ.get("E2E_READONLY_PASSWORD", PASSWORD)
+
+
+def _websocket_url(base_url: str) -> str:
+    parsed = urlparse(base_url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    return f"{scheme}://{parsed.netloc}/api/websocket"
+
+
+def _list_usernames(base_url: str, access_token: str) -> set[str]:
+    """List usernames through the core websocket API (`config/auth/list`).
+
+    Uses the synchronous websocket client: the bootstrap runs from a plain
+    (non-async) pytest fixture, and pytest-asyncio may already own the loop.
+    The previous implementation used `/api/manager/config/users/get`, which is
+    not part of Home Assistant core and 404s on a plain instance.
+    """
+    with connect(_websocket_url(base_url), max_size=None) as ws:
+        ws.recv()
+        ws.send(json.dumps({"type": "auth", "access_token": access_token}))
+        auth = json.loads(ws.recv())
+        if auth.get("type") != "auth_ok":
+            raise RuntimeError(f"websocket auth failed: {auth}")
+        ws.send(json.dumps({"id": 1, "type": "config/auth/list"}))
+        response = json.loads(ws.recv())
+        if not response.get("success"):
+            raise RuntimeError(f"config/auth/list failed: {response}")
+        return {user.get("username") for user in response["result"] if user.get("username")}
 
 
 def _ensure_readonly_user(base_url: str, access_token: str) -> None:
-    """Create the second, NON-admin user used by the admin-gate E2E tests.
+    """Warn when the NON-admin user used by the admin-gate E2E tests is absent.
 
-    Idempotent: the users list is consulted first (admin module API), so a
-    re-run against an onboarded instance does not create a duplicate. Fails
-    loudly here — a half-bootstrapped reader would silently skew the gate
-    tests instead of reporting a broken fixture.
+    Core Home Assistant has no API to create a password credential for a new
+    user, so a fresh instance only has the onboarding admin. The reader must be
+    provisioned externally (or the gate tests skip); this function never
+    silently pretends the gate was exercised.
     """
-    headers = {"Authorization": f"Bearer {access_token}"}
-    listing = requests.get(f"{base_url}/api/manager/config/users/get", headers=headers, timeout=10)
-    listing.raise_for_status()
-    names = {u.get("name") for u in listing.json().get("users", [])}
+    names = _list_usernames(base_url, access_token)
     if READONLY_USERNAME in names:
         return
-    resp = requests.post(
-        f"{base_url}/api/auth/create",
-        headers=headers,
-        json={"name": READONLY_USERNAME, "password": PASSWORD, "group": None},
-        timeout=10,
+    print(
+        f"WARNING: non-admin E2E user {READONLY_USERNAME!r} is missing; "
+        "admin-gate tests will be skipped. Set E2E_READONLY_USERNAME to an "
+        "existing non-admin username or provision one first.",
+        file=sys.stderr,
     )
-    resp.raise_for_status()
-    # The create response hands out the new user's auth_string; the browser
-    # tests log in with username/password instead, so it is not stored.
 
 
 def _client_id(base_url: str) -> str:
