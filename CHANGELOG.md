@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] — 2026-11-08
+
+### Added
+
+- Configurable device and entity naming per sensor: an optional device name,
+  entity name and semantic `entity_id` (slug). All opt-in — existing installs
+  keep their current names and `entity_id`s unchanged —
+  [GH#54](https://github.com/Popoboxxo/AbstrHActor/pull/54)
+- Reusable local naming templates: define naming and `entity_id` schemes in YAML
+  files under `config/abstractor/templates/`, with inheritance (`extends`), safe
+  placeholders/filters, and a documented resolution precedence — selectable in
+  the options flow —
+  [GH#54](https://github.com/Popoboxxo/AbstrHActor/pull/54)
+- Entity friendly names are now localizable (English default, German translation
+  included) —
+  [GH#54](https://github.com/Popoboxxo/AbstrHActor/pull/54)
+- The sidebar panel's rename dialog now previews the resulting `entity_id` —
+  [GH#54](https://github.com/Popoboxxo/AbstrHActor/pull/54)
+
+### Added — system-audit follow-up (2026-11)
+
+- **Panel read view**: value cards now show unit/precision, relative freshness,
+  delta and a sparkline; the details drawer renders the ordered value pipeline
+  (`sources → aggregation → spike → invert → net-subtract → fallback → display`)
+  with labels instead of raw subentry keys.
+- **Health tab**: rejected samples are listed per sensor and can be voided or
+  restored in edit mode; threshold-derived `ok/warn/bad` health via
+  `warn_above`/`warn_below` (optional condition gate).
+- **Presentation options**: `display_unit` and `display_precision` are per
+  subentry; conversion applies at the render boundary only — the persisted
+  value and Influx payload keep the spec unit.
+- **Services**: `export_csv`/`import_csv` (2 MiB cap, exactly one source) and a
+  `summary` report (`min`/`max`/`avg` over the bounded coordinator window plus
+  counters and health). `import_data` and `delete_sensor` answer flat,
+  structured responses.
+- **Websocket reads** (`abstractor/types`, `abstractor/yaml_scan`,
+  `abstractor/history`, `abstractor/options/read`) are open to all users with
+  server-side redaction; writes stay admin-gated.
+- The Migrate tab now performs a real, read-only YAML scan with
+  `history_preservable` and blocker rows.
+
+### Changed
+
+- **One schema source of truth**: panel/WS writes validate against the same
+  voluptuous builder as the config flow (`schema.py`); unknown fields,
+  out-of-range values and malformed payloads are rejected with an error code
+  instead of being persisted.
+- **Panel catalogue**: the shipped type list (including `switch_state`,
+  `light_state`, `cover_position`) is served from `SPEC_REGISTRY`; the JS list
+  is only a bootstrap fallback. `riemann_energy` is explicitly disabled
+  (decision D-1).
+- Naming and identity are cleanly separated: a sensor's `unique_id` is pinned at
+  creation and never derived from names/templates/locale, so swapping hardware
+  keeps entity and recorder history intact —
+  [GH#54](https://github.com/Popoboxxo/AbstrHActor/pull/54)
+- Panel updates are memoized by a store revision and per-card signature, so
+  identical subscription payloads do not repaint the shadow DOM.
+
+### Fixed
+
+- German panel labels keep their umlauts and use consistent German vocabulary.
+- `SubentryMeta.stale`/`updated_at` are populated from the poll instead of the
+  dead `False` default; the Health/Devices views show freshness truthfully.
+- Non-admin users see a populated (redacted) panel instead of an empty one.
+
 ## [1.3.1] — 2026-10-15
 
 ### Fixed
