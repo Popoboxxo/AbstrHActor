@@ -74,7 +74,7 @@ def _add_device(page, hass_base_url: str, source_name: str) -> None:
     # order) instead of the one actually in this dialog — confirmed
     # against a live instance.
     source_dialog = page.get_by_role("dialog", name="Source entity")
-    page.get_by_label("Source entity", exact=True).click()
+    page.get_by_label("Source entity", exact=True).first.click()
     # ha-entity-picker filters as-you-type off real input events — .fill()
     # sets the value without dispatching them, so the dropdown never narrows.
     # press_sequentially (not raw keyboard.type) re-focuses its target
@@ -152,7 +152,11 @@ def test_reconfiguring_source_keeps_same_entity_id(
     # created, i.e. the last one.
     page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
     page.wait_for_load_state("networkidle")
-    page.get_by_role("button", name="Reconfigure Abstract sensor").last.click()
+    (
+        page.locator("ha-list-item-base.sub-entry")
+        .filter(has_text="Abstract power")
+        .last.get_by_role("button", name="Reconfigure Abstract sensor")
+    ).click()
     page.wait_for_timeout(500)
 
     # The current source now renders as a single-select "Source entity"
@@ -170,7 +174,7 @@ def test_reconfiguring_source_keeps_same_entity_id(
     # and picking the wrong one would silently no-op instead of swapping
     # the source.
     source_dialog = page.get_by_role("dialog", name="Source entity")
-    page.get_by_label("Source entity", exact=True).click()
+    page.get_by_label("Source entity", exact=True).first.click()
     search_field = source_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
     search_field.press_sequentially("Fridge Power", delay=100)

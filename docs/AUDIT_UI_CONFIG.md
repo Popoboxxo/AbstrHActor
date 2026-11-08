@@ -230,3 +230,19 @@ integration. Evidence cited as `file:line`.
 
 *Audit methodology, coverage figures, and all evidence were verified against the repository
 on 2026-08-15. No files outside this document were modified.*
+
+---
+
+## Resolution note (2026-11-08)
+
+This document is kept as history. Its P0–P4 items are resolved by the
+system-audit follow-up plan (`docs/plan-system-audit-followup-2026-11.md`):
+
+- `InfluxExporter` and the device registry are wired and configurable through
+  the root Options Flow; the panel reads a credential-free resolved-options
+  contract (`abstractor/options/read`).
+- GH#18 stays removed (`target_device_id`/`create_new_device`).
+- The poll interval is configurable (presets + bounded custom value).
+- The singleton-root/read-only-panel contract is documented in
+  `docs/ARCHITECTURE.md` and the README.
+

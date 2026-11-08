@@ -104,7 +104,7 @@ def _add_sensor_subentry(
     # (reproduced against a live instance). Scoping every locator to the
     # specific picker dialog avoids that ambiguity entirely.
     source_dialog = page.get_by_role("dialog", name="Source entity")
-    page.get_by_label("Source entity", exact=True).click()
+    page.get_by_label("Source entity", exact=True).first.click()
     # ha-entity-picker filters as-you-type off real input events — .fill()
     # sets the value without dispatching them, so the dropdown never narrows.
     # press_sequentially (not raw keyboard.type) re-focuses its target

@@ -63,6 +63,13 @@ test('buildRenamePayload trims the name and only includes object_id when set', (
   });
 });
 
+test('entity_name override travels on the rename payload only when non-blank', () => {
+  const payload = buildRenamePayload({ logical_name: 'Kitchen', entity_name: '  Power usage  ' });
+  assert.equal(payload.entity_name, 'Power usage');
+  const blank = buildRenamePayload({ logical_name: 'Kitchen', entity_name: '   ' });
+  assert.equal('entity_name' in blank, false);
+});
+
 test('buildPayload: single source uses source_entity_id, multi uses source_entity_ids', () => {
   const single = buildPayload({ device_type: 'power', sources: ['sensor.a'] });
   assert.equal(single.source_entity_id, 'sensor.a');
@@ -144,6 +151,6 @@ test('previewEntityId keeps the current domain and validates the slug', () => {
 });
 
 test('subentryToRenameFields pre-fills name and object id', () => {
-  const fields = subentryToRenameFields({ logical_name: 'Tank', object_id: 'tank' });
-  assert.deepEqual(fields, { logical_name: 'Tank', object_id: 'tank', rename_entity: false });
+  const fields = subentryToRenameFields({ logical_name: 'Tank', object_id: 'tank', entity_name: 'Tank level' });
+  assert.deepEqual(fields, { logical_name: 'Tank', object_id: 'tank', entity_name: 'Tank level', rename_entity: false });
 });

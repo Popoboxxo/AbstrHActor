@@ -11,14 +11,27 @@ import {
   DEVICE_TYPES,
   buildPayload,
   buildRenamePayload,
+  deltaWithSign,
+  formatValue,
+  getCatalogue,
   hasErrors,
+  importSummary,
   isNumericType,
   previewEntityId,
+  relativeTime,
+  sampleRows,
+  setCatalogue,
+  sparklinePath,
   subentryToFields,
   subentryToRenameFields,
+  summaryCard,
   validateRenameForm,
   validateSensorForm,
+  visibleHeaderActions,
 } from './sensor-form.js';
+import { langFor as _langFor, translate as _t } from './i18n.js';
+import { pipelineStages } from './pipeline.js';
+import { AbstractorStore } from './store.js';
 
 const TABS = [
   { id: 'devices', key: 'tab.devices' },
@@ -27,188 +40,7 @@ const TABS = [
   { id: 'migrate', key: 'tab.migrate' },
 ];
 
-const I18N = {
-  en: {
-    'tab.devices': 'Devices',
-    'tab.health': 'Health',
-    'tab.settings': 'Settings',
-    'tab.migrate': 'Migrate',
-    'action.editMode': 'Edit mode',
-    'action.disableEdit': 'Disable edit',
-    'action.addSensor': 'Add sensor',
-    'action.export': 'Export',
-    'action.import': 'Import',
-    'action.close': 'Close',
-    'action.details': 'Details',
-    'action.edit': 'Edit',
-    'action.configure': 'Configure',
-    'action.delete': 'Delete',
-    'action.rename': 'Rename',
-    'action.save': 'Save',
-    'action.cancel': 'Cancel',
-    'form.createTitle': 'Add Abstract sensor',
-    'form.editTitle': 'Configure Abstract sensor',
-    'form.deviceType': 'Device type',
-    'form.sources': 'Source entities',
-    'form.logicalName': 'Logical name',
-    'form.objectId': 'Entity object id',
-    'form.aggregation': 'Aggregation',
-    'form.spikeFilter': 'Enable spike filter',
-    'form.invert': 'Invert value',
-    'form.fallbackZero': 'Fail soft to zero',
-    'form.fallbackOnZero': 'Use fallback when zero',
-    'form.netSubtract': 'Subtract entity (net flow)',
-    'form.fallbackSource': 'Fallback source entity',
-    'form.fallbackCondition': 'Fallback condition entity',
-    'form.fallbackConditionState': 'Fallback condition state',
-    'confirm.delete': 'Delete this Abstract sensor?',
-    'rename.title': 'Rename Abstract sensor',
-    'rename.renameEntity': 'Also rename the entity id',
-    'rename.previewEntityId': 'New entity id:',
-    'status.sensors': 'sensors',
-    'status.loading': 'Loading...',
-    'title': 'Abstractor',
-    'subtitle.readOnly': 'read-only base',
-    'subtitle.editMode': 'EDIT MODE',
-    'filter.all': 'all',
-    'filter.power': 'power',
-    'filter.energy': 'energy',
-    'filter.water': 'water',
-    'filter.door_contact': 'door contact',
-    'filter.motion': 'motion',
-    'filter.smoke': 'smoke',
-    'filter.problems': 'problems',
-    'empty.loading': 'Loading Abstractor sensors...',
-    'empty.none': 'No matching Abstractor sensors.',
-    'admin.required': 'Administrator access required',
-    'common.sensor': 'Abstractor sensor',
-    'field.entity': 'entity',
-    'field.uniqueId': 'unique_id',
-    'field.source': 'source',
-    'health.bad': 'Bad',
-    'health.warn': 'Warnings',
-    'health.none': 'None',
-    'health.total': 'Total',
-    'health.noEvent': 'no event',
-    'health.value': 'value',
-    'settings.hint': 'Read-only base. Use Edit mode for Import/advanced actions; configuration stays in HA Settings -> Devices & Services.',
-    'error.adminOnly': 'Edit mode is available to administrators only.',
-    'migrate.title': 'Migrate',
-    'migrate.empty': 'No YAML sensors detected.',
-    'migrate.colSource': 'Source',
-    'migrate.colStatus': 'Status',
-  },
-  de: {
-    'tab.devices': 'Geraete',
-    'tab.health': 'Status',
-    'tab.settings': 'Einstellungen',
-    'tab.migrate': 'Migration',
-    'action.editMode': 'Bearbeiten',
-    'action.disableEdit': 'Bearbeiten beenden',
-    'action.addSensor': 'Sensor hinzufuegen',
-    'action.export': 'Exportieren',
-    'action.import': 'Importieren',
-    'action.close': 'Schliessen',
-    'action.details': 'Details',
-    'action.edit': 'Bearbeiten',
-    'action.configure': 'Konfigurieren',
-    'action.delete': 'Loeschen',
-    'action.rename': 'Umbenennen',
-    'action.save': 'Speichern',
-    'action.cancel': 'Abbrechen',
-    'form.createTitle': 'Abstract-Sensor hinzufuegen',
-    'form.editTitle': 'Abstract-Sensor konfigurieren',
-    'form.deviceType': 'Geraetetyp',
-    'form.sources': 'Quell-Entitaeten',
-    'form.logicalName': 'Logischer Name',
-    'form.objectId': 'Entity-Object-Id',
-    'form.aggregation': 'Aggregation',
-    'form.spikeFilter': 'Spike-Filter aktivieren',
-    'form.invert': 'Wert invertieren',
-    'form.fallbackZero': 'Bei Fehler auf Null',
-    'form.fallbackOnZero': 'Fallback bei Null verwenden',
-    'form.netSubtract': 'Entitaet abziehen (Nettofluss)',
-    'form.fallbackSource': 'Fallback-Quellentitaet',
-    'form.fallbackCondition': 'Fallback-Bedingungsentitaet',
-    'form.fallbackConditionState': 'Fallback-Bedingungszustand',
-    'confirm.delete': 'Diesen Abstract-Sensor loeschen?',
-    'rename.title': 'Abstract-Sensor umbenennen',
-    'rename.renameEntity': 'Entity-Id ebenfalls umbenennen',
-    'rename.previewEntityId': 'Neue Entity-Id:',
-    'status.sensors': 'Sensoren',
-    'status.loading': 'Laedt...',
-    'title': 'Abstractor',
-    'subtitle.readOnly': 'schreibgeschuetzte Basis',
-    'subtitle.editMode': 'EDIT-MODUS',
-    'filter.all': 'alle',
-    'filter.power': 'Leistung',
-    'filter.energy': 'Energie',
-    'filter.water': 'Wasser',
-    'filter.door_contact': 'Tuerkontakt',
-    'filter.motion': 'Bewegung',
-    'filter.smoke': 'Rauch',
-    'filter.problems': 'Probleme',
-    'empty.loading': 'Abstractor-Sensoren werden geladen...',
-    'empty.none': 'Keine passenden Abstractor-Sensoren.',
-    'admin.required': 'Administratorzugriff erforderlich',
-    'common.sensor': 'Abstractor-Sensor',
-    'field.entity': 'Entity',
-    'field.uniqueId': 'Unique-ID',
-    'field.source': 'Quelle',
-    'health.bad': 'Fehler',
-    'health.warn': 'Warnungen',
-    'health.none': 'Keine',
-    'health.total': 'Gesamt',
-    'health.noEvent': 'kein Ereignis',
-    'health.value': 'Wert',
-    'settings.hint': 'Schreibgeschuetzte Basis. Nutze den Bearbeiten-Modus fuer Import/erweiterte Aktionen; die Konfiguration bleibt unter HA Einstellungen -> Geraete & Dienste.',
-    'error.adminOnly': 'Der Bearbeiten-Modus ist nur fuer Administratoren verfuegbar.',
-    'migrate.title': 'Migration',
-    'migrate.empty': 'Keine YAML-Sensoren gefunden.',
-    'migrate.colSource': 'Quelle',
-    'migrate.colStatus': 'Status',
-  },
-};
 
-function _langFor(hass) {
-  const raw = hass && hass.language ? String(hass.language) : 'en';
-  const code = raw.toLowerCase().slice(0, 2);
-  return I18N[code] ? code : 'en';
-}
-
-function _t(hass, key) {
-  const dict = I18N[_langFor(hass)];
-  if (dict && Object.prototype.hasOwnProperty.call(dict, key)) return dict[key];
-  const fallback = I18N.en;
-  if (fallback && Object.prototype.hasOwnProperty.call(fallback, key)) return fallback[key];
-  return key;
-}
-
-try { if (typeof window !== 'undefined') window.AbstractorI18n = { languages: I18N, translate: _t, defaultLanguage: 'en' }; } catch (e) {}
-
-
-class AbstractorStore {
-  constructor() {
-    this.state = {
-      subentries: [],
-      loaded: false,
-      loading: false,
-      error: '',
-      activeTab: 'devices',
-      lastFetchAt: 0,
-      editMode: false,
-      admin: false,
-    };
-    this.subscribers = [];
-  }
-  subscribe(fn) { this.subscribers.push(fn); }
-  get state() { return this._state; }
-  set state(v) { this._state = v; }
-  setState(patch) {
-    this.state = Object.assign({}, this.state, patch);
-    this.subscribers.forEach((fn) => fn(this.state));
-  }
-}
 
 class AbstractorPanel extends HTMLElement {
   constructor() {
@@ -220,6 +52,7 @@ class AbstractorPanel extends HTMLElement {
     this._fetchPromise = null;
     this._detail = null;
     this._filterOverride = null;
+    this._typesLoaded = false;
     this._migrateLoaded = false;
     this._migrateSensors = [];
     this._modalEl = null;
@@ -227,7 +60,27 @@ class AbstractorPanel extends HTMLElement {
     this._modalPickers = [];
     this._subscribed = false;
     this._unsub = null;
-    this._store.subscribe(() => this._render());
+    this._optionsLoaded = false;
+    this._options = null;
+    this._spark = {};
+    this._headerSignature = '';
+    this._tabsSignature = '';
+    this._errorEl = null;
+    this._backdropEl = null;
+    this._detailShown = null;
+    this._errorText = '';
+    this._lastRevision = -1;
+    this.renderCount = 0;
+    this._renderedTab = null;
+    this._deviceCards = new Map();
+    this._deviceFilterEl = null;
+    this._deviceListEl = null;
+    this._filterSignature = '';
+    this._history = {};
+    this._historyLoaded = {};
+    this._summary = null;
+    this._serviceMessage = '';
+    this._store.subscribe(() => this._renderIfChanged());
   }
 
   set hass(hass) {
@@ -252,20 +105,32 @@ class AbstractorPanel extends HTMLElement {
     this._store.setState({ error: message || '' });
   }
 
-  async _callService(service, data) {
-    return this._hass.callService('abstractor', service, data || {}, undefined, false, /export/.test(service));
+  _showMessage(message) {
+    this._serviceMessage = message || '';
+    this._render();
   }
 
   async _fetchSubentries(force) {
     if (!this._hass || !this._hass.callWS) return;
-    if (!this._store.state.admin) return;
     const now = Date.now();
     if (!force && this._store.state.loading) return;
     if (!force && this._store.state.loaded && now - this._store.state.lastFetchAt < 1500) return;
     this._store.setState({ loading: true, error: '' });
     try {
+      if (!this._typesLoaded) {
+        // WS-2: install the server catalogue once (SPEC_REGISTRY-derived); the
+        // JS fallback list only covers the first frames before this arrives.
+        this._typesLoaded = true;
+        try {
+          const types = await this._hass.callWS({ type: 'abstractor/types' });
+          setCatalogue(types);
+        } catch (typesErr) {
+          // keep the fallback catalogue — the server gate remains authoritative
+        }
+      }
       const result = await this._hass.callWS({ type: 'abstractor/subentries' });
       const list = (result && Array.isArray(result.subentries)) ? result.subentries : [];
+      this._noteSparkline(list);
       this._store.setState({ subentries: list, loaded: true, loading: false, lastFetchAt: Date.now() });
     } catch (err) {
       this._store.setState({ loading: false, error: 'Load failed: ' + (err && err.message ? err.message : err) });
@@ -277,7 +142,6 @@ class AbstractorPanel extends HTMLElement {
     // subscription is available) fall back to the one-shot fetch so the panel
     // always paints its first frame.
     if (this._subscribed && this._store.state.loaded) return;
-    if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
     const s = this._store.state;
     const stale = Date.now() - s.lastFetchAt > 10000;
     if (!s.loading && (!s.loaded || stale)) {
@@ -287,14 +151,14 @@ class AbstractorPanel extends HTMLElement {
 
   _ensureSubscription() {
     if (this._subscribed) return;
-    if (!this._hass || !this._hass.user || !this._hass.user.is_admin) return;
-    if (!this._hass.connection || !this._hass.connection.subscribeMessage) return;
+    if (!this._hass || !this._hass.connection || !this._hass.connection.subscribeMessage) return;
     this._subscribed = true;
     this._store.setState({ loading: true, error: '' });
     this._hass.connection
       .subscribeMessage(
         (event) => {
           const list = (event && Array.isArray(event.subentries)) ? event.subentries : [];
+          this._noteSparkline(list);
           this._store.setState({
             subentries: list,
             loaded: true,
@@ -378,6 +242,8 @@ class AbstractorPanel extends HTMLElement {
       .health.ok { color:#2e7d32; }
       .health.warn { color:#f9a825; }
       .health.bad { color:#c62828; }
+      .stage { display:inline-block; margin:0 6px 6px 0; padding:1px 8px; border-radius:999px; border:1px solid var(--divider-color,#ccc); opacity:.45; font-size:.85em; }
+      .stage.active { opacity:1; font-weight:600; }
       table { width:100%; border-collapse:collapse; }
       td { padding:4px 8px 4px 0; color:var(--primary-text-color); font-size:.95em; }
       td.value { text-align:right; font-weight:500; }
@@ -394,70 +260,122 @@ class AbstractorPanel extends HTMLElement {
     `;
   }
 
+  _renderIfChanged() {
+    // Subscription pings that carry an identical payload must not repaint
+    // (WS-4.5); local, explicit `_render()` calls still force a paint.
+    if (!this._store.shouldRender(this._lastRevision)) return;
+    this._render();
+  }
+
   _render() {
     if (!this._hass) return;
+    this._lastRevision = this._store.revision;
+    this.renderCount += 1;
     const s = this._store.state;
-    const statusText = (!s.admin)
-      ? this._t('admin.required')
-      : (s.loaded ? `${s.subentries.length} ${this._t('status.sensors')}` : this._t('status.loading'));
-    const html = `
-      <style>${this._styles()}</style>
-      <div class="header">
-        <div>
-          <h1>${this._t('title')}</h1>
-          <p class="subtitle">${statusText} · ${this._t('subtitle.readOnly')}${s.editMode ? ' · ' + this._t('subtitle.editMode') : ''}</p>
-        </div>
-        <div class="actions">
-          <button type="button" class="tab-toggle">${s.editMode ? this._t('action.disableEdit') : this._t('action.editMode')}</button>
-          <button type="button" class="add-sensor-button">${this._t('action.addSensor')}</button>
-          <button type="button" class="export-button">${this._t('action.export')}</button>
-          <button type="button" class="import-button">${this._t('action.import')}</button>
-          <input type="file" accept="application/json" class="import-file-input" hidden>
-        </div>
-      </div>
-      <div class="tabs">
-        ${TABS.map((t) => `<button type="button" class="tab ${s.activeTab===t.id?'active':''}" data-tab="${t.id}">${this._t(t.key)}</button>`).join('')}
-      </div>
-      <div class="body"></div>
-    `;
-    this.shadowRoot.innerHTML = html;
+    // WS-3: read visibility — ordinary users see the sensor count, too.
+    const statusText = s.loaded ? `${s.subentries.length} ${this._t('status.sensors')}` : this._t('status.loading');
+    // WS-3 (UF-06-adjacent): only the actions a user may actually use render.
+    const actions = new Set(visibleHeaderActions(s.admin, s.editMode));
+    const editToggleBtn = actions.has('editToggle')
+      ? `<button type="button" class="tab-toggle">${s.editMode ? this._t('action.disableEdit') : this._t('action.editMode')}</button>`
+      : '';
+    const addBtn = actions.has('addSensor') ? `<button type="button" class="add-sensor-button">${this._t('action.addSensor')}</button>` : '';
+    const exportBtn = actions.has('export') ? `<button type="button" class="export-button">${this._t('action.export')}</button>` : '';
+    const importBtn = actions.has('import')
+      ? `<button type="button" class="import-button">${this._t('action.import')}</button>`
+      : '';
+    const importInput = actions.has('import') ? `<input type="file" accept="application/json" class="import-file-input" hidden>` : '';
+    const headerHtml = `<div><h1>${this._t('title')}</h1><p class="subtitle">${statusText} · ${this._t('subtitle.readOnly')}${s.editMode ? ' · ' + this._t('subtitle.editMode') : ''}</p></div><div class="actions">${editToggleBtn}${addBtn}${exportBtn}${importBtn}${importInput}</div>`;
+    const tabsHtml = TABS.map((t) => `<button type="button" class="tab ${s.activeTab===t.id?'active':''}" data-tab="${t.id}">${this._t(t.key)}</button>`).join('');
+
+    // WS-4.5: the shadow structure is built once; header/tabs repaint only
+    // when their markup signature changes (subscription pings churn state
+    // without touching the tree then).
+    const firstRender = !this._bodyEl;
+    if (firstRender) {
+      this.shadowRoot.innerHTML = `<style>${this._styles()}</style><div class="header"></div><div class="tabs"></div><div class="toast" role="status" aria-live="polite" style="display:none"></div><div class="body"></div>`;
+      this._headerEl = this.shadowRoot.querySelector('.header');
+      this._tabsEl = this.shadowRoot.querySelector('.tabs');
+      this._toastSlot = this.shadowRoot.querySelector('.toast');
+      this._bodyEl = this.shadowRoot.querySelector('.body');
+    }
+    const headerChanged = firstRender || headerHtml !== this._headerSignature;
+    if (headerChanged) {
+      this._headerEl.innerHTML = headerHtml;
+      this._headerSignature = headerHtml;
+    }
+    const tabsChanged = firstRender || tabsHtml !== this._tabsSignature;
+    if (tabsChanged) {
+      this._tabsEl.innerHTML = tabsHtml;
+      this._tabsSignature = tabsHtml;
+    }
 
     // Error text may carry server-provided strings (str(exc)); never inject it
-    // via innerHTML — build the node with textContent instead.
-    if (s.error) {
+    // via innerHTML — build the node with textContent instead. The element is
+    // tracked so re-renders neither duplicate nor leak it (memoized tree).
+    if (!s.error) {
+      if (this._errorEl) {
+        this.shadowRoot.removeChild(this._errorEl);
+        this._errorEl = null;
+      }
+    } else if (this._errorText !== s.error) {
+      if (this._errorEl) {
+        this.shadowRoot.removeChild(this._errorEl);
+      }
       const errorEl = document.createElement('div');
       errorEl.className = 'error';
       errorEl.setAttribute('role', 'alert');
       errorEl.setAttribute('aria-live', 'assertive');
       errorEl.textContent = s.error;
-      const headerEl = this.shadowRoot.querySelector('.header');
-      if (headerEl) headerEl.after(errorEl);
-      else this.shadowRoot.appendChild(errorEl);
+      this.shadowRoot.appendChild(errorEl);
+      this._errorEl = errorEl;
+      this._errorText = s.error;
     }
 
-
-    // wire header
-    this.shadowRoot.querySelector('.tab-toggle').addEventListener('click', () => this._toggleEditMode());
-    this.shadowRoot.querySelector('.add-sensor-button').addEventListener('click', () => {
-      if (this._store.state.editMode) this._openSensorForm(null);
-      else this._navigate('/config/integrations/integration/abstractor');
-    });
-    this.shadowRoot.querySelector('.export-button').addEventListener('click', () => this._handleExport());
-    const fileInput = this.shadowRoot.querySelector('.import-file-input');
-    this.shadowRoot.querySelector('.import-button').addEventListener('click', () => { if (fileInput) fileInput.click(); });
-    if (fileInput) {
-      fileInput.addEventListener('change', () => {
-        const file = fileInput.files && fileInput.files[0];
-        fileInput.value = '';
-        if (file) this._handleImportFile(file);
+    if (headerChanged) {
+      const tabToggle = this.shadowRoot.querySelector('.tab-toggle');
+      if (tabToggle) tabToggle.addEventListener('click', () => this._toggleEditMode());
+      const addSensor = this.shadowRoot.querySelector('.add-sensor-button');
+      if (addSensor) {
+        addSensor.addEventListener('click', () => {
+          if (this._store.state.editMode) this._openSensorForm(null);
+          else this._navigate('/config/integrations/integration/abstractor');
+        });
+      }
+      const exportButton = this.shadowRoot.querySelector('.export-button');
+      if (exportButton) exportButton.addEventListener('click', () => this._handleExport());
+      const fileInput = this.shadowRoot.querySelector('.import-file-input');
+      const importButton = this.shadowRoot.querySelector('.import-button');
+      if (importButton && fileInput) {
+        importButton.addEventListener('click', () => { if (fileInput) fileInput.click(); });
+      }
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          const file = fileInput.files && fileInput.files[0];
+          fileInput.value = '';
+          if (file) this._handleImportFile(file);
+        });
+      }
+    }
+    if (tabsChanged) {
+      this._tabsEl.querySelectorAll('.tab').forEach((b) => {
+        b.addEventListener('click', () => this._store.setState({ activeTab: b.getAttribute('data-tab') }));
       });
     }
-    // tabs
-    this.shadowRoot.querySelectorAll('.tab').forEach((b) => {
-      b.addEventListener('click', () => this._store.setState({ activeTab: b.getAttribute('data-tab') }));
-    });
 
-    const bodyEl = this.shadowRoot.querySelector('.body');
+    const bodyEl = this._bodyEl;
+    if (this._renderedTab !== s.activeTab) {
+      this._renderedTab = s.activeTab;
+      bodyEl.replaceChildren();
+      this._deviceCards.clear();
+      this._deviceFilterEl = null;
+      this._deviceListEl = null;
+      this._filterSignature = '';
+    }
+    if (this._toastSlot) {
+      this._toastSlot.textContent = this._serviceMessage || '';
+      this._toastSlot.style.display = this._serviceMessage ? '' : 'none';
+    }
     if (s.activeTab === 'devices') this._renderDevices(bodyEl);
     else if (s.activeTab === 'health') this._renderHealth(bodyEl);
     else if (s.activeTab === 'migrate') this._renderMigrate(bodyEl);
@@ -467,7 +385,21 @@ class AbstractorPanel extends HTMLElement {
       this._fetchYamlScan();
     }
 
-    if (this._detail) {
+    if (s.activeTab === 'settings' && !this._optionsLoaded) {
+      this._fetchOptions();
+    }
+
+    if (s.activeTab === 'health') {
+      this._fetchHistoryIfNeeded();
+    }
+
+    if (this._detail !== this._detailShown) {
+      if (this._backdropEl && this._backdropEl.parentNode === this.shadowRoot) {
+        this.shadowRoot.removeChild(this._backdropEl);
+      }
+      this._backdropEl = null;
+      this._detailShown = this._detail;
+      if (this._detail) {
       const backdrop = document.createElement('div');
       backdrop.className = 'drawer-backdrop';
       backdrop.setAttribute('role','dialog');
@@ -483,19 +415,87 @@ class AbstractorPanel extends HTMLElement {
       const h = document.createElement('h2');
       h.textContent = this._detail.logical_name || this._detail.title;
       drawer.appendChild(h);
-      for (const [k,v] of Object.entries(this._detail)) {
+      // UF-04-adjacent/4.4: no raw-key dump with JSON.stringify values — the
+      // drawer renders the pipeline view with i18n labels.
+      const detail = this._detail;
+      const meta = (detail.meta) || {};
+      const fieldLine = (labelKey, text) => {
+        if (text === null || text === undefined || text === '') return;
         const f = document.createElement('div');
         f.className = 'field';
         const b = document.createElement('b');
-        b.textContent = k;
+        b.textContent = this._t(labelKey);
         f.appendChild(b);
-        const span = document.createElement('span');
-        span.textContent = (v === null || v === undefined) ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
-        f.appendChild(span);
+        const s = document.createElement('span');
+        s.textContent = String(text);
+        f.appendChild(s);
         drawer.appendChild(f);
+      };
+      fieldLine('form.deviceType', getCatalogue().display_names[detail.device_type] || detail.device_type);
+      fieldLine('drawer.value', this._formatValue(detail));
+      fieldLine('drawer.updatedAt', this._updatedText(detail));
+      fieldLine('form.objectId', detail.object_id);
+      fieldLine('form.sources', Array.isArray(detail.source_entity_ids) ? detail.source_entity_ids.filter(Boolean).join(', ') : '');
+      const stages = pipelineStages(detail);
+      const h3 = document.createElement('h3');
+      h3.textContent = this._t('drawer.stages');
+      drawer.appendChild(h3);
+      const stageWrap = document.createElement('p');
+      stageWrap.className = 'hint';
+      for (const stage of stages) {
+        const chip = document.createElement('span');
+        chip.className = 'stage' + (stage.active ? ' active' : '');
+        chip.textContent = this._t(stage.labelKey);
+        stageWrap.appendChild(chip);
+      }
+      drawer.appendChild(stageWrap);
+      if (Object.keys(meta).length) {
+        fieldLine('drawer.spikeRejections', meta.spike_rejections);
+        fieldLine('drawer.fallbacks', meta.fallbacks);
+        fieldLine('drawer.unavailableSamples', meta.unavailable_samples);
+        if (meta.last_event) {
+          let eventText = String(meta.last_event);
+          if (meta.event_at) {
+            const when = new Date(meta.event_at);
+            if (!Number.isNaN(when.getTime())) {
+              eventText += ' @ ' + when.toLocaleString(_langFor(this._hass), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+          }
+          fieldLine('drawer.lastEvent', eventText);
+        }
+        const sourceStates = meta.source_states || {};
+        for (const [eid, state] of Object.entries(sourceStates)) {
+          const f = document.createElement('div');
+          f.className = 'field';
+          const b = document.createElement('b');
+          b.textContent = eid;
+          f.appendChild(b);
+          const s = document.createElement('span');
+          s.textContent = String(state);
+          f.appendChild(s);
+          drawer.appendChild(f);
+        }
+        const rejections = Array.isArray(detail.recent_rejections) ? detail.recent_rejections : [];
+        if (rejections.length) {
+          fieldLine('drawer.rejections', '');
+          for (const r of rejections) {
+            const f = document.createElement('div');
+            f.className = 'field';
+            const b = document.createElement('b');
+            b.textContent = String(r.id);
+            f.appendChild(b);
+            const s = document.createElement('span');
+            const when = new Date(r.at);
+            const clock = Number.isNaN(when.getTime()) ? '' : when.toLocaleString(_langFor(this._hass), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            s.textContent = `${String(r.reason)}: ${r.value === null || r.value === undefined ? '?' : r.value} @ ${clock}${r.voided ? ' (voided)' : ''}`;
+            f.appendChild(s);
+            drawer.appendChild(f);
+          }
+        }
       }
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { this._detail = null; this._render(); } });
       backdrop.appendChild(drawer);
+      this._backdropEl = backdrop;
       this.shadowRoot.appendChild(backdrop);
       const focusSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
       close.focus();
@@ -510,9 +510,12 @@ class AbstractorPanel extends HTMLElement {
         if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
         else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
       });
+      }
     }
 
-    if (this._modalEl) this.shadowRoot.appendChild(this._modalEl);
+    if (this._modalEl && this._modalEl.parentNode !== this.shadowRoot) {
+      this.shadowRoot.appendChild(this._modalEl);
+    }
   }
 
   _deviceIdFor(entry) {
@@ -530,145 +533,228 @@ class AbstractorPanel extends HTMLElement {
     const filter = this._activeFilter() || 'all';
     const present = new Set((s.subentries || []).map((e) => e.device_type).filter(Boolean));
     const chips = ['all', ...DEVICE_TYPES.filter((t) => present.has(t)), 'problems'];
-    bodyEl.innerHTML = `
-      <div class="filter-row">
-        ${chips.map((f) => `<button type="button" class="filter-chip ${filter===f?'active':''}" data-filter="${f}">${this._t('filter.' + f)}</button>`).join('')}
-      </div>
-    `;
-    bodyEl.querySelectorAll('.filter-chip').forEach((b) => {
-      b.addEventListener('click', () => {
-        // re-render by toggling a small state token
-        this._filterOverride = b.getAttribute('data-filter');
-        this._render();
+    const filterSignature = JSON.stringify([chips, filter]);
+    if (!this._deviceFilterEl || this._filterSignature !== filterSignature) {
+      const filterRow = document.createElement('div');
+      filterRow.className = 'filter-row';
+      chips.forEach((chip) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `filter-chip ${filter === chip ? 'active' : ''}`;
+        button.setAttribute('data-filter', chip);
+        button.textContent = this._chipLabel(chip);
+        button.addEventListener('click', () => {
+          this._filterOverride = button.getAttribute('data-filter');
+          this._render();
+        });
+        filterRow.appendChild(button);
       });
-    });
-    const activeFilter = this._filterOverride || 'all';
-    const list = (s.subentries || []).filter((e) => {
-      if (activeFilter === 'all') return true;
-      if (activeFilter === 'problems') return e.health === 'warn' || e.health === 'bad';
-      return (e.device_type || '') === activeFilter;
-    });
-    if (!s.admin) {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = this._t('admin.required');
-      bodyEl.appendChild(empty);
-      return;
+      if (this._deviceFilterEl && this._deviceFilterEl.parentNode) {
+        this._deviceFilterEl.replaceWith(filterRow);
+      }
+      this._deviceFilterEl = filterRow;
+      this._filterSignature = filterSignature;
     }
+    if (this._deviceFilterEl.parentNode !== bodyEl) bodyEl.appendChild(this._deviceFilterEl);
+    if (!this._deviceListEl) this._deviceListEl = document.createElement('div');
+    if (this._deviceListEl.parentNode !== bodyEl) bodyEl.appendChild(this._deviceListEl);
+    const listEl = this._deviceListEl;
+    const list = (s.subentries || []).filter((e) => {
+      if (filter === 'all') return true;
+      if (filter === 'problems') return e.health === 'warn' || e.health === 'bad';
+      return (e.device_type || '') === filter;
+    });
     if (!s.loaded) {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = this._t('empty.loading');
-      bodyEl.appendChild(empty);
+      listEl.replaceChildren(this._emptyNode(this._t('empty.loading')));
+      this._deviceCards.clear();
       return;
     }
     if (!list.length) {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = this._t('empty.none');
-      bodyEl.appendChild(empty);
+      listEl.replaceChildren(this._emptyNode(this._t('empty.none')));
+      this._deviceCards.clear();
       return;
     }
-    // group by logical_name / device (light grouping)
+    // WS-4.5: reuse a card DOM node while its signature is unchanged; the
+    // subscription stream then repaints only the rows whose value/meta moved.
+    const fragment = document.createDocumentFragment();
+    const seen = new Set();
     for (const e of list) {
-      const card = document.createElement('div');
-      card.className = 'device-card';
-      const header = document.createElement('div');
-      header.className = 'card-header';
-      const h = document.createElement('h2');
-      h.textContent = (e.logical_name || e.title || this._t('common.sensor'));
-      header.appendChild(h);
-      const health = document.createElement('span');
-      health.className = 'health ' + (e.health || 'idle');
-      health.textContent = this._healthDot(e.health) + ' ' + (e.health || 'idle');
-      header.appendChild(health);
-      card.appendChild(header);
-
-      const details = document.createElement('p');
-      details.className = 'hint';
-      const sources = Array.isArray(e.source_entity_ids) ? e.source_entity_ids.filter(Boolean).join(', ') : '';
-      details.textContent = [
-        e.object_id ? `${this._t('field.entity')}: ${e.object_id}` : '',
-        e.legacy_unique_id ? `${this._t('field.uniqueId')}: ${e.legacy_unique_id}` : '',
-        sources ? `${this._t('field.source')}: ${sources}` : '',
-      ].filter(Boolean).join(' · ');
-      card.appendChild(details);
-
-      const detailsButton = document.createElement('button');
-      detailsButton.type = 'button';
-      detailsButton.textContent = this._t('action.details');
-      detailsButton.style.margin = '8px 8px 8px 0';
-      detailsButton.addEventListener('click', () => {
-        this._detail = e;
-        this._render();
-      });
-      card.appendChild(detailsButton);
-
-      const editButton = document.createElement('button');
-      editButton.type = 'button';
-      editButton.textContent = this._t('action.edit');
-      editButton.style.marginTop = '8px';
-      const deviceId = this._deviceIdFor(e);
-      editButton.addEventListener('click', () => {
-        if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
-        else this._navigate('/config/integrations/integration/abstractor');
-      });
-      card.appendChild(editButton);
-
-      if (s.editMode) {
-        const configureButton = document.createElement('button');
-        configureButton.type = 'button';
-        configureButton.textContent = this._t('action.configure');
-        configureButton.style.marginTop = '8px';
-        configureButton.style.marginLeft = '8px';
-        configureButton.addEventListener('click', () => this._openSensorForm(e));
-        card.appendChild(configureButton);
-
-        const renameButton = document.createElement('button');
-        renameButton.type = 'button';
-        renameButton.textContent = this._t('action.rename');
-        renameButton.style.marginTop = '8px';
-        renameButton.style.marginLeft = '8px';
-        renameButton.addEventListener('click', () => this._openRenameForm(e));
-        card.appendChild(renameButton);
-
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.textContent = this._t('action.delete');
-        deleteButton.style.marginTop = '8px';
-        deleteButton.style.marginLeft = '8px';
-        deleteButton.addEventListener('click', () => this._confirmDelete(e));
-        card.appendChild(deleteButton);
+      const id = e.subentry_id;
+      seen.add(id);
+      const signature = this._deviceSignature(e, s);
+      let card = this._deviceCards.get(id);
+      if (!card || card.getAttribute('data-signature') !== signature) {
+        card = this._buildDeviceCard(e, s);
+        card.setAttribute('data-signature', signature);
+        this._deviceCards.set(id, card);
       }
-
-      const table = document.createElement('table');
-      const row = table.insertRow();
-      row.insertCell().textContent = e.device_type || '';
-      row.insertCell().className = 'value';
-      row.cells[1].textContent = (e.value === null || e.value === undefined) ? '—' : String(e.value);
-      card.appendChild(table);
-      bodyEl.appendChild(card);
+      fragment.appendChild(card);
     }
+    for (const id of [...this._deviceCards.keys()]) {
+      if (!seen.has(id)) this._deviceCards.delete(id);
+    }
+    listEl.replaceChildren(fragment);
+  }
+
+  _emptyNode(text) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = text;
+    return empty;
+  }
+
+  _deviceSignature(entry, state) {
+    return JSON.stringify([
+      entry.subentry_id,
+      entry.value,
+      entry.unit,
+      entry.display_unit,
+      entry.display_precision,
+      entry.health,
+      entry.last_event,
+      entry.meta && entry.meta.updated_at,
+      entry.meta && entry.meta.stale,
+      entry.meta && entry.meta.delta,
+      entry.recent_rejections,
+      entry.device_type,
+      entry.logical_name,
+      entry.title,
+      entry.object_id,
+      entry.legacy_unique_id,
+      entry.source_entity_ids,
+      state.admin,
+      state.editMode,
+    ]);
+  }
+
+  _buildDeviceCard(e, s) {
+    const card = document.createElement('div');
+    card.className = 'device-card';
+    const header = document.createElement('div');
+    header.className = 'card-header';
+    const h = document.createElement('h2');
+    h.textContent = (e.logical_name || e.title || this._t('common.sensor'));
+    header.appendChild(h);
+    const health = document.createElement('span');
+    health.className = 'health ' + (e.health || 'idle');
+    health.textContent = this._healthDot(e.health) + ' ' + (e.health || 'idle');
+    header.appendChild(health);
+    card.appendChild(header);
+
+    const details = document.createElement('p');
+    details.className = 'hint';
+    const sources = Array.isArray(e.source_entity_ids) ? e.source_entity_ids.filter(Boolean).join(', ') : '';
+    details.textContent = [
+      e.object_id ? `${this._t('field.entity')}: ${e.object_id}` : '',
+      e.legacy_unique_id ? `${this._t('field.uniqueId')}: ${e.legacy_unique_id}` : '',
+      sources ? `${this._t('field.source')}: ${sources}` : '',
+    ].filter(Boolean).join(' · ');
+    card.appendChild(details);
+
+    const detailsButton = document.createElement('button');
+    detailsButton.type = 'button';
+    detailsButton.textContent = this._t('action.details');
+    detailsButton.style.margin = '8px 8px 8px 0';
+    detailsButton.addEventListener('click', () => {
+      this._detail = e;
+      this._render();
+    });
+    card.appendChild(detailsButton);
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.textContent = this._t('action.edit');
+    editButton.style.marginTop = '8px';
+    const deviceId = this._deviceIdFor(e);
+    editButton.addEventListener('click', () => {
+      if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
+      else this._navigate('/config/integrations/integration/abstractor');
+    });
+    if (s.admin) card.appendChild(editButton);
+
+    if (s.editMode) {
+      const configureButton = document.createElement('button');
+      configureButton.type = 'button';
+      configureButton.textContent = this._t('action.configure');
+      configureButton.style.marginTop = '8px';
+      configureButton.style.marginLeft = '8px';
+      configureButton.addEventListener('click', () => this._openSensorForm(e));
+      card.appendChild(configureButton);
+
+      const renameButton = document.createElement('button');
+      renameButton.type = 'button';
+      renameButton.textContent = this._t('action.rename');
+      renameButton.style.marginTop = '8px';
+      renameButton.style.marginLeft = '8px';
+      renameButton.addEventListener('click', () => this._openRenameForm(e));
+      card.appendChild(renameButton);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.textContent = this._t('action.delete');
+      deleteButton.style.marginTop = '8px';
+      deleteButton.style.marginLeft = '8px';
+      deleteButton.addEventListener('click', () => this._confirmDelete(e));
+      card.appendChild(deleteButton);
+    }
+
+    const table = document.createElement('table');
+    const row = table.insertRow();
+    row.insertCell().textContent = e.device_type || '';
+    row.insertCell().className = 'value';
+    row.cells[1].textContent = this._formatValue(e);
+    card.appendChild(table);
+    const freshness = this._updatedText(e);
+    if (freshness) {
+      const fresh = document.createElement('p');
+      fresh.className = 'hint';
+      fresh.textContent = freshness;
+      card.appendChild(fresh);
+    }
+    const sparkline = this._sparklineSvg(e.subentry_id);
+    if (sparkline) {
+      const spark = document.createElement('div');
+      spark.className = 'spark';
+      spark.innerHTML = sparkline;
+      card.appendChild(spark);
+    }
+    const rejections = Array.isArray(e.recent_rejections) ? e.recent_rejections : [];
+    if (rejections.length) {
+      const rejWrap = document.createElement('div');
+      rejWrap.className = 'hint';
+      const rejTitle = document.createElement('b');
+      rejTitle.textContent = this._t('drawer.rejections');
+      rejWrap.appendChild(rejTitle);
+      for (const r of rejections) {
+        const line = document.createElement('span');
+        const when = new Date(r.at);
+        const clock = Number.isNaN(when.getTime()) ? '' : when.toLocaleString(_langFor(this._hass), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const value = (r.value === null || r.value === undefined) ? '?' : r.value;
+        line.textContent = ` ${r.id}: ${r.reason} (${value}, ${clock}${r.voided ? ' - ' + this._t('drawer.void') : ''})`;
+        rejWrap.appendChild(line);
+      }
+      card.appendChild(rejWrap);
+    }
+    return card;
   }
 
   _renderHealth(bodyEl) {
     const s = this._store.state;
-    const bad = (s.subentries || []).filter((e) => e.health === 'bad');
-    const warn = (s.subentries || []).filter((e) => e.health === 'warn');
-    bodyEl.innerHTML = '';
+    const all = s.subentries || [];
+    const bad = all.filter((e) => e.health === 'bad');
+    const warn = all.filter((e) => e.health === 'warn');
+    bodyEl.replaceChildren();
     const summary = document.createElement('p');
     summary.className = 'hint';
-    summary.textContent = `${this._t('health.bad')}: ${bad.length} · ${this._t('health.warn')}: ${warn.length} · ${this._t('health.total')}: ${(s.subentries || []).length}`;
+    summary.textContent = `${this._t('health.bad')}: ${bad.length} · ${this._t('health.warn')}: ${warn.length} · ${this._t('health.total')}: ${all.length}`;
     bodyEl.appendChild(summary);
+
     const renderList = (title, list) => {
       const h = document.createElement('h2');
       h.textContent = title;
       bodyEl.appendChild(h);
       if (!list.length) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.textContent = this._t('health.none');
-        bodyEl.appendChild(empty);
+        bodyEl.appendChild(this._emptyNode(this._t('health.none')));
         return;
       }
       for (const e of list) {
@@ -676,33 +762,250 @@ class AbstractorPanel extends HTMLElement {
         line.className = 'hint';
         line.textContent = `${this._healthDot(e.health)} ${e.logical_name || e.title} — ${e.last_event || this._t('health.noEvent')} — ${this._t('health.value')}: ${e.value}`;
         bodyEl.appendChild(line);
+        this._renderThresholds(bodyEl, e);
       }
     };
     renderList(this._t('health.bad'), bad);
     renderList(this._t('health.warn'), warn);
+
+    // WS-5.5: every sensor with its rejected-sample ring (void/restore in
+    // edit mode only) and a deep link into the native reconfigure flow.
+    const heading = document.createElement('h2');
+    heading.textContent = this._t('health.all');
+    bodyEl.appendChild(heading);
+    for (const e of all) {
+      const block = document.createElement('div');
+      block.className = 'device-card';
+      const header = document.createElement('div');
+      header.className = 'card-header';
+      const title = document.createElement('h2');
+      title.textContent = e.logical_name || e.title || this._t('common.sensor');
+      header.appendChild(title);
+      const status = document.createElement('span');
+      status.className = 'health ' + (e.health || 'idle');
+      status.textContent = `${this._healthDot(e.health)} ${e.health || 'idle'}`;
+      header.appendChild(status);
+      block.appendChild(header);
+      this._renderThresholds(block, e);
+
+      const rows = this._history[e.subentry_id] || e.recent_rejections || [];
+      const samples = sampleRows(rows, s.admin, s.editMode);
+      const sub = document.createElement('div');
+      sub.className = 'hint';
+      const subTitle = document.createElement('b');
+      subTitle.textContent = this._t('health.rejected');
+      sub.appendChild(subTitle);
+      block.appendChild(sub);
+      if (!samples.length) {
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.textContent = this._t('health.none');
+        block.appendChild(empty);
+      }
+      for (const sample of samples) {
+        const row = document.createElement('div');
+        row.className = 'hint';
+        const when = new Date(sample.at);
+        const clock = Number.isNaN(when.getTime())
+          ? ''
+          : when.toLocaleString(_langFor(this._hass), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        row.textContent = `${sample.id}: ${sample.reason} (${sample.value}, ${clock})${sample.voided ? ' - ' + this._t('drawer.void') : ''}`;
+        if (sample.actionable) {
+          const action = document.createElement('button');
+          action.type = 'button';
+          action.style.marginLeft = '8px';
+          action.textContent = sample.voided ? this._t('action.restore') : this._t('action.void');
+          action.addEventListener('click', () => {
+            if (sample.voided) this._restoreSample(e.subentry_id, sample.id);
+            else this._voidSample(e.subentry_id, sample.id);
+          });
+          row.appendChild(action);
+        }
+        block.appendChild(row);
+      }
+
+      const configure = document.createElement('button');
+      configure.type = 'button';
+      configure.textContent = this._t('action.reconfigure');
+      configure.style.marginTop = '8px';
+      configure.addEventListener('click', () => {
+        const deviceId = this._deviceIdFor(e);
+        if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
+        else this._navigate('/config/integrations/integration/abstractor');
+      });
+      if (s.admin) block.appendChild(configure);
+      bodyEl.appendChild(block);
+    }
+  }
+
+  _renderThresholds(container, entry) {
+    const above = entry.warn_above;
+    const below = entry.warn_below;
+    if (above === null || above === undefined) {
+      if (below === null || below === undefined) return;
+    }
+    const chips = document.createElement('p');
+    chips.className = 'hint';
+    const parts = [this._t('health.thresholds')];
+    if (above !== null && above !== undefined) parts.push(`${this._t('health.warnAbove')}: ${above}`);
+    if (below !== null && below !== undefined) parts.push(`${this._t('health.warnBelow')}: ${below}`);
+    chips.textContent = parts.join(' · ');
+    container.appendChild(chips);
+  }
+
+  _historyRowsFor(entry) {
+    return this._history[entry.subentry_id] || entry.recent_rejections || [];
+  }
+
+  _fetchHistoryIfNeeded() {
+    if (!this._hass || !this._hass.callWS) return;
+    const all = this._store.state.subentries || [];
+    const pending = all.filter((entry) => !this._historyLoaded[entry.subentry_id]);
+    if (!pending.length) return;
+    pending.forEach((entry) => {
+      this._historyLoaded[entry.subentry_id] = true;
+    });
+    void Promise.all(pending.map((entry) => this._fetchHistory(entry.subentry_id))).then(() => this._render());
+  }
+
+  async _fetchHistory(subentryId) {
+    try {
+      const result = await this._hass.callWS({
+        type: 'abstractor/history',
+        subentry_id: subentryId,
+        limit: 20,
+      });
+      this._history[subentryId] = (result && Array.isArray(result.rows)) ? result.rows : [];
+    } catch (err) {
+      this._history[subentryId] = [];
+    }
+  }
+
+  async _voidSample(subentryId, sampleId) {
+    if (!this._store.state.editMode || !this._store.state.admin) return;
+    if (!window.confirm(this._t('confirm.void'))) return;
+    try {
+      await this._hass.callWS({
+        type: 'abstractor/sample_void',
+        subentry_id: subentryId,
+        sample_id: sampleId,
+      });
+      await this._fetchHistory(subentryId);
+      this._render();
+    } catch (err) {
+      this._showError(`Void failed: ${err && err.message ? err.message : err}`);
+    }
+  }
+
+  async _restoreSample(subentryId, sampleId) {
+    if (!this._store.state.editMode || !this._store.state.admin) return;
+    try {
+      await this._hass.callWS({
+        type: 'abstractor/sample_restore',
+        subentry_id: subentryId,
+        sample_id: sampleId,
+      });
+      await this._fetchHistory(subentryId);
+      this._render();
+    } catch (err) {
+      this._showError(`Restore failed: ${err && err.message ? err.message : err}`);
+    }
   }
 
   _renderSettings(bodyEl) {
-    bodyEl.innerHTML = '';
+    bodyEl.replaceChildren();
     const hint = document.createElement('p');
     hint.className = 'hint';
     hint.textContent = this._t('settings.hint');
     bodyEl.appendChild(hint);
+    // WS-3.6/E9: the server sends a credential-free, already-resolved options
+    // contract (no host/org/token); the panel only labels it.
+    if (this._optionsLoaded && this._options) {
+      const o = this._options;
+      const yes = this._t('settings.set');
+      const no = this._t('settings.notSet');
+      const lines = [
+        [this._t('settings.pollInterval'), o.poll_interval],
+        [this._t('settings.influx'), o.influx_enabled ? this._t('settings.enabled') : this._t('settings.disabled')],
+        [this._t('settings.namingTemplate'), o.naming_template],
+        [this._t('settings.templates'), (o.naming_template_names || []).join(', ')],
+        [this._t('settings.debugGate'), o.debug_gate_set ? yes : no],
+        [this._t('settings.notify'), o.notify_set ? yes : no],
+      ];
+      for (const [label, value] of lines) {
+        if (value === null || value === undefined || value === '') continue;
+        const line = document.createElement('p');
+        line.className = 'hint';
+        line.textContent = `${label}: ${value}`;
+        bodyEl.appendChild(line);
+      }
+    }
     const actions = document.createElement('div');
     actions.className = 'actions';
     actions.style.marginTop = '8px';
-    const exportBtn = document.createElement('button');
-    exportBtn.type = 'button';
-    exportBtn.textContent = this._t('action.export');
-    exportBtn.addEventListener('click', () => this._handleExport());
-    actions.appendChild(exportBtn);
-    const importBtn = document.createElement('button');
-    importBtn.type = 'button';
-    importBtn.textContent = this._t('action.import');
-    importBtn.disabled = !this._store.state.editMode;
-    importBtn.addEventListener('click', () => this._triggerImport());
-    actions.appendChild(importBtn);
+    if (this._store.state.admin) {
+      // Deep link into the native Options/Reconfigure flow — the panel never
+      // edits root options itself (ADR-007).
+      actions.appendChild(
+        this._button('action.configure', () => this._navigate('/config/integrations/integration/abstractor')),
+      );
+    }
+    if (this._store.state.editMode) {
+      const exportBtn = this._button('action.export', () => this._handleExport());
+      const importBtn = this._button('action.import', () => this._triggerImport());
+      const exportCsvBtn = this._button('action.exportCsv', () => this._handleExportCsv());
+      const importCsvBtn = this._button('action.importCsv', () => this._triggerImportCsv());
+      const summaryBtn = this._button('action.summary', () => this._handleSummary());
+      [exportBtn, importBtn, exportCsvBtn, importCsvBtn, summaryBtn].forEach((b) => actions.appendChild(b));
+    }
     bodyEl.appendChild(actions);
+
+    if (this._summary) {
+      const card = summaryCard(this._summary);
+      const heading = document.createElement('h2');
+      heading.textContent = this._t('summary.title');
+      bodyEl.appendChild(heading);
+      const generated = document.createElement('p');
+      generated.className = 'hint';
+      const when = card.generated_at ? new Date(card.generated_at) : null;
+      const clock = when && !Number.isNaN(when.getTime()) ? when.toLocaleString(_langFor(this._hass)) : '';
+      generated.textContent = `${this._t('summary.generated')}: ${clock} · ${this._t('summary.window')}: ${card.window_days}`;
+      bodyEl.appendChild(generated);
+      if (!card.rows.length) {
+        bodyEl.appendChild(this._emptyNode(this._t('summary.empty')));
+      }
+      for (const row of card.rows) {
+        const line = document.createElement('div');
+        line.className = 'device-card';
+        const title = document.createElement('h2');
+        title.textContent = row.logical_name || row.entity_id || row.device_type;
+        line.appendChild(title);
+        const value = document.createElement('p');
+        value.className = 'hint';
+        const text = row.value === null || row.value === undefined ? '—' : `${row.value}${row.unit ? ' ' + row.unit : ''}`;
+        value.textContent = `${this._t('drawer.value')}: ${text} · ${row.health}`;
+        line.appendChild(value);
+        const aggregates = document.createElement('p');
+        aggregates.className = 'hint';
+        aggregates.textContent = [
+          `${this._t('summary.min')}: ${row.min === null ? '—' : row.min}`,
+          `${this._t('summary.max')}: ${row.max === null ? '—' : row.max}`,
+          `${this._t('summary.avg')}: ${row.avg === null ? '—' : Number(row.avg).toFixed(2)}`,
+          `${this._t('summary.rejections')}: ${row.spike_rejections}`,
+          `${this._t('summary.fallbacks')}: ${row.fallbacks}`,
+        ].join(' · ');
+        line.appendChild(aggregates);
+        bodyEl.appendChild(line);
+      }
+    }
+  }
+
+  _button(labelKey, handler) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = this._t(labelKey);
+    button.addEventListener('click', handler);
+    return button;
   }
 
   _renderMigrate(bodyEl) {
@@ -731,8 +1034,16 @@ class AbstractorPanel extends HTMLElement {
     } else {
       for (const e of sensors) {
         const row = tb.insertRow();
-        row.insertCell().textContent = String((e && (e.source || e.entity_id)) || '');
-        row.insertCell().textContent = String((e && e.status) || 'pending');
+        const source = e
+          ? (e.suggested_logical_name || e.unique_id || e.source || e.entity_id || '')
+          : '';
+        row.insertCell().textContent = String(source);
+        let status;
+        if (e && e.status) status = e.status;
+        else if (e && e.history_preservable) status = this._t('migrate.historyOk');
+        else if (e && Array.isArray(e.blockers) && e.blockers.length) status = e.blockers.join('; ');
+        else status = this._t('migrate.review');
+        row.insertCell().textContent = String(status);
       }
     }
   }
@@ -750,6 +1061,20 @@ class AbstractorPanel extends HTMLElement {
     }
   }
 
+  async _fetchOptions() {
+    if (!this._hass || !this._hass.callWS) return;
+    try {
+      const res = await this._hass.callWS({ type: 'abstractor/options/read' });
+      // WS-3.6: flat, already-redacted options contract (no `.options` wrapper).
+      this._options = res || {};
+      this._optionsLoaded = true;
+      this._render();
+    } catch (err) {
+      // Options are a progressive enhancement; the hint text alone is enough.
+      this._optionsLoaded = true;
+    }
+  }
+
   _triggerImport() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -763,6 +1088,61 @@ class AbstractorPanel extends HTMLElement {
 
   _activeFilter() {
     return this._filterOverride || 'all';
+  }
+
+  _chipLabel(filter) {
+    // i18n vocabulary wins; otherwise the server catalogue's display name
+    // (WS-2: the shipped type list is server-derived, the JS must label it
+    // without hardcoding a second list).
+    const translated = this._t('filter.' + filter);
+    if (translated !== 'filter.' + filter) {
+      return translated;
+    }
+    return getCatalogue().display_names[filter] || filter;
+  }
+
+  // --- WS-4.3: value presentation (unit/precision/freshness/delta) ---------
+  // The formatters live in sensor-form.js so the panel and the pure JS tests
+  // share one implementation; precision/units are decided server-side.
+  _formatValue(row) {
+    return formatValue(row);
+  }
+
+  _noteSparkline(list) {
+    // Panel-side sampling of the server stream for the sparkline only —
+    // not a data store (the authoritative values stay in the WS payload).
+    const next = {};
+    for (const row of list) {
+      const id = row && row.subentry_id;
+      if (!id || typeof row.value !== 'number') continue;
+      const hist = this._spark[id] ? this._spark[id].slice() : [];
+      if (!(hist.length && hist[hist.length - 1] === row.value)) hist.push(row.value);
+      while (hist.length > 24) hist.shift();
+      next[id] = hist;
+    }
+    this._spark = next;
+  }
+
+  _sparklineSvg(subentryId) {
+    const hist = this._spark[subentryId];
+    const points = sparklinePath(hist, 120, 26);
+    if (!points) return null;
+    return `<svg viewBox="0 0 120 26" width="120" height="26" role="img" aria-hidden="true"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  }
+
+  _updatedText(row) {
+    const iso = row && row.meta && row.meta.updated_at;
+    if (!iso) return '';
+    const when = new Date(iso);
+    if (Number.isNaN(when.getTime())) return '';
+    const clock = when.toLocaleString(_langFor(this._hass), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const parts = [`${this._t('drawer.updatedAt')} ${clock} · ${relativeTime(iso)}`];
+    if (row.meta.stale) parts.push(this._t('drawer.stale'));
+    if (typeof row.meta.delta === 'number') {
+      const delta = deltaWithSign(row.value, row.value - row.meta.delta);
+      if (delta !== null) parts.push(`Δ ${delta}`);
+    }
+    return parts.join(' · ');
   }
 
   _field(labelKey, inputEl) {
@@ -862,7 +1242,7 @@ class AbstractorPanel extends HTMLElement {
     DEVICE_TYPES.forEach((type) => {
       const opt = document.createElement('option');
       opt.value = type;
-      opt.textContent = type;
+      opt.textContent = getCatalogue().display_names[type] || type;
       refs.device_type.appendChild(opt);
     });
     refs.device_type.value = fields.device_type;
@@ -998,6 +1378,8 @@ class AbstractorPanel extends HTMLElement {
     form.appendChild(this._field('form.logicalName', refs.logical_name));
     refs.object_id = this._textInput(fields.object_id, 'text');
     form.appendChild(this._field('form.objectId', refs.object_id));
+    refs.entity_name = this._textInput(fields.entity_name, 'text');
+    form.appendChild(this._field('form.entityName', refs.entity_name));
     const entityIdPreview = document.createElement('div');
     entityIdPreview.className = 'hint';
     entityIdPreview.setAttribute('aria-live', 'polite');
@@ -1049,6 +1431,7 @@ class AbstractorPanel extends HTMLElement {
     const fields = {
       logical_name: refs.logical_name.value,
       object_id: refs.object_id.value,
+      entity_name: refs.entity_name.value,
       rename_entity: refs.rename_entity.checked,
     };
     const errors = validateRenameForm(fields);
@@ -1065,6 +1448,7 @@ class AbstractorPanel extends HTMLElement {
         subentry_id: existing.subentry_id,
         logical_name: payload.logical_name,
         object_id: payload.object_id,
+        entity_name: payload.entity_name,
         rename_entity: payload.rename_entity,
       });
       this._closeModal();
@@ -1081,11 +1465,25 @@ class AbstractorPanel extends HTMLElement {
     if (!this._store.state.editMode) return;
     if (!window.confirm(this._t('confirm.delete'))) return;
     try {
-      await this._hass.callWS({ type: 'abstractor/subentry/delete', subentry_id: entry.subentry_id });
+      // WS-6/E4: the delete command answers with the same flat contract as the
+      // service, so the confirmation can name the history outcome.
+      const result = await this._hass.callWS({ type: 'abstractor/subentry/delete', subentry_id: entry.subentry_id });
       await this._fetchSubentries(true);
+      const preserved = !!(result && result.history_preserved);
+      this._showMessage(this._t(preserved ? 'delete.historyPreserved' : 'delete.historyOrphaned'));
     } catch (err) {
       this._showError(`Delete failed: ${err && err.message ? err.message : err}`);
     }
+  }
+
+  _serviceResponse(result) {
+    if (result && result.response !== undefined) return result.response;
+    return result;
+  }
+
+  async _callService(service, data, returnResponse) {
+    const wantsResponse = returnResponse !== undefined ? returnResponse : /export|summary/.test(service);
+    return this._hass.callService('abstractor', service, data || {}, undefined, false, wantsResponse);
   }
 
   _closeModal() {
@@ -1101,7 +1499,8 @@ class AbstractorPanel extends HTMLElement {
     this._showError('');
     try {
       const result = await this._hass.callService('abstractor', 'export_data', {}, undefined, false, true);
-      const snapshot = (result && result.response && result.response.snapshot) || (result && result.snapshot);
+      const response = this._serviceResponse(result);
+      const snapshot = (response && response.snapshot) || (result && result.snapshot);
       const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1126,11 +1525,73 @@ class AbstractorPanel extends HTMLElement {
       return;
     }
     try {
-      await this._hass.callService('abstractor', 'import_data', { data: parsed });
+      const result = await this._callService('import_data', { data: parsed }, true);
+      const summary = importSummary(this._serviceResponse(result));
+      const text = summary
+        .map((row) => `${this._t(row.labelKey)}: ${row.count}`)
+        .join(' · ');
       this._showError('');
+      this._showMessage(text || this._t('import.none'));
       this._fetchSubentries(true);
     } catch (err) {
       this._showError(`Import failed: ${err && err.message ? err.message : err}`);
+    }
+  }
+
+  async _handleExportCsv() {
+    this._showError('');
+    try {
+      const result = await this._callService('export_csv', {}, true);
+      const response = this._serviceResponse(result) || {};
+      const file = response.file || '';
+      const rows = response.rows === undefined ? '?' : response.rows;
+      this._showMessage(`${this._t('service.exportCsv')}: ${rows} ${this._t('service.rows')} · ${this._t('service.file')}: ${file}`);
+    } catch (err) {
+      this._showError(`CSV export failed: ${err && err.message ? err.message : err}`);
+    }
+  }
+
+  _triggerImportCsv() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,text/csv,text/plain';
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (file) this._handleImportCsv(file);
+    });
+    input.click();
+  }
+
+  async _handleImportCsv(file) {
+    this._showError('');
+    try {
+      const content = await file.text();
+      const result = await this._callService('import_csv', { content }, true);
+      const response = this._serviceResponse(result) || {};
+      const applied = Array.isArray(response.applied) ? response.applied.length : 0;
+      const skipped = Array.isArray(response.skipped) ? response.skipped.length : 0;
+      const errors = Array.isArray(response.errors) ? response.errors.length : 0;
+      this._showMessage(
+        `${this._t('service.importCsv')}: ${this._t('service.applied')}: ${applied} · ${this._t('service.skipped')}: ${skipped} · ${this._t('import.errors')}: ${errors}`,
+      );
+    } catch (err) {
+      this._showError(`CSV import failed: ${err && err.message ? err.message : err}`);
+    }
+  }
+
+  async _handleSummary() {
+    this._showError('');
+    try {
+      const result = await this._callService('summary', {}, true);
+      const response = this._serviceResponse(result);
+      if (!response) {
+        this._showError(this._t('service.responseEmpty'));
+        return;
+      }
+      this._summary = response;
+      this._render();
+    } catch (err) {
+      this._showError(`Summary failed: ${err && err.message ? err.message : err}`);
     }
   }
 }

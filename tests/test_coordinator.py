@@ -20,9 +20,14 @@ def _coordinator_with_states(states: dict[str, str]) -> AbstractorDataUpdateCoor
         states=SimpleNamespace(
             get=lambda entity_id: SimpleNamespace(state=states[entity_id])
             if entity_id in states
-            else None
+            else None,
+            is_state=lambda entity_id, expected: states.get(entity_id) == expected,
         )
     )
+    coordinator.rejected_samples = {}
+    coordinator._ring_seq = {}
+    coordinator.void_sample_ids = set()
+    coordinator.value_history = {}
     return coordinator
 
 
@@ -248,6 +253,10 @@ def _update_coordinator(
     coordinator.pipelines = {"subentry-1": pipeline}
     # Real __init__ seeds these; this helper bypasses it via object.__new__.
     coordinator.meta = {}
+    coordinator.rejected_samples = {}
+    coordinator._ring_seq = {}
+    coordinator.void_sample_ids = set()
+    coordinator.value_history = {}
     coordinator._last_notified_events = {}
     coordinator.debug_switch_entity_id = None
     coordinator.notify_entity_id = None
@@ -345,3 +354,63 @@ def test_add_subentry_logs_warning_when_device_type_missing(caplog) -> None:
         assert coordinator.subentry_data["subentry-1"]["device_type"] == "power"
         assert "device_type" in caplog.text
         assert "subentry-1" in caplog.text
+
+
+async def test_poll_records_freshness_and_delta() -> None:
+    """[WS-4 UF-07] Each poll stamps updated_at; consecutive values yield a delta."""
+    coordinator = _update_coordinator(source_state="12.5", pipeline_value=7.5)
+    coordinator.influx_exporter = None
+    await coordinator._async_update_data()
+    first = coordinator.meta["subentry-1"]
+    assert first.updated_at is not None
+    assert first.delta is None  # First poll: no previous value to compare against
+    assert first.previous_value == 7.5
+
+    await coordinator._async_update_data()
+    second = coordinator.meta["subentry-1"]
+    assert second.delta == 0.0
+    assert second.stale is False
+
+
+async def test_unavailable_sample_marks_stale() -> None:
+    """UF-11: the stale field is no longer dead — it marks value-less polls."""
+    coordinator = _update_coordinator(source_state=None, pipeline_value=None)
+    coordinator.influx_exporter = None
+    data = await coordinator._async_update_data()
+    assert data["subentry-1"] is None
+    item = coordinator.meta["subentry-1"]
+    assert item.stale is True
+    assert item.updated_at is not None
+
+
+async def test_rejected_samples_ring_records_drops_with_reason() -> None:
+    """[WS-5 UF-09] A spike-rejected raw sample lands in the ring with reason."""
+    coordinator = _update_coordinator(source_state="12.5", pipeline_value=None)
+    coordinator.influx_exporter = None
+    pipeline = coordinator.pipelines["subentry-1"]
+    pipeline.last_event = "spike_rejected: below last valid"
+    await coordinator._async_update_data()
+    ring = coordinator.rejected_samples["subentry-1"]
+    assert len(ring) == 1
+    assert ring[0]["id"] == "subentry-1#1"
+    assert ring[0]["reason"].startswith("spike")
+    assert ring[0]["value"] == "12.5"
+
+
+async def test_warn_thresholds_flag_health_meta() -> None:
+    """[WS-5 UF-10] warn_above marks meta.warn_hit; the condition gates it."""
+    coordinator = _update_coordinator(source_state="12.5", pipeline_value=42.0)
+    coordinator.influx_exporter = None
+    coordinator.subentry_data["subentry-1"]["warn_above"] = 10.0
+    await coordinator._async_update_data()
+    assert coordinator.meta["subentry-1"].warn_hit is True
+
+
+async def test_warn_condition_entity_off_suppresses_hit() -> None:
+    coordinator = _update_coordinator(source_state="12.5", pipeline_value=42.0)
+    coordinator.influx_exporter = None
+    coordinator.subentry_data["subentry-1"].update(
+        {"warn_above": 10.0, "warn_condition_entity_id": "input_boolean.gate"}
+    )
+    await coordinator._async_update_data()
+    assert coordinator.meta["subentry-1"].warn_hit is False

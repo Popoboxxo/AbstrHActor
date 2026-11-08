@@ -71,7 +71,7 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     # order, and can silently grab a match hidden under the modal overlay)
     # avoids that — confirmed against a live instance.
     source_dialog = page.get_by_role("dialog", name="Source entity")
-    page.get_by_label("Source entity", exact=True).click()
+    page.get_by_label("Source entity", exact=True).first.click()
     # ha-entity-picker filters as-you-type off real input events — .fill()
     # sets the value without dispatching them, so the dropdown never narrows.
     # press_sequentially (not raw keyboard.type) re-focuses its target

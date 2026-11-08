@@ -11,6 +11,7 @@ declared but not-yet-enabled specs document the roadmap from
 ``docs/plan-logical-identity-and-ux.md`` section 3.1; enabling one of them is
 a deliberate, reviewed change, never an accidental side effect.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -81,19 +82,77 @@ def _build_default_registry() -> SpecRegistry:
     register = reg.register
     # Shipping today.
     register(AbstractSpec("power", "sensor", "power", "W", "measurement", True, FailContract.SOFT_ZERO, False, "Power"))
-    register(AbstractSpec("energy", "sensor", "energy", "kWh", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Energy"))
-    register(AbstractSpec("water", "sensor", "water", "L", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Water"))
+    register(
+        AbstractSpec(
+            "energy", "sensor", "energy", "kWh", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Energy"
+        )
+    )
+    register(
+        AbstractSpec("water", "sensor", "water", "L", "total_increasing", True, FailContract.FAIL_CLOSED, True, "Water")
+    )
     # Roadmap (declared, not enabled; enabling is an explicit reviewed change).
-    register(AbstractSpec("riemann_energy", "sensor", "energy", "kWh", "total_increasing", True, FailContract.FAIL_CLOSED, False, "Riemann energy", integration="riemann_left"))
+    # UF-02 (audit 2026-11-07): the flag is now EXPLICIT — it was implicitly
+    # enabled by the default before. Decision D-1 (plan §6.1): keep it disabled
+    # until REQ-SENS-003 is re-reviewed against HA Core's own Riemann support
+    # and the external `riemann_left` integration dependency is settled.
+    register(
+        AbstractSpec(
+            "riemann_energy",
+            "sensor",
+            "energy",
+            "kWh",
+            "total_increasing",
+            True,
+            FailContract.FAIL_CLOSED,
+            False,
+            "Riemann energy",
+            integration="riemann_left",
+            enabled=False,
+        )
+    )
     for key, device_class in (
         ("door_contact", "door"),
         ("motion", "motion"),
         ("smoke", "smoke"),
     ):
-        register(AbstractSpec(key, "binary_sensor", device_class, None, None, False, FailContract.PASS_THROUGH, False, key.replace("_", " ").title(), enabled=True))
-    register(AbstractSpec("switch_state", "switch", None, None, None, False, FailContract.PASS_THROUGH, False, "Switch", "turn_on"))
-    register(AbstractSpec("light_state", "light", None, None, None, False, FailContract.PASS_THROUGH, False, "Light", "turn_on"))
-    register(AbstractSpec("cover_position", "cover", None, "%", None, False, FailContract.PASS_THROUGH, False, "Cover position", "set_cover_position"))
+        register(
+            AbstractSpec(
+                key,
+                "binary_sensor",
+                device_class,
+                None,
+                None,
+                False,
+                FailContract.PASS_THROUGH,
+                False,
+                key.replace("_", " ").title(),
+                enabled=True,
+            )
+        )
+    register(
+        AbstractSpec(
+            "switch_state", "switch", None, None, None, False, FailContract.PASS_THROUGH, False, "Switch", "turn_on"
+        )
+    )
+    register(
+        AbstractSpec(
+            "light_state", "light", None, None, None, False, FailContract.PASS_THROUGH, False, "Light", "turn_on"
+        )
+    )
+    register(
+        AbstractSpec(
+            "cover_position",
+            "cover",
+            None,
+            "%",
+            None,
+            False,
+            FailContract.PASS_THROUGH,
+            False,
+            "Cover position",
+            "set_cover_position",
+        )
+    )
     return reg
 
 
@@ -102,4 +161,3 @@ SPEC_REGISTRY: SpecRegistry = _build_default_registry()
 spec_for = SPEC_REGISTRY.get
 ALL_SPECS = SPEC_REGISTRY.all()
 ENABLED_SPECS = SPEC_REGISTRY.enabled()
-

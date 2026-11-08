@@ -20,9 +20,9 @@ cited as `file:line` against the current working tree.
 | `__init__.py` | Lifecycle (`async_setup_entry`/`async_unload_entry`), legacy-entry reconciliation, services, snapshot persistence, panel registration |
 | `influx_exporter.py` | InfluxDB v2 line-protocol push + `create_influx_exporter` factory (REQ-DATA-002) |
 | `diagnostics.py` | Config-entry diagnostics with Influx token masking |
-| `frontend.py` | Static path + sidebar panel registration (read-only) |
+| `frontend.py` | Static path + sidebar panel registration, server-served type catalogue | 
 | `repository/device_registry.py` | In-memory `DeviceRegistry` (name/manufacturer/model) |
-| `www/abstractor-panel.js` | Dependency-free Web Component, read-only device overview |
+| `www/abstractor-panel.js` | Bundled Web Component: read-only base + admin edit mode (create/edit/rename/delete, settings, health, migrate) |
 
 ## 2. Runtime path
 
@@ -32,13 +32,15 @@ HA Config Flow (root entry + sensor subentries)
       ├─ AbstractorFilterPipeline          (one per subentry)
       └─ InfluxExporter                    (optional, built from options when host+token set)
   → AbstractorSensor (CoordinatorEntity)   (one per subentry; DeviceInfo from options)
-  → Sidebar panel                          (frontend.py + www/abstractor-panel.js, read-only)
+  → Sidebar panel                          (frontend.py + bundled www/abstractor-panel.js)
 ```
 
 Everything hangs off a **single root config entry**; every sensor is a
 **subentry** under it. Polling is central (one coordinator), state is
-dispatched to entities via `CoordinatorEntity`, and all configuration happens
-through the config/options flow — the sidebar panel is deliberately read-only.
+dispatched to entities via `CoordinatorEntity`, and configuration happens
+through the config/options flow. The sidebar panel is read-only for ordinary
+users; HA admins get an explicit, server-gated edit mode that reuses the same
+flow helpers (the panel is never a second config engine).
 
 ---
 

@@ -53,7 +53,7 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     page.wait_for_timeout(500)
 
     source_dialog = page.get_by_role("dialog", name="Source entity")
-    page.get_by_label("Source entity", exact=True).click()
+    page.get_by_label("Source entity", exact=True).first.click()
     search_field = source_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
     search_field.press_sequentially(source_name, delay=100)

@@ -1,8 +1,14 @@
 """Test Abstractor sensor entity identity (REQ-CORE-001, REQ-CORE-003)."""
 
+import logging
+
 from unittest.mock import Mock
 
+import pytest
+
 from custom_components.abstractor.const import (
+    CONF_DISPLAY_PRECISION,
+    CONF_DISPLAY_UNIT,
     CONF_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
@@ -259,3 +265,59 @@ async def test_missing_device_type_defaults_to_power_with_warning(caplog) -> Non
         assert added[0].device_class == "power"
         assert "device_type" in caplog.text
         assert "subentry-1" in caplog.text
+
+
+async def test_display_precision_rounds_exposed_value() -> None:
+    """[WS-4 UF-07] display_precision rounds the value the entity exposes."""
+    entry = Mock()
+    entry.entry_id = "entry-1"
+    subentry = Mock()
+    subentry.data = {
+        CONF_DEVICE_TYPE: "power",
+        CONF_SOURCE_ENTITY_ID: "sensor.plug",
+        CONF_DISPLAY_PRECISION: 1,
+    }
+    entry.subentries = {"sub-1": subentry}
+
+    hass = Mock()
+    coordinator = Mock()
+    hass.data = {DOMAIN: {"coordinator": coordinator}}
+    coordinator.hass = hass
+    coordinator.data = {"sub-1": 22.345}
+
+    added = []
+    async_add_entities = Mock(
+        side_effect=lambda entities, config_subentry_id=None: added.extend(entities)
+    )
+    await async_setup_entry(hass, entry, async_add_entities)
+    assert added[0].native_value == 22.3
+
+
+async def test_display_unit_relabels_without_conversion_and_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """[WS-4 UF-07] display_unit relabels; mismatch against the type unit logs."""
+    entry = Mock()
+    entry.entry_id = "entry-1"
+    subentry = Mock()
+    subentry.data = {
+        CONF_DEVICE_TYPE: "power",
+        CONF_SOURCE_ENTITY_ID: "sensor.plug",
+        CONF_DISPLAY_UNIT: "kW",
+    }
+    entry.subentries = {"sub-1": subentry}
+
+    hass = Mock()
+    coordinator = Mock()
+    hass.data = {DOMAIN: {"coordinator": coordinator}}
+    coordinator.hass = hass
+    coordinator.data = {}
+
+    added = []
+    async_add_entities = Mock(
+        side_effect=lambda entities, config_subentry_id=None: added.extend(entities)
+    )
+    with caplog.at_level(logging.WARNING):
+        await async_setup_entry(hass, entry, async_add_entities)
+    assert added[0]._attr_native_unit_of_measurement == "kW"
+    assert "relabels its unit" in caplog.text

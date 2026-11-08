@@ -60,7 +60,8 @@ def test_export_button_calls_export_service_with_return_response(logged_in_page,
 
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
-    export_button = panel.get_by_role("button", name=re.compile("export", re.IGNORECASE))
+    panel.get_by_role("button", name=re.compile(r"^edit mode$", re.IGNORECASE)).click()
+    export_button = panel.get_by_role("button", name=re.compile(r"^export$", re.IGNORECASE))
     export_button.wait_for(state="visible", timeout=10000)
     export_button.click()
     page.wait_for_timeout(1000)
@@ -108,16 +109,19 @@ def test_import_button_calls_import_service_with_parsed_file_contents(
 
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
+    panel.get_by_role("button", name=re.compile(r"^edit mode$", re.IGNORECASE)).click()
     file_input = panel.locator('input[type="file"]')
     file_input.wait_for(state="attached", timeout=10000)
     file_input.set_input_files(str(snapshot_file))
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(1500)
 
     calls = [f for f in sent_frames if '"import_data"' in f and marker_title in f]
     assert calls, (
         "expected picking a file to send a call_service websocket frame for "
         f"abstractor.import_data containing the parsed file content; got: {sent_frames}"
     )
+    # WS-6.4: the response summary is rendered instead of silence.
+    assert panel.get_by_text(re.compile("Recreated", re.IGNORECASE)).count() > 0
 
 
 def test_edit_button_navigates_to_the_device_page(logged_in_page, hass_base_url):
@@ -127,23 +131,58 @@ def test_edit_button_navigates_to_the_device_page(logged_in_page, hass_base_url)
     page = logged_in_page
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
-    # Anchor to the card's exact "Edit" label: the header also has an
-    # "Edit mode" toggle whose accessible name contains "edit".
-    edit_button = panel.get_by_role("button", name=re.compile(r"^edit$", re.IGNORECASE)).first
-    edit_button.wait_for(state="visible", timeout=10000)
-    edit_button.click()
-    page.wait_for_url(re.compile(r"/config/devices/device/"), timeout=10000)
+    panel.wait_for(state="attached", timeout=10000)
+    created = page.evaluate(
+        """
+        (async () => {
+          const h = document.querySelector("home-assistant").hass;
+          const res = await h.callWS({
+            type: "abstractor/subentry/create",
+            data: { device_type: "power", source_entity_id: "sensor.e2e_edit_probe" },
+          });
+          return res.subentry_id;
+        })()
+        """
+    )
+    try:
+        page.wait_for_timeout(2000)
+        page.goto(f"{hass_base_url}/abstractor")
+        panel = page.locator("abstractor-panel")
+        panel.locator(".device-card").first.wait_for(state="visible", timeout=30000)
+        # Anchor to the card's exact "Edit" label: the header also has an
+        # "Edit mode" toggle whose accessible name contains "edit".
+        edit_button = panel.get_by_role("button", name=re.compile(r"^edit$", re.IGNORECASE)).first
+        edit_button.wait_for(state="visible", timeout=20000)
+        edit_button.click()
+        page.wait_for_url(re.compile(r"/config/(devices/device|integrations/integration/abstractor)"), timeout=10000)
+    finally:
+        page.goto(f"{hass_base_url}/abstractor")
+        page.wait_for_function(
+            "() => { const e = document.querySelector('home-assistant'); return !!(e && e.hass); }",
+            timeout=20000,
+        )
+        page.evaluate(
+            """
+            (async (id) => {
+              const h = document.querySelector("home-assistant").hass;
+              try { await h.callWS({ type: "abstractor/subentry/delete", subentry_id: id }); } catch (e) {}
+            })
+            """,
+            created,
+        )
 
 
-def test_add_sensor_button_navigates_to_the_integration_page(logged_in_page, hass_base_url):
-    """[plan-panel-action-hub #4] The panel header's "Add sensor" action must
-    navigate to the Abstractor integration page (the guaranteed fallback
-    target per the plan) so users can reach the add-subentry flow without
-    hunting through the sidebar."""
+def test_add_sensor_button_opens_the_create_form(logged_in_page, hass_base_url):
+    """[plan-panel-action-hub #4] In edit mode the header's "Add sensor"
+    opens the in-panel create form (the native flow stays the fallback when
+    edit mode is off). Cancel must close it without writing."""
     page = logged_in_page
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
+    panel.get_by_role("button", name=re.compile(r"^edit mode$", re.IGNORECASE)).click()
     add_button = panel.get_by_role("button", name=re.compile("add sensor", re.IGNORECASE))
     add_button.wait_for(state="visible", timeout=10000)
     add_button.click()
-    page.wait_for_url(re.compile(r"/config/integrations/integration/abstractor"), timeout=10000)
+    save_button = panel.get_by_role("button", name=re.compile(r"^save$", re.IGNORECASE))
+    save_button.wait_for(state="visible", timeout=10000)
+    panel.get_by_role("button", name=re.compile(r"^cancel$", re.IGNORECASE)).click()

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import voluptuous as vol
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -77,7 +78,9 @@ async def test_import_service_persists_valid_snapshot() -> None:
     assert hass.data[DOMAIN]["stored_snapshot"] == payload
 
 
-async def test_export_service_call_returns_snapshot_response(hass: HomeAssistant) -> None:
+async def test_export_service_call_returns_snapshot_response(
+    hass: HomeAssistant,
+) -> None:
     """The `export_data` service must hand the snapshot back to the caller
     via `return_response=True`, not just persist it to Store — a panel
     "Export" button has nothing to download otherwise (plan
@@ -266,9 +269,7 @@ async def test_import_without_root_entry_fails(hass: HomeAssistant) -> None:
     call = SimpleNamespace(data={"data": payload})
 
     with (
-        patch(
-            "custom_components.abstractor._async_root_entry", return_value=None
-        ),
+        patch("custom_components.abstractor._async_root_entry", return_value=None),
         pytest.raises(HomeAssistantError, match="root config entry"),
     ):
         await import_data_service(hass, call)
@@ -294,7 +295,9 @@ async def test_delete_sensor_by_subentry_id(hass: HomeAssistant) -> None:
     assert hass.states.get("sensor.abstract_power_power") is not None
 
     await hass.services.async_call(
-        DOMAIN, SERVICE_DELETE_SENSOR, {"subentry_id": subentry.subentry_id},
+        DOMAIN,
+        SERVICE_DELETE_SENSOR,
+        {"subentry_id": subentry.subentry_id},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -321,7 +324,9 @@ async def test_delete_sensor_by_legacy_unique_id(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     await hass.services.async_call(
-        DOMAIN, SERVICE_DELETE_SENSOR, {"legacy_unique_id": "abstractor_legacy_1"},
+        DOMAIN,
+        SERVICE_DELETE_SENSOR,
+        {"legacy_unique_id": "abstractor_legacy_1"},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -340,10 +345,242 @@ async def test_delete_sensor_unknown_ids_fail(hass: HomeAssistant) -> None:
         )
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
-            DOMAIN, SERVICE_DELETE_SENSOR,
+            DOMAIN,
+            SERVICE_DELETE_SENSOR,
             {"legacy_unique_id": "abstractor_nope"},
             blocking=True,
         )
     with pytest.raises(ServiceValidationError):
         await delete_sensor_service(hass, SimpleNamespace(data={}))
     assert root_entry.subentries == {}
+
+
+async def test_import_response_contract(hass: HomeAssistant) -> None:
+    """[E4] import_data answers with the flat contract (WS-6): recreated/kept/
+    skipped/errors, capped and free of raw sensor values."""
+    root_entry = await _setup_root(hass)
+    payload = {
+        "format": "abstractor.snapshot",
+        "version": 1,
+        "entries": [
+            _snapshot_entry(
+                "subentry-restored",
+                {
+                    CONF_DEVICE_TYPE: "power",
+                    CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+                    CONF_LEGACY_UNIQUE_ID: "abstractor_legacy_1",
+                },
+            ),
+            _snapshot_entry(
+                "subentry-sourceless",
+                {CONF_DEVICE_TYPE: "power", CONF_LEGACY_UNIQUE_ID: "abstractor_x"},
+            ),
+        ],
+        "values": {},
+    }
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "import_data",
+        {"data": payload},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    assert response == {
+        "recreated": ["subentry-restored"],
+        "kept": [],
+        "skipped": ["subentry-sourceless"],
+        "errors": ["entry has no source entity"],
+    }
+    assert len(response["errors"]) <= 20
+    for text in response["errors"]:
+        assert "sensor." not in text, (
+            "privacy rule: no raw sensor values in error texts"
+        )
+
+
+async def test_delete_response_contract(hass: HomeAssistant) -> None:
+    """[E4] delete_sensor answers with the flat contract: entity_id, device_id,
+    history_preserved=false (the entity row is removed; history stays orphaned)."""
+    root_entry = await _setup_root(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+            CONF_LEGACY_UNIQUE_ID: "abstractor_legacy_1",
+        },
+        subentry_type=SUBENTRY_TYPE_SENSOR,
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+    await hass.async_block_till_done()
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        SERVICE_DELETE_SENSOR,
+        {"subentry_id": subentry.subentry_id},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    assert response == {
+        "entity_id": "sensor.abstract_power_power",
+        "device_id": f"{DOMAIN}:{subentry.subentry_id}",
+        "history_preserved": False,
+    }
+    assert subentry.subentry_id not in root_entry.subentries
+
+
+async def test_summary_contract_stable(hass: HomeAssistant) -> None:
+    """[E8] summary: flat top-level contract, per-sensor fields sourced from
+    coordinator data/meta/value_history (no recorder internals)."""
+    root_entry = await _setup_root(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+            CONF_LEGACY_UNIQUE_ID: "abstractor_sum_1",
+        },
+        subentry_type=SUBENTRY_TYPE_SENSOR,
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+    await hass.async_block_till_done()
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    subentry_id = next(iter(root_entry.subentries))
+    from datetime import UTC, datetime
+
+    coordinator.data[subentry_id] = 42.5
+    coordinator.value_history[subentry_id] = [
+        (datetime.now(UTC), 42.5),
+        (datetime.now(UTC), 10.0),
+        (datetime.now(UTC), 100.0),
+    ]
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "summary",
+        {"window_days": 7},
+        blocking=True,
+        return_response=True,
+    )
+
+    assert set(response) == {"generated_at", "window_days", "sensors"}
+    assert response["window_days"] == 7
+    assert len(response["sensors"]) == 1
+    sensor_row = response["sensors"][0]
+    assert set(sensor_row) == {
+        "logical_name",
+        "entity_id",
+        "device_type",
+        "value",
+        "unit",
+        "updated_at",
+        "min",
+        "max",
+        "avg",
+        "spike_rejections",
+        "fallbacks",
+        "health",
+    }
+    assert sensor_row["logical_name"] == "Abstract power"
+    assert sensor_row["device_type"] == "power"
+    assert sensor_row["value"] == 42.5
+    assert sensor_row["min"] == 10.0
+    assert sensor_row["max"] == 100.0
+    assert sensor_row["avg"] == pytest.approx(50.833333, abs=1e-4)
+    assert sensor_row["health"] in {"idle", "ok", "warn", "bad"}
+    assert sensor_row["unit"] == "kWh" or sensor_row["unit"] == "W"
+    with pytest.raises(vol.MultipleInvalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "summary",
+            {"window_days": 99},
+            blocking=True,
+            return_response=True,
+        )
+
+
+async def test_csv_xor_rejected(hass: HomeAssistant) -> None:
+    """[E5] import_csv: both sources or none are rejected; traversal names too."""
+    await _setup_root(hass)
+
+    with pytest.raises(vol.MultipleInvalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_csv",
+            {"filename": "a.csv", "content": "x"},
+            blocking=True,
+        )
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "import_csv", {}, blocking=True)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_csv",
+            {"filename": "nested/../../etc/passwd"},
+            blocking=True,
+        )
+
+
+async def test_csv_size_cap_fails_loud_service(hass: HomeAssistant) -> None:
+    """[E5] a >2 MiB import is refused with ServiceValidationError, not truncated."""
+    await _setup_root(hass)
+    huge = ("n" * 70 + ";e;p;1.5;kWh;\n") * 40000
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_csv",
+            {"content": huge},
+            blocking=True,
+        )
+
+
+async def test_csv_roundtrip_is_lossless_for_numeric_sensors(
+    hass: HomeAssistant,
+) -> None:
+    """[E5] export writes the live numeric value; re-import of the written
+    file lands bit-identical (repr round-trip) and matches by entity_id."""
+    root_entry = await _setup_root(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+            CONF_LEGACY_UNIQUE_ID: "abstractor_csv_1",
+        },
+        subentry_type=SUBENTRY_TYPE_SENSOR,
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+    await hass.async_block_till_done()
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    coordinator.data[subentry.subentry_id] = 1234.567890123
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "export_csv",
+        {},
+        blocking=True,
+        return_response=True,
+    )
+    assert response["rows"] == 1
+    assert response["bytes"] >= 1
+
+    applied = await hass.services.async_call(
+        DOMAIN,
+        "import_csv",
+        {"filename": response["file"]},
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    assert applied["applied"] == ["Abstract power"]
+    assert applied["skipped"] == []
+    assert coordinator.data[subentry.subentry_id] == 1234.567890123

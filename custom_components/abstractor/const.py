@@ -1,4 +1,5 @@
 """Constants for the Abstractor integration."""
+
 from typing import Any, Final
 
 from .specs import SPEC_REGISTRY
@@ -21,6 +22,22 @@ CONF_FALLBACK_ZERO: Final = "fallback_zero"
 # aggregate is exactly 0 — mirrors "primary == 0 -> use fallback" template
 # semantics, which power's fail-soft 0 would otherwise mask forever.
 CONF_FALLBACK_ON_ZERO: Final = "fallback_on_zero"
+# WS-4 value presentation (UF-07): relabel/round the exposed number; a
+# relabel is NOT a conversion — a mismatch against the spec unit is logged.
+CONF_DISPLAY_UNIT: Final = "display_unit"
+CONF_DISPLAY_PRECISION: Final = "display_precision"
+DISPLAY_PRECISION_MIN: Final = 0
+DISPLAY_PRECISION_MAX: Final = 4
+# WS-5 sample control: recent rejections are surfaced instead of silently
+# counted; void/restore lets the user mark a rejected sample as reviewed
+# (persisted in root options - the only persistent per-integration state HA
+# gives us; the HA-core Store is not integration-registerable).
+REJECTED_RING_LIMIT: Final = 24
+CONF_WARN_ABOVE: Final = "warn_above"
+CONF_WARN_BELOW: Final = "warn_below"
+CONF_WARN_CONDITION_ENTITY_ID: Final = "warn_condition_entity_id"
+CONF_VOID_SAMPLE_IDS: Final = "void_sample_ids"
+WARN_SAMPLE_IDS_MAX: Final = 256
 CONF_LEGACY_UNIQUE_ID: Final = "legacy_unique_id"
 CONF_FALLBACK_SOURCE_ENTITY_ID: Final = "fallback_source_entity_id"
 CONF_FALLBACK_CONDITION_ENTITY_ID: Final = "fallback_condition_entity_id"
@@ -59,6 +76,10 @@ SERVICE_DELETE_SENSOR: Final = "delete_sensor"
 WS_GET_SUBENTRIES: Final = "abstractor/subentries"
 WS_SUBSCRIBE_SUBENTRIES: Final = "abstractor/subentries/subscribe"
 WS_YAML_SCAN: Final = "abstractor/yaml_scan"
+WS_OPTIONS_READ: Final = "abstractor/options/read"
+WS_SAMPLE_HISTORY: Final = "abstractor/history"
+WS_SAMPLE_VOID: Final = "abstractor/sample_void"
+WS_SAMPLE_RESTORE: Final = "abstractor/sample_restore"
 
 # Sensor Types
 TYPE_POWER = "power"
@@ -95,3 +116,12 @@ DEFAULT_OPTIONS: Final[dict[str, Any]] = {
     CONF_DEVICE_MANUFACTURER: DEFAULT_DEVICE_MANUFACTURER,
     CONF_DEVICE_MODEL: DEFAULT_DEVICE_MODEL,
 }
+
+SERVICE_EXPORT_CSV: Final = "export_csv"
+SERVICE_IMPORT_CSV: Final = "import_csv"
+SERVICE_SUMMARY: Final = "summary"
+CSV_VALUES_DIR_NAME: Final = "abstractor_values"
+
+VALUE_HISTORY_LIMIT: Final = 512
+SUMMARY_DEFAULT_WINDOW_DAYS: Final = 7
+SUMMARY_MAX_WINDOW_DAYS: Final = 7
