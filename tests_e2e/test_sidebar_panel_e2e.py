@@ -108,16 +108,19 @@ def test_import_button_calls_import_service_with_parsed_file_contents(
 
     page.goto(f"{hass_base_url}/abstractor")
     panel = page.locator("abstractor-panel")
+    panel.get_by_role("button", name=re.compile(r"^edit mode$", re.IGNORECASE)).click()
     file_input = panel.locator('input[type="file"]')
     file_input.wait_for(state="attached", timeout=10000)
     file_input.set_input_files(str(snapshot_file))
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(1500)
 
     calls = [f for f in sent_frames if '"import_data"' in f and marker_title in f]
     assert calls, (
         "expected picking a file to send a call_service websocket frame for "
         f"abstractor.import_data containing the parsed file content; got: {sent_frames}"
     )
+    # WS-6.4: the response summary is rendered instead of silence.
+    assert panel.get_by_text(re.compile("Recreated", re.IGNORECASE)).count() > 0
 
 
 def test_edit_button_navigates_to_the_device_page(logged_in_page, hass_base_url):

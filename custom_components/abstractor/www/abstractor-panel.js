@@ -159,14 +159,101 @@
     if (!editMode) return ["editToggle"];
     return ["editToggle", "addSensor", "export", "import"];
   }
+  function formatValue(row) {
+    const value = row && row.value;
+    if (value === null || value === void 0) return "\u2014";
+    if (typeof value !== "number" || !Number.isFinite(value)) return String(value);
+    const precision = row && typeof row.display_precision === "number" ? row.display_precision : null;
+    const text = precision === null ? String(value) : value.toFixed(precision);
+    const unit = row && row.display_unit || row && row.unit || "";
+    return unit ? `${text} ${unit}` : text;
+  }
+  function deltaWithSign(current, previous) {
+    if (typeof current !== "number" || typeof previous !== "number") return null;
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) return null;
+    const delta = current - previous;
+    const rounded = Math.round(delta * 100) / 100;
+    if (rounded === 0) return "0";
+    return `${rounded > 0 ? "+" : ""}${rounded}`;
+  }
+  function relativeTime(updatedAt, now) {
+    if (!updatedAt) return "";
+    const when = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+    if (Number.isNaN(when)) return "";
+    const reference = now === void 0 ? Date.now() : now;
+    const seconds = Math.max(0, Math.floor((reference - when) / 1e3));
+    if (seconds < 5) return "just now";
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+  function sparklinePath(samples, width, height) {
+    const w = width || 120;
+    const h = height || 26;
+    const numbers = (samples || []).filter((value) => typeof value === "number" && Number.isFinite(value));
+    if (numbers.length < 2) return null;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const value of numbers) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    const span = max - min || 1;
+    const step = w / (numbers.length - 1);
+    return numbers.map((value, index) => `${(index * step).toFixed(1)},${(h - 2 - (value - min) / span * (h - 4)).toFixed(1)}`).join(" ");
+  }
+  function importSummary(result) {
+    const r = result || {};
+    const lists = [
+      ["import.recreated", r.recreated],
+      ["import.kept", r.kept],
+      ["import.skipped", r.skipped],
+      ["import.errors", r.errors]
+    ];
+    const rows = [];
+    for (const [labelKey, values] of lists) {
+      const list = Array.isArray(values) ? values : [];
+      rows.push({ labelKey, count: list.length, values: list });
+    }
+    return rows;
+  }
+  function summaryCard(result) {
+    const r = result || {};
+    const sensors = Array.isArray(r.sensors) ? r.sensors : [];
+    return {
+      generated_at: r.generated_at || "",
+      window_days: r.window_days,
+      rows: sensors.map((sensor) => ({
+        logical_name: sensor.logical_name || "",
+        entity_id: sensor.entity_id || "",
+        device_type: sensor.device_type || "",
+        value: sensor.value,
+        unit: sensor.unit || "",
+        updated_at: sensor.updated_at || "",
+        min: sensor.min,
+        max: sensor.max,
+        avg: sensor.avg,
+        spike_rejections: sensor.spike_rejections,
+        fallbacks: sensor.fallbacks,
+        health: sensor.health || "idle"
+      }))
+    };
+  }
+  function sampleRows(rows, admin, editMode) {
+    return (rows || []).map((row) => ({
+      id: row.id,
+      at: row.at,
+      value: row.value === null || row.value === void 0 ? "?" : row.value,
+      reason: row.reason,
+      voided: !!row.voided,
+      actionable: !!admin && !!editMode
+    }));
+  }
 
-  // frontend/src/abstractor-panel.js
-  var TABS = [
-    { id: "devices", key: "tab.devices" },
-    { id: "health", key: "tab.health" },
-    { id: "settings", key: "tab.settings" },
-    { id: "migrate", key: "tab.migrate" }
-  ];
+  // frontend/src/i18n.js
   var I18N = {
     en: {
       "tab.devices": "Devices",
@@ -178,6 +265,9 @@
       "action.addSensor": "Add sensor",
       "action.export": "Export",
       "action.import": "Import",
+      "action.exportCsv": "Export CSV",
+      "action.importCsv": "Import CSV",
+      "action.summary": "Summary",
       "action.close": "Close",
       "action.details": "Details",
       "action.edit": "Edit",
@@ -186,6 +276,9 @@
       "action.rename": "Rename",
       "action.save": "Save",
       "action.cancel": "Cancel",
+      "action.void": "Void",
+      "action.restore": "Restore",
+      "action.reconfigure": "Reconfigure",
       "form.createTitle": "Add Abstract sensor",
       "form.editTitle": "Configure Abstract sensor",
       "form.deviceType": "Device type",
@@ -203,6 +296,7 @@
       "form.fallbackCondition": "Fallback condition entity",
       "form.fallbackConditionState": "Fallback condition state",
       "confirm.delete": "Delete this Abstract sensor?",
+      "confirm.void": "Mark this rejected sample as expected?",
       "rename.title": "Rename Abstract sensor",
       "rename.renameEntity": "Also rename the entity id",
       "rename.previewEntityId": "New entity id:",
@@ -218,6 +312,9 @@
       "filter.door_contact": "door contact",
       "filter.motion": "motion",
       "filter.smoke": "smoke",
+      "filter.switch_state": "switch",
+      "filter.light_state": "light",
+      "filter.cover_position": "cover position",
       "filter.problems": "problems",
       "empty.loading": "Loading Abstractor sensors...",
       "empty.none": "No matching Abstractor sensors.",
@@ -232,7 +329,22 @@
       "health.total": "Total",
       "health.noEvent": "no event",
       "health.value": "value",
+      "health.rejected": "Rejected samples",
+      "health.thresholds": "Warn thresholds",
+      "health.warnAbove": "Warn above",
+      "health.warnBelow": "Warn below",
+      "health.all": "All sensors",
       "settings.hint": "Read-only base. Use Edit mode for Import/advanced actions; configuration stays in HA Settings -> Devices & Services.",
+      "settings.pollInterval": "Poll interval (s)",
+      "settings.influx": "Influx exporter",
+      "settings.namingTemplate": "Naming template",
+      "settings.debugGate": "Debug gate switch",
+      "settings.notify": "Notify target",
+      "settings.enabled": "enabled",
+      "settings.disabled": "disabled",
+      "settings.set": "set",
+      "settings.notSet": "not set",
+      "settings.templates": "Available templates",
       "error.adminOnly": "Edit mode is available to administrators only.",
       "migrate.title": "Migrate",
       "migrate.empty": "No YAML sensors detected.",
@@ -251,7 +363,38 @@
       "drawer.stale": "stale",
       "drawer.sourceStates": "Source states",
       "drawer.rejections": "Rejected samples",
-      "drawer.void": "voided"
+      "drawer.void": "voided",
+      "drawer.stage.sources": "Sources",
+      "drawer.stage.aggregation": "Aggregation",
+      "drawer.stage.spike": "Spike filter",
+      "drawer.stage.invert": "Invert",
+      "drawer.stage.netSubtract": "Net subtract",
+      "drawer.stage.fallback": "Fallback",
+      "drawer.stage.display": "Display",
+      "import.recreated": "Recreated",
+      "import.kept": "Kept",
+      "import.skipped": "Skipped",
+      "import.errors": "Errors",
+      "import.none": "Nothing to import.",
+      "summary.title": "Value summary",
+      "summary.generated": "Generated",
+      "summary.window": "Window (days)",
+      "summary.empty": "No sensors to summarize.",
+      "summary.min": "min",
+      "summary.max": "max",
+      "summary.avg": "avg",
+      "summary.rejections": "spike rejections",
+      "summary.fallbacks": "fallbacks",
+      "delete.historyPreserved": "Recorder history preserved.",
+      "delete.historyOrphaned": "Removed; recorder history is no longer attached.",
+      "service.exportCsv": "CSV export",
+      "service.importCsv": "CSV import",
+      "service.summary": "Summary",
+      "service.rows": "rows",
+      "service.applied": "applied",
+      "service.skipped": "skipped",
+      "service.file": "file",
+      "service.responseEmpty": "The service returned no response."
     },
     de: {
       "tab.devices": "Ger\xE4te",
@@ -260,129 +403,265 @@
       "tab.migrate": "Migration",
       "action.editMode": "Bearbeiten",
       "action.disableEdit": "Bearbeiten beenden",
-      "action.addSensor": "Sensor hinzuf\xE4gen",
+      "action.addSensor": "Sensor hinzuf\xFCgen",
       "action.export": "Exportieren",
       "action.import": "Importieren",
-      "action.close": "Schliessen",
+      "action.exportCsv": "CSV exportieren",
+      "action.importCsv": "CSV importieren",
+      "action.summary": "Zusammenfassung",
+      "action.close": "Schlie\xDFen",
       "action.details": "Details",
       "action.edit": "Bearbeiten",
       "action.configure": "Konfigurieren",
-      "action.delete": "L\xF6sch",
+      "action.delete": "L\xF6schen",
       "action.rename": "Umbenennen",
       "action.save": "Speichern",
       "action.cancel": "Abbrechen",
-      "form.createTitle": "Abstract-Sensor hinzuf\xE4gen",
+      "action.void": "Verwerfen",
+      "action.restore": "Wiederherstellen",
+      "action.reconfigure": "Neu konfigurieren",
+      "form.createTitle": "Abstract-Sensor hinzuf\xFCgen",
       "form.editTitle": "Abstract-Sensor konfigurieren",
       "form.deviceType": "Ger\xE4tetyp",
       "form.sources": "Quellentit\xE4ten",
       "form.logicalName": "Logischer Name",
       "form.objectId": "Entity-Object-Id",
-      "form.entityName": "Entity name (override)",
+      "form.entityName": "Entity-Name (\xDCberschreibung)",
       "form.aggregation": "Aggregation",
       "form.spikeFilter": "Spike-Filter aktivieren",
-      "form.invert": "Value invertieren",
-      "form.fallbackZero": "Bei Fehler on Null",
-      "form.fallbackOnZero": "Fallback bei Null use",
-      "form.netSubtract": "Entity abstrakt (Net flow)",
-      "form.fallbackSource": "Fallback source entity",
-      "form.fallbackCondition": "Fallback condition entity",
-      "form.fallbackConditionState": "Fallback condition state",
-      "confirm.delete": "Really l\xF6sch this Abstract sensor?",
+      "form.invert": "Wert invertieren",
+      "form.fallbackZero": "Bei Fehler auf Null",
+      "form.fallbackOnZero": "Fallback bei Null verwenden",
+      "form.netSubtract": "Entity abziehen (Nettofluss)",
+      "form.fallbackSource": "Fallback-Quellentit\xE4t",
+      "form.fallbackCondition": "Fallback-Bedingungsentit\xE4t",
+      "form.fallbackConditionState": "Fallback-Bedingungszustand",
+      "confirm.delete": "Diesen Abstract-Sensor wirklich l\xF6schen?",
+      "confirm.void": "Diesen verworfenen Messwert als erwartet markieren?",
       "rename.title": "Abstract-Sensor umbenennen",
-      "rename.renameEntity": "Entity-Id also umbenennen",
-      "rename.previewEntityId": "New Entity-Id:",
+      "rename.renameEntity": "Entity-Id ebenfalls umbenennen",
+      "rename.previewEntityId": "Neue Entity-Id:",
       "status.sensors": "Sensoren",
-      "status.loading": "Laedt...",
+      "status.loading": "L\xE4dt...",
       "title": "Abstractor",
-      "subtitle.readOnly": "write-protected Base",
+      "subtitle.readOnly": "schreibgesch\xFCtzte Basis",
       "subtitle.editMode": "EDIT-MODUS",
-      "filter.all": "all",
+      "filter.all": "alle",
       "filter.power": "Leistung",
       "filter.energy": "Energie",
       "filter.water": "Wasser",
       "filter.door_contact": "T\xFCrkontakt",
       "filter.motion": "Bewegung",
       "filter.smoke": "Rauch",
+      "filter.switch_state": "Schalter",
+      "filter.light_state": "Licht",
+      "filter.cover_position": "Rollladenposition",
       "filter.problems": "Probleme",
-      "empty.loading": "Abstractor-Sensors loading...",
-      "empty.none": "No matching Abstractor-Sensors.",
-      "admin.required": "Administrator access required",
+      "empty.loading": "Abstractor-Sensoren werden geladen...",
+      "empty.none": "Keine passenden Abstractor-Sensoren.",
+      "admin.required": "Administratorzugriff erforderlich",
       "common.sensor": "Abstractor-Sensor",
       "field.entity": "Entity",
-      "field.uniqueId": "Unique-ID",
-      "field.source": "Source",
+      "field.uniqueId": "Unique-Id",
+      "field.source": "Quelle",
       "health.bad": "Fehler",
-      "health.warn": "Warnings",
+      "health.warn": "Warnungen",
       "health.none": "Keine",
       "health.total": "Gesamt",
-      "health.noEvent": "no event",
-      "health.value": "value",
-      "settings.hint": "Read-only base. Use Edit mode for Import/advanced actions; configuration stays in HA Settings \u2192 Devices & Services.",
-      "error.adminOnly": "Edit mode is available only to administrators.",
-      "migrate.title": "Migrate",
-      "migrate.empty": "No YAML sensors detected.",
-      "migrate.colSource": "Source",
+      "health.noEvent": "kein Ereignis",
+      "health.value": "Wert",
+      "health.rejected": "Verworfene Messwerte",
+      "health.thresholds": "Warnschwellen",
+      "health.warnAbove": "Warnung \xFCber",
+      "health.warnBelow": "Warnung unter",
+      "health.all": "Alle Sensoren",
+      "settings.hint": "Schreibgesch\xFCtzte Basis. Import/erweiterte Aktionen im Bearbeitungsmodus; die Konfiguration bleibt unter Einstellungen \u2192 Ger\xE4te & Dienste.",
+      "settings.pollInterval": "Abfrageintervall (s)",
+      "settings.influx": "Influx-Exporter",
+      "settings.namingTemplate": "Namensvorlage",
+      "settings.debugGate": "Debug-Schalter",
+      "settings.notify": "Benachrichtigungsziel",
+      "settings.enabled": "aktiviert",
+      "settings.disabled": "deaktiviert",
+      "settings.set": "gesetzt",
+      "settings.notSet": "nicht gesetzt",
+      "settings.templates": "Verf\xFCgbare Vorlagen",
+      "error.adminOnly": "Der Bearbeitungsmodus ist nur f\xFCr Administratoren verf\xFCgbar.",
+      "migrate.title": "Migration",
+      "migrate.empty": "Keine YAML-Sensoren erkannt.",
+      "migrate.colSource": "Quelle",
       "migrate.colStatus": "Status",
-      "migrate.historyOk": "history preserved",
-      "migrate.review": "review required",
-      "drawer.stages": "value pipeline",
-      "drawer.spikeRejections": "spike rejections",
-      "drawer.fallbacks": "fallbacks",
-      "drawer.unavailableSamples": "unavailable samples",
-      "drawer.lastEvent": "last event",
-      "drawer.value": "value",
-      "drawer.updatedAt": "updated",
-      "drawer.delta": "delta",
-      "drawer.stale": "stale",
-      "drawer.sourceStates": "source states",
-      "drawer.rejections": "rejected samples",
-      "drawer.void": "voided"
+      "migrate.historyOk": "Verlauf erhalten",
+      "migrate.review": "Pr\xFCfung erforderlich",
+      "drawer.stages": "Wert-Pipeline",
+      "drawer.spikeRejections": "Spike-Verwerfungen",
+      "drawer.fallbacks": "Fallbacks",
+      "drawer.unavailableSamples": "Nicht verf\xFCgbare Messwerte",
+      "drawer.lastEvent": "Letztes Ereignis",
+      "drawer.value": "Wert",
+      "drawer.updatedAt": "Aktualisiert",
+      "drawer.delta": "Delta",
+      "drawer.stale": "veraltet",
+      "drawer.sourceStates": "Quellenzust\xE4nde",
+      "drawer.rejections": "Verworfene Messwerte",
+      "drawer.void": "verworfen",
+      "drawer.stage.sources": "Quellen",
+      "drawer.stage.aggregation": "Aggregation",
+      "drawer.stage.spike": "Spike-Filter",
+      "drawer.stage.invert": "Invertieren",
+      "drawer.stage.netSubtract": "Netto abziehen",
+      "drawer.stage.fallback": "Fallback",
+      "drawer.stage.display": "Anzeige",
+      "import.recreated": "Neu erstellt",
+      "import.kept": "Behalten",
+      "import.skipped": "\xDCbersprungen",
+      "import.errors": "Fehler",
+      "import.none": "Nichts zu importieren.",
+      "summary.title": "Wert-Zusammenfassung",
+      "summary.generated": "Erstellt",
+      "summary.window": "Zeitraum (Tage)",
+      "summary.empty": "Keine Sensoren f\xFCr die Zusammenfassung.",
+      "summary.min": "min",
+      "summary.max": "max",
+      "summary.avg": "\xD8",
+      "summary.rejections": "Spike-Verwerfungen",
+      "summary.fallbacks": "Fallbacks",
+      "delete.historyPreserved": "Recorder-Verlauf bleibt erhalten.",
+      "delete.historyOrphaned": "Entfernt; der Recorder-Verlauf ist nicht mehr zugeordnet.",
+      "service.exportCsv": "CSV-Export",
+      "service.importCsv": "CSV-Import",
+      "service.summary": "Zusammenfassung",
+      "service.rows": "Zeilen",
+      "service.applied": "angewendet",
+      "service.skipped": "\xFCbersprungen",
+      "service.file": "Datei",
+      "service.responseEmpty": "Der Dienst hat keine Antwort geliefert."
     }
   };
-  function _langFor(hass) {
+  function langFor(hass) {
     const raw = hass && hass.language ? String(hass.language) : "en";
     const code = raw.toLowerCase().slice(0, 2);
     return I18N[code] ? code : "en";
   }
-  function _t(hass, key) {
-    const dict = I18N[_langFor(hass)];
+  function translate(hass, key) {
+    const dict = I18N[langFor(hass)];
     if (dict && Object.prototype.hasOwnProperty.call(dict, key)) return dict[key];
     const fallback = I18N.en;
     if (fallback && Object.prototype.hasOwnProperty.call(fallback, key)) return fallback[key];
     return key;
   }
   try {
-    if (typeof window !== "undefined") window.AbstractorI18n = { languages: I18N, translate: _t, defaultLanguage: "en" };
+    if (typeof window !== "undefined") {
+      window.AbstractorI18n = { languages: I18N, translate, defaultLanguage: "en" };
+    }
   } catch (e) {
   }
-  var AbstractorStore = class {
-    constructor() {
-      this.state = {
-        subentries: [],
-        loaded: false,
-        loading: false,
-        error: "",
-        activeTab: "devices",
-        lastFetchAt: 0,
-        editMode: false,
-        admin: false
-      };
-      this.subscribers = [];
+
+  // frontend/src/pipeline.js
+  var STAGES = [
+    ["sources", "drawer.stage.sources"],
+    ["aggregation", "drawer.stage.aggregation"],
+    ["spike", "drawer.stage.spike"],
+    ["invert", "drawer.stage.invert"],
+    ["netSubtract", "drawer.stage.netSubtract"],
+    ["fallback", "drawer.stage.fallback"],
+    ["display", "drawer.stage.display"]
+  ];
+  var NUMERIC_TYPES2 = /* @__PURE__ */ new Set(["power", "energy", "water"]);
+  function pipelineStages(row) {
+    const r = row || {};
+    const numeric = NUMERIC_TYPES2.has(r.device_type);
+    const sources = Array.isArray(r.source_entity_ids) ? r.source_entity_ids.filter(Boolean) : r.source_entity_id ? [r.source_entity_id] : [];
+    const active = {
+      sources: sources.length > 0,
+      aggregation: numeric && sources.length > 1,
+      spike: numeric && !!r.spike_filter,
+      invert: numeric && !!r.invert,
+      netSubtract: numeric && !!r.net_subtract_entity_id,
+      fallback: numeric && !!(r.fallback_source_entity_id || r.fallback_on_zero || r.fallback_zero || r.fallback_condition_entity_id),
+      display: true
+    };
+    return STAGES.map(([id, labelKey]) => ({ id, labelKey, active: !!active[id] }));
+  }
+
+  // frontend/src/store.js
+  var INITIAL_STATE = {
+    subentries: [],
+    loaded: false,
+    loading: false,
+    error: "",
+    activeTab: "devices",
+    lastFetchAt: 0,
+    editMode: false,
+    admin: false
+  };
+  function _sameValue(a, b) {
+    if (a === b) return true;
+    if (typeof a !== typeof b) return false;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+      return a.every((value, index) => _sameValue(value, b[index]));
     }
-    subscribe(fn) {
-      this.subscribers.push(fn);
+    if (a && b && typeof a === "object") {
+      const aKeys = Object.keys(a);
+      const bKeys = Object.keys(b);
+      if (aKeys.length !== bKeys.length) return false;
+      return aKeys.every(
+        (key) => Object.prototype.hasOwnProperty.call(b, key) && _sameValue(a[key], b[key])
+      );
+    }
+    return false;
+  }
+  function sameState(a, b) {
+    const aState = a || {};
+    const bState = b || {};
+    const aKeys = Object.keys(aState);
+    const bKeys = Object.keys(bState);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (!Object.prototype.hasOwnProperty.call(bState, key)) return false;
+      if (!_sameValue(aState[key], bState[key])) return false;
+    }
+    return true;
+  }
+  var AbstractorStore = class {
+    constructor(initial) {
+      this._state = Object.assign({}, INITIAL_STATE, initial || {});
+      this.subscribers = /* @__PURE__ */ new Set();
+      this.revision = 0;
     }
     get state() {
       return this._state;
     }
-    set state(v) {
-      this._state = v;
+    subscribe(fn) {
+      this.subscribers.add(fn);
+      return () => this.subscribers.delete(fn);
     }
+    /**
+     * Merge a patch into the state. Returns true when the state actually
+     * changed (and subscribers were notified); identical patches are a no-op.
+     */
     setState(patch) {
-      this.state = Object.assign({}, this.state, patch);
-      this.subscribers.forEach((fn) => fn(this.state));
+      const next = Object.assign({}, this._state, patch || {});
+      if (sameState(this._state, next)) return false;
+      this._state = next;
+      this.revision += 1;
+      this.subscribers.forEach((fn) => fn(this._state));
+      return true;
+    }
+    /** Render decision: a revision that was already painted must not repaint. */
+    shouldRender(lastRevision) {
+      return this.revision !== lastRevision;
     }
   };
+
+  // frontend/src/abstractor-panel.js
+  var TABS = [
+    { id: "devices", key: "tab.devices" },
+    { id: "health", key: "tab.health" },
+    { id: "settings", key: "tab.settings" },
+    { id: "migrate", key: "tab.migrate" }
+  ];
   var AbstractorPanel = class extends HTMLElement {
     constructor() {
       super();
@@ -410,7 +689,18 @@
       this._backdropEl = null;
       this._detailShown = null;
       this._errorText = "";
-      this._store.subscribe(() => this._render());
+      this._lastRevision = -1;
+      this.renderCount = 0;
+      this._renderedTab = null;
+      this._deviceCards = /* @__PURE__ */ new Map();
+      this._deviceFilterEl = null;
+      this._deviceListEl = null;
+      this._filterSignature = "";
+      this._history = {};
+      this._historyLoaded = {};
+      this._summary = null;
+      this._serviceMessage = "";
+      this._store.subscribe(() => this._renderIfChanged());
     }
     set hass(hass) {
       this._hass = hass;
@@ -437,8 +727,9 @@
     _showError(message) {
       this._store.setState({ error: message || "" });
     }
-    async _callService(service, data) {
-      return this._hass.callService("abstractor", service, data || {}, void 0, false, /export/.test(service));
+    _showMessage(message) {
+      this._serviceMessage = message || "";
+      this._render();
     }
     async _fetchSubentries(force) {
       if (!this._hass || !this._hass.callWS) return;
@@ -526,7 +817,7 @@
       return map[health] || "\u25CB";
     }
     _t(key) {
-      return _t(this._hass, key);
+      return translate(this._hass, key);
     }
     _styles() {
       return `
@@ -556,6 +847,8 @@
       .health.ok { color:#2e7d32; }
       .health.warn { color:#f9a825; }
       .health.bad { color:#c62828; }
+      .stage { display:inline-block; margin:0 6px 6px 0; padding:1px 8px; border-radius:999px; border:1px solid var(--divider-color,#ccc); opacity:.45; font-size:.85em; }
+      .stage.active { opacity:1; font-weight:600; }
       table { width:100%; border-collapse:collapse; }
       td { padding:4px 8px 4px 0; color:var(--primary-text-color); font-size:.95em; }
       td.value { text-align:right; font-weight:500; }
@@ -571,8 +864,14 @@
       .toast { margin:8px 0; padding:8px 12px; border-radius:4px; background:var(--primary-color,#03a9f4); color:var(--text-primary-color,white); }
     `;
     }
+    _renderIfChanged() {
+      if (!this._store.shouldRender(this._lastRevision)) return;
+      this._render();
+    }
     _render() {
       if (!this._hass) return;
+      this._lastRevision = this._store.revision;
+      this.renderCount += 1;
       const s = this._store.state;
       const statusText = s.loaded ? `${s.subentries.length} ${this._t("status.sensors")}` : this._t("status.loading");
       const actions = new Set(visibleHeaderActions(s.admin, s.editMode));
@@ -585,9 +884,10 @@
       const tabsHtml = TABS.map((t) => `<button type="button" class="tab ${s.activeTab === t.id ? "active" : ""}" data-tab="${t.id}">${this._t(t.key)}</button>`).join("");
       const firstRender = !this._bodyEl;
       if (firstRender) {
-        this.shadowRoot.innerHTML = `<style>${this._styles()}</style><div class="header"></div><div class="tabs"></div><div class="body"></div>`;
+        this.shadowRoot.innerHTML = `<style>${this._styles()}</style><div class="header"></div><div class="tabs"></div><div class="toast" role="status" aria-live="polite" style="display:none"></div><div class="body"></div>`;
         this._headerEl = this.shadowRoot.querySelector(".header");
         this._tabsEl = this.shadowRoot.querySelector(".tabs");
+        this._toastSlot = this.shadowRoot.querySelector(".toast");
         this._bodyEl = this.shadowRoot.querySelector(".body");
       }
       const headerChanged = firstRender || headerHtml !== this._headerSignature;
@@ -651,6 +951,18 @@
         });
       }
       const bodyEl = this._bodyEl;
+      if (this._renderedTab !== s.activeTab) {
+        this._renderedTab = s.activeTab;
+        bodyEl.replaceChildren();
+        this._deviceCards.clear();
+        this._deviceFilterEl = null;
+        this._deviceListEl = null;
+        this._filterSignature = "";
+      }
+      if (this._toastSlot) {
+        this._toastSlot.textContent = this._serviceMessage || "";
+        this._toastSlot.style.display = this._serviceMessage ? "" : "none";
+      }
       if (s.activeTab === "devices") this._renderDevices(bodyEl);
       else if (s.activeTab === "health") this._renderHealth(bodyEl);
       else if (s.activeTab === "migrate") this._renderMigrate(bodyEl);
@@ -660,6 +972,9 @@
       }
       if (s.activeTab === "settings" && !this._optionsLoaded) {
         this._fetchOptions();
+      }
+      if (s.activeTab === "health") {
+        this._fetchHistoryIfNeeded();
       }
       if (this._detail !== this._detailShown) {
         if (this._backdropEl && this._backdropEl.parentNode === this.shadowRoot) {
@@ -705,10 +1020,20 @@
           fieldLine("drawer.updatedAt", this._updatedText(detail));
           fieldLine("form.objectId", detail.object_id);
           fieldLine("form.sources", Array.isArray(detail.source_entity_ids) ? detail.source_entity_ids.filter(Boolean).join(", ") : "");
+          const stages = pipelineStages(detail);
+          const h3 = document.createElement("h3");
+          h3.textContent = this._t("drawer.stages");
+          drawer.appendChild(h3);
+          const stageWrap = document.createElement("p");
+          stageWrap.className = "hint";
+          for (const stage of stages) {
+            const chip = document.createElement("span");
+            chip.className = "stage" + (stage.active ? " active" : "");
+            chip.textContent = this._t(stage.labelKey);
+            stageWrap.appendChild(chip);
+          }
+          drawer.appendChild(stageWrap);
           if (Object.keys(meta).length) {
-            const h3 = document.createElement("h3");
-            h3.textContent = this._t("drawer.stages");
-            drawer.appendChild(h3);
             fieldLine("drawer.spikeRejections", meta.spike_rejections);
             fieldLine("drawer.fallbacks", meta.fallbacks);
             fieldLine("drawer.unavailableSamples", meta.unavailable_samples);
@@ -717,7 +1042,7 @@
               if (meta.event_at) {
                 const when = new Date(meta.event_at);
                 if (!Number.isNaN(when.getTime())) {
-                  eventText += " @ " + when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                  eventText += " @ " + when.toLocaleString(langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
                 }
               }
               fieldLine("drawer.lastEvent", eventText);
@@ -745,7 +1070,7 @@
                 f.appendChild(b);
                 const s2 = document.createElement("span");
                 const when = new Date(r.at);
-                const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
                 s2.textContent = `${String(r.reason)}: ${r.value === null || r.value === void 0 ? "?" : r.value} @ ${clock}${r.voided ? " (voided)" : ""}`;
                 f.appendChild(s2);
                 drawer.appendChild(f);
@@ -802,159 +1127,214 @@
       const filter = this._activeFilter() || "all";
       const present = new Set((s.subentries || []).map((e) => e.device_type).filter(Boolean));
       const chips = ["all", ...DEVICE_TYPES.filter((t) => present.has(t)), "problems"];
-      bodyEl.innerHTML = `
-      <div class="filter-row">
-        ${chips.map((f) => `<button type="button" class="filter-chip ${filter === f ? "active" : ""}" data-filter="${f}">${this._chipLabel(f)}</button>`).join("")}
-      </div>
-    `;
-      bodyEl.querySelectorAll(".filter-chip").forEach((b) => {
-        b.addEventListener("click", () => {
-          this._filterOverride = b.getAttribute("data-filter");
-          this._render();
+      const filterSignature = JSON.stringify([chips, filter]);
+      if (!this._deviceFilterEl || this._filterSignature !== filterSignature) {
+        const filterRow = document.createElement("div");
+        filterRow.className = "filter-row";
+        chips.forEach((chip) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `filter-chip ${filter === chip ? "active" : ""}`;
+          button.setAttribute("data-filter", chip);
+          button.textContent = this._chipLabel(chip);
+          button.addEventListener("click", () => {
+            this._filterOverride = button.getAttribute("data-filter");
+            this._render();
+          });
+          filterRow.appendChild(button);
         });
-      });
-      const activeFilter = this._filterOverride || "all";
+        if (this._deviceFilterEl && this._deviceFilterEl.parentNode) {
+          this._deviceFilterEl.replaceWith(filterRow);
+        }
+        this._deviceFilterEl = filterRow;
+        this._filterSignature = filterSignature;
+      }
+      if (this._deviceFilterEl.parentNode !== bodyEl) bodyEl.appendChild(this._deviceFilterEl);
+      if (!this._deviceListEl) this._deviceListEl = document.createElement("div");
+      if (this._deviceListEl.parentNode !== bodyEl) bodyEl.appendChild(this._deviceListEl);
+      const listEl = this._deviceListEl;
       const list = (s.subentries || []).filter((e) => {
-        if (activeFilter === "all") return true;
-        if (activeFilter === "problems") return e.health === "warn" || e.health === "bad";
-        return (e.device_type || "") === activeFilter;
+        if (filter === "all") return true;
+        if (filter === "problems") return e.health === "warn" || e.health === "bad";
+        return (e.device_type || "") === filter;
       });
       if (!s.loaded) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = this._t("empty.loading");
-        bodyEl.appendChild(empty);
+        listEl.replaceChildren(this._emptyNode(this._t("empty.loading")));
+        this._deviceCards.clear();
         return;
       }
       if (!list.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = this._t("empty.none");
-        bodyEl.appendChild(empty);
+        listEl.replaceChildren(this._emptyNode(this._t("empty.none")));
+        this._deviceCards.clear();
         return;
       }
+      const fragment = document.createDocumentFragment();
+      const seen = /* @__PURE__ */ new Set();
       for (const e of list) {
-        const card = document.createElement("div");
-        card.className = "device-card";
-        const header = document.createElement("div");
-        header.className = "card-header";
-        const h = document.createElement("h2");
-        h.textContent = e.logical_name || e.title || this._t("common.sensor");
-        header.appendChild(h);
-        const health = document.createElement("span");
-        health.className = "health " + (e.health || "idle");
-        health.textContent = this._healthDot(e.health) + " " + (e.health || "idle");
-        header.appendChild(health);
-        card.appendChild(header);
-        const details = document.createElement("p");
-        details.className = "hint";
-        const sources = Array.isArray(e.source_entity_ids) ? e.source_entity_ids.filter(Boolean).join(", ") : "";
-        details.textContent = [
-          e.object_id ? `${this._t("field.entity")}: ${e.object_id}` : "",
-          e.legacy_unique_id ? `${this._t("field.uniqueId")}: ${e.legacy_unique_id}` : "",
-          sources ? `${this._t("field.source")}: ${sources}` : ""
-        ].filter(Boolean).join(" \xB7 ");
-        card.appendChild(details);
-        const detailsButton = document.createElement("button");
-        detailsButton.type = "button";
-        detailsButton.textContent = this._t("action.details");
-        detailsButton.style.margin = "8px 8px 8px 0";
-        detailsButton.addEventListener("click", () => {
-          this._detail = e;
-          this._render();
-        });
-        card.appendChild(detailsButton);
-        const editButton = document.createElement("button");
-        editButton.type = "button";
-        editButton.textContent = this._t("action.edit");
-        editButton.style.marginTop = "8px";
-        const deviceId = this._deviceIdFor(e);
-        editButton.addEventListener("click", () => {
-          if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
-          else this._navigate("/config/integrations/integration/abstractor");
-        });
-        if (s.admin) card.appendChild(editButton);
-        if (s.editMode) {
-          const configureButton = document.createElement("button");
-          configureButton.type = "button";
-          configureButton.textContent = this._t("action.configure");
-          configureButton.style.marginTop = "8px";
-          configureButton.style.marginLeft = "8px";
-          configureButton.addEventListener("click", () => this._openSensorForm(e));
-          card.appendChild(configureButton);
-          const renameButton = document.createElement("button");
-          renameButton.type = "button";
-          renameButton.textContent = this._t("action.rename");
-          renameButton.style.marginTop = "8px";
-          renameButton.style.marginLeft = "8px";
-          renameButton.addEventListener("click", () => this._openRenameForm(e));
-          card.appendChild(renameButton);
-          const deleteButton = document.createElement("button");
-          deleteButton.type = "button";
-          deleteButton.textContent = this._t("action.delete");
-          deleteButton.style.marginTop = "8px";
-          deleteButton.style.marginLeft = "8px";
-          deleteButton.addEventListener("click", () => this._confirmDelete(e));
-          card.appendChild(deleteButton);
+        const id = e.subentry_id;
+        seen.add(id);
+        const signature = this._deviceSignature(e, s);
+        let card = this._deviceCards.get(id);
+        if (!card || card.getAttribute("data-signature") !== signature) {
+          card = this._buildDeviceCard(e, s);
+          card.setAttribute("data-signature", signature);
+          this._deviceCards.set(id, card);
         }
-        const table = document.createElement("table");
-        const row = table.insertRow();
-        row.insertCell().textContent = e.device_type || "";
-        row.insertCell().className = "value";
-        row.cells[1].textContent = this._formatValue(e);
-        card.appendChild(table);
-        const freshness = this._updatedText(e);
-        if (freshness) {
-          const fresh = document.createElement("p");
-          fresh.className = "hint";
-          fresh.textContent = freshness;
-          card.appendChild(fresh);
-        }
-        const sparkline = this._sparklineSvg(e.subentry_id);
-        if (sparkline) {
-          const spark = document.createElement("div");
-          spark.className = "spark";
-          spark.innerHTML = sparkline;
-          card.appendChild(spark);
-        }
-        const rejections = Array.isArray(e.recent_rejections) ? e.recent_rejections : [];
-        if (rejections.length) {
-          const rejWrap = document.createElement("div");
-          rejWrap.className = "hint";
-          const rejTitle = document.createElement("b");
-          rejTitle.textContent = this._t("drawer.rejections");
-          rejWrap.appendChild(rejTitle);
-          for (const r of rejections) {
-            const line = document.createElement("span");
-            const when = new Date(r.at);
-            const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-            const value = r.value === null || r.value === void 0 ? "?" : r.value;
-            line.textContent = ` ${r.id}: ${r.reason} (${value}, ${clock}${r.voided ? " - " + this._t("drawer.void") : ""})`;
-            rejWrap.appendChild(line);
-          }
-          card.appendChild(rejWrap);
-        }
-        bodyEl.appendChild(card);
+        fragment.appendChild(card);
       }
+      for (const id of [...this._deviceCards.keys()]) {
+        if (!seen.has(id)) this._deviceCards.delete(id);
+      }
+      listEl.replaceChildren(fragment);
+    }
+    _emptyNode(text) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = text;
+      return empty;
+    }
+    _deviceSignature(entry, state) {
+      return JSON.stringify([
+        entry.subentry_id,
+        entry.value,
+        entry.unit,
+        entry.display_unit,
+        entry.display_precision,
+        entry.health,
+        entry.last_event,
+        entry.meta && entry.meta.updated_at,
+        entry.meta && entry.meta.stale,
+        entry.meta && entry.meta.delta,
+        entry.recent_rejections,
+        entry.device_type,
+        entry.logical_name,
+        entry.title,
+        entry.object_id,
+        entry.legacy_unique_id,
+        entry.source_entity_ids,
+        state.admin,
+        state.editMode
+      ]);
+    }
+    _buildDeviceCard(e, s) {
+      const card = document.createElement("div");
+      card.className = "device-card";
+      const header = document.createElement("div");
+      header.className = "card-header";
+      const h = document.createElement("h2");
+      h.textContent = e.logical_name || e.title || this._t("common.sensor");
+      header.appendChild(h);
+      const health = document.createElement("span");
+      health.className = "health " + (e.health || "idle");
+      health.textContent = this._healthDot(e.health) + " " + (e.health || "idle");
+      header.appendChild(health);
+      card.appendChild(header);
+      const details = document.createElement("p");
+      details.className = "hint";
+      const sources = Array.isArray(e.source_entity_ids) ? e.source_entity_ids.filter(Boolean).join(", ") : "";
+      details.textContent = [
+        e.object_id ? `${this._t("field.entity")}: ${e.object_id}` : "",
+        e.legacy_unique_id ? `${this._t("field.uniqueId")}: ${e.legacy_unique_id}` : "",
+        sources ? `${this._t("field.source")}: ${sources}` : ""
+      ].filter(Boolean).join(" \xB7 ");
+      card.appendChild(details);
+      const detailsButton = document.createElement("button");
+      detailsButton.type = "button";
+      detailsButton.textContent = this._t("action.details");
+      detailsButton.style.margin = "8px 8px 8px 0";
+      detailsButton.addEventListener("click", () => {
+        this._detail = e;
+        this._render();
+      });
+      card.appendChild(detailsButton);
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.textContent = this._t("action.edit");
+      editButton.style.marginTop = "8px";
+      const deviceId = this._deviceIdFor(e);
+      editButton.addEventListener("click", () => {
+        if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
+        else this._navigate("/config/integrations/integration/abstractor");
+      });
+      if (s.admin) card.appendChild(editButton);
+      if (s.editMode) {
+        const configureButton = document.createElement("button");
+        configureButton.type = "button";
+        configureButton.textContent = this._t("action.configure");
+        configureButton.style.marginTop = "8px";
+        configureButton.style.marginLeft = "8px";
+        configureButton.addEventListener("click", () => this._openSensorForm(e));
+        card.appendChild(configureButton);
+        const renameButton = document.createElement("button");
+        renameButton.type = "button";
+        renameButton.textContent = this._t("action.rename");
+        renameButton.style.marginTop = "8px";
+        renameButton.style.marginLeft = "8px";
+        renameButton.addEventListener("click", () => this._openRenameForm(e));
+        card.appendChild(renameButton);
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.textContent = this._t("action.delete");
+        deleteButton.style.marginTop = "8px";
+        deleteButton.style.marginLeft = "8px";
+        deleteButton.addEventListener("click", () => this._confirmDelete(e));
+        card.appendChild(deleteButton);
+      }
+      const table = document.createElement("table");
+      const row = table.insertRow();
+      row.insertCell().textContent = e.device_type || "";
+      row.insertCell().className = "value";
+      row.cells[1].textContent = this._formatValue(e);
+      card.appendChild(table);
+      const freshness = this._updatedText(e);
+      if (freshness) {
+        const fresh = document.createElement("p");
+        fresh.className = "hint";
+        fresh.textContent = freshness;
+        card.appendChild(fresh);
+      }
+      const sparkline = this._sparklineSvg(e.subentry_id);
+      if (sparkline) {
+        const spark = document.createElement("div");
+        spark.className = "spark";
+        spark.innerHTML = sparkline;
+        card.appendChild(spark);
+      }
+      const rejections = Array.isArray(e.recent_rejections) ? e.recent_rejections : [];
+      if (rejections.length) {
+        const rejWrap = document.createElement("div");
+        rejWrap.className = "hint";
+        const rejTitle = document.createElement("b");
+        rejTitle.textContent = this._t("drawer.rejections");
+        rejWrap.appendChild(rejTitle);
+        for (const r of rejections) {
+          const line = document.createElement("span");
+          const when = new Date(r.at);
+          const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          const value = r.value === null || r.value === void 0 ? "?" : r.value;
+          line.textContent = ` ${r.id}: ${r.reason} (${value}, ${clock}${r.voided ? " - " + this._t("drawer.void") : ""})`;
+          rejWrap.appendChild(line);
+        }
+        card.appendChild(rejWrap);
+      }
+      return card;
     }
     _renderHealth(bodyEl) {
       const s = this._store.state;
-      const bad = (s.subentries || []).filter((e) => e.health === "bad");
-      const warn = (s.subentries || []).filter((e) => e.health === "warn");
-      bodyEl.innerHTML = "";
+      const all = s.subentries || [];
+      const bad = all.filter((e) => e.health === "bad");
+      const warn = all.filter((e) => e.health === "warn");
+      bodyEl.replaceChildren();
       const summary = document.createElement("p");
       summary.className = "hint";
-      summary.textContent = `${this._t("health.bad")}: ${bad.length} \xB7 ${this._t("health.warn")}: ${warn.length} \xB7 ${this._t("health.total")}: ${(s.subentries || []).length}`;
+      summary.textContent = `${this._t("health.bad")}: ${bad.length} \xB7 ${this._t("health.warn")}: ${warn.length} \xB7 ${this._t("health.total")}: ${all.length}`;
       bodyEl.appendChild(summary);
       const renderList = (title, list) => {
         const h = document.createElement("h2");
         h.textContent = title;
         bodyEl.appendChild(h);
         if (!list.length) {
-          const empty = document.createElement("div");
-          empty.className = "empty";
-          empty.textContent = this._t("health.none");
-          bodyEl.appendChild(empty);
+          bodyEl.appendChild(this._emptyNode(this._t("health.none")));
           return;
         }
         for (const e of list) {
@@ -962,23 +1342,165 @@
           line.className = "hint";
           line.textContent = `${this._healthDot(e.health)} ${e.logical_name || e.title} \u2014 ${e.last_event || this._t("health.noEvent")} \u2014 ${this._t("health.value")}: ${e.value}`;
           bodyEl.appendChild(line);
+          this._renderThresholds(bodyEl, e);
         }
       };
       renderList(this._t("health.bad"), bad);
       renderList(this._t("health.warn"), warn);
+      const heading = document.createElement("h2");
+      heading.textContent = this._t("health.all");
+      bodyEl.appendChild(heading);
+      for (const e of all) {
+        const block = document.createElement("div");
+        block.className = "device-card";
+        const header = document.createElement("div");
+        header.className = "card-header";
+        const title = document.createElement("h2");
+        title.textContent = e.logical_name || e.title || this._t("common.sensor");
+        header.appendChild(title);
+        const status = document.createElement("span");
+        status.className = "health " + (e.health || "idle");
+        status.textContent = `${this._healthDot(e.health)} ${e.health || "idle"}`;
+        header.appendChild(status);
+        block.appendChild(header);
+        this._renderThresholds(block, e);
+        const rows = this._history[e.subentry_id] || e.recent_rejections || [];
+        const samples = sampleRows(rows, s.admin, s.editMode);
+        const sub = document.createElement("div");
+        sub.className = "hint";
+        const subTitle = document.createElement("b");
+        subTitle.textContent = this._t("health.rejected");
+        sub.appendChild(subTitle);
+        block.appendChild(sub);
+        if (!samples.length) {
+          const empty = document.createElement("p");
+          empty.className = "hint";
+          empty.textContent = this._t("health.none");
+          block.appendChild(empty);
+        }
+        for (const sample of samples) {
+          const row = document.createElement("div");
+          row.className = "hint";
+          const when = new Date(sample.at);
+          const clock = Number.isNaN(when.getTime()) ? "" : when.toLocaleString(langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          row.textContent = `${sample.id}: ${sample.reason} (${sample.value}, ${clock})${sample.voided ? " - " + this._t("drawer.void") : ""}`;
+          if (sample.actionable) {
+            const action = document.createElement("button");
+            action.type = "button";
+            action.style.marginLeft = "8px";
+            action.textContent = sample.voided ? this._t("action.restore") : this._t("action.void");
+            action.addEventListener("click", () => {
+              if (sample.voided) this._restoreSample(e.subentry_id, sample.id);
+              else this._voidSample(e.subentry_id, sample.id);
+            });
+            row.appendChild(action);
+          }
+          block.appendChild(row);
+        }
+        const configure = document.createElement("button");
+        configure.type = "button";
+        configure.textContent = this._t("action.reconfigure");
+        configure.style.marginTop = "8px";
+        configure.addEventListener("click", () => {
+          const deviceId = this._deviceIdFor(e);
+          if (deviceId) this._navigate(`/config/devices/device/${deviceId}`);
+          else this._navigate("/config/integrations/integration/abstractor");
+        });
+        if (s.admin) block.appendChild(configure);
+        bodyEl.appendChild(block);
+      }
+    }
+    _renderThresholds(container, entry) {
+      const above = entry.warn_above;
+      const below = entry.warn_below;
+      if (above === null || above === void 0) {
+        if (below === null || below === void 0) return;
+      }
+      const chips = document.createElement("p");
+      chips.className = "hint";
+      const parts = [this._t("health.thresholds")];
+      if (above !== null && above !== void 0) parts.push(`${this._t("health.warnAbove")}: ${above}`);
+      if (below !== null && below !== void 0) parts.push(`${this._t("health.warnBelow")}: ${below}`);
+      chips.textContent = parts.join(" \xB7 ");
+      container.appendChild(chips);
+    }
+    _historyRowsFor(entry) {
+      return this._history[entry.subentry_id] || entry.recent_rejections || [];
+    }
+    _fetchHistoryIfNeeded() {
+      if (!this._hass || !this._hass.callWS) return;
+      const all = this._store.state.subentries || [];
+      const pending = all.filter((entry) => !this._historyLoaded[entry.subentry_id]);
+      if (!pending.length) return;
+      pending.forEach((entry) => {
+        this._historyLoaded[entry.subentry_id] = true;
+      });
+      void Promise.all(pending.map((entry) => this._fetchHistory(entry.subentry_id))).then(() => this._render());
+    }
+    async _fetchHistory(subentryId) {
+      try {
+        const result = await this._hass.callWS({
+          type: "abstractor/history",
+          subentry_id: subentryId,
+          limit: 20
+        });
+        this._history[subentryId] = result && Array.isArray(result.rows) ? result.rows : [];
+      } catch (err) {
+        this._history[subentryId] = [];
+      }
+    }
+    async _voidSample(subentryId, sampleId) {
+      if (!this._store.state.editMode || !this._store.state.admin) return;
+      if (!window.confirm(this._t("confirm.void"))) return;
+      try {
+        await this._hass.callWS({
+          type: "abstractor/sample_void",
+          subentry_id: subentryId,
+          sample_id: sampleId
+        });
+        await this._fetchHistory(subentryId);
+        this._render();
+      } catch (err) {
+        this._showError(`Void failed: ${err && err.message ? err.message : err}`);
+      }
+    }
+    async _restoreSample(subentryId, sampleId) {
+      if (!this._store.state.editMode || !this._store.state.admin) return;
+      try {
+        await this._hass.callWS({
+          type: "abstractor/sample_restore",
+          subentry_id: subentryId,
+          sample_id: sampleId
+        });
+        await this._fetchHistory(subentryId);
+        this._render();
+      } catch (err) {
+        this._showError(`Restore failed: ${err && err.message ? err.message : err}`);
+      }
     }
     _renderSettings(bodyEl) {
-      bodyEl.innerHTML = "";
+      bodyEl.replaceChildren();
       const hint = document.createElement("p");
       hint.className = "hint";
       hint.textContent = this._t("settings.hint");
       bodyEl.appendChild(hint);
       if (this._optionsLoaded && this._options) {
-        for (const [key, value] of Object.entries(this._options)) {
-          if (typeof value === "object") continue;
+        const o = this._options;
+        const yes = this._t("settings.set");
+        const no = this._t("settings.notSet");
+        const lines = [
+          [this._t("settings.pollInterval"), o.poll_interval],
+          [this._t("settings.influx"), o.influx_enabled ? this._t("settings.enabled") : this._t("settings.disabled")],
+          [this._t("settings.namingTemplate"), o.naming_template],
+          [this._t("settings.templates"), (o.naming_template_names || []).join(", ")],
+          [this._t("settings.debugGate"), o.debug_gate_set ? yes : no],
+          [this._t("settings.notify"), o.notify_set ? yes : no]
+        ];
+        for (const [label, value] of lines) {
+          if (value === null || value === void 0 || value === "") continue;
           const line = document.createElement("p");
           line.className = "hint";
-          line.textContent = `${key}: ${value}`;
+          line.textContent = `${label}: ${value}`;
           bodyEl.appendChild(line);
         }
       }
@@ -986,18 +1508,59 @@
       actions.className = "actions";
       actions.style.marginTop = "8px";
       if (this._store.state.editMode) {
-        const exportBtn = document.createElement("button");
-        exportBtn.type = "button";
-        exportBtn.textContent = this._t("action.export");
-        exportBtn.addEventListener("click", () => this._handleExport());
-        actions.appendChild(exportBtn);
-        const importBtn = document.createElement("button");
-        importBtn.type = "button";
-        importBtn.textContent = this._t("action.import");
-        importBtn.addEventListener("click", () => this._triggerImport());
-        actions.appendChild(importBtn);
+        const exportBtn = this._button("action.export", () => this._handleExport());
+        const importBtn = this._button("action.import", () => this._triggerImport());
+        const exportCsvBtn = this._button("action.exportCsv", () => this._handleExportCsv());
+        const importCsvBtn = this._button("action.importCsv", () => this._triggerImportCsv());
+        const summaryBtn = this._button("action.summary", () => this._handleSummary());
+        [exportBtn, importBtn, exportCsvBtn, importCsvBtn, summaryBtn].forEach((b) => actions.appendChild(b));
       }
       bodyEl.appendChild(actions);
+      if (this._summary) {
+        const card = summaryCard(this._summary);
+        const heading = document.createElement("h2");
+        heading.textContent = this._t("summary.title");
+        bodyEl.appendChild(heading);
+        const generated = document.createElement("p");
+        generated.className = "hint";
+        const when = card.generated_at ? new Date(card.generated_at) : null;
+        const clock = when && !Number.isNaN(when.getTime()) ? when.toLocaleString(langFor(this._hass)) : "";
+        generated.textContent = `${this._t("summary.generated")}: ${clock} \xB7 ${this._t("summary.window")}: ${card.window_days}`;
+        bodyEl.appendChild(generated);
+        if (!card.rows.length) {
+          bodyEl.appendChild(this._emptyNode(this._t("summary.empty")));
+        }
+        for (const row of card.rows) {
+          const line = document.createElement("div");
+          line.className = "device-card";
+          const title = document.createElement("h2");
+          title.textContent = row.logical_name || row.entity_id || row.device_type;
+          line.appendChild(title);
+          const value = document.createElement("p");
+          value.className = "hint";
+          const text = row.value === null || row.value === void 0 ? "\u2014" : `${row.value}${row.unit ? " " + row.unit : ""}`;
+          value.textContent = `${this._t("drawer.value")}: ${text} \xB7 ${row.health}`;
+          line.appendChild(value);
+          const aggregates = document.createElement("p");
+          aggregates.className = "hint";
+          aggregates.textContent = [
+            `${this._t("summary.min")}: ${row.min === null ? "\u2014" : row.min}`,
+            `${this._t("summary.max")}: ${row.max === null ? "\u2014" : row.max}`,
+            `${this._t("summary.avg")}: ${row.avg === null ? "\u2014" : Number(row.avg).toFixed(2)}`,
+            `${this._t("summary.rejections")}: ${row.spike_rejections}`,
+            `${this._t("summary.fallbacks")}: ${row.fallbacks}`
+          ].join(" \xB7 ");
+          line.appendChild(aggregates);
+          bodyEl.appendChild(line);
+        }
+      }
+    }
+    _button(labelKey, handler) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = this._t(labelKey);
+      button.addEventListener("click", handler);
+      return button;
     }
     _renderMigrate(bodyEl) {
       bodyEl.innerHTML = "";
@@ -1052,7 +1615,7 @@
       if (!this._hass || !this._hass.callWS) return;
       try {
         const res = await this._hass.callWS({ type: "abstractor/options/read" });
-        this._options = res && res.options || {};
+        this._options = res || {};
         this._optionsLoaded = true;
         this._render();
       } catch (err) {
@@ -1080,16 +1643,10 @@
       return getCatalogue().display_names[filter] || filter;
     }
     // --- WS-4.3: value presentation (unit/precision/freshness/delta) ---------
-    // The formatter reads the server payload's value + display_* + unit keys;
-    // precision/units are decided server-side so JS cannot drift a second set.
+    // The formatters live in sensor-form.js so the panel and the pure JS tests
+    // share one implementation; precision/units are decided server-side.
     _formatValue(row) {
-      const value = row && row.value;
-      if (value === null || value === void 0) return "\u2014";
-      if (typeof value !== "number") return String(value);
-      const precision = row && typeof row.display_precision === "number" ? row.display_precision : null;
-      const text = precision === null ? String(value) : value.toFixed(precision);
-      const unit = row && row.display_unit || row && row.unit || "";
-      return unit ? `${text} ${unit}` : text;
+      return formatValue(row);
     }
     _noteSparkline(list) {
       const next = {};
@@ -1105,31 +1662,21 @@
     }
     _sparklineSvg(subentryId) {
       const hist = this._spark[subentryId];
-      if (!hist || hist.length < 2) return null;
-      let min = Infinity;
-      let max = -Infinity;
-      for (const v of hist) {
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-      const span = max - min || 1;
-      const width = 120;
-      const height = 26;
-      const step = width / (hist.length - 1);
-      const points = hist.map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v - min) / span * (height - 4)).toFixed(1)}`).join(" ");
-      return `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-hidden="true"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+      const points = sparklinePath(hist, 120, 26);
+      if (!points) return null;
+      return `<svg viewBox="0 0 120 26" width="120" height="26" role="img" aria-hidden="true"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
     }
     _updatedText(row) {
       const iso = row && row.meta && row.meta.updated_at;
       if (!iso) return "";
       const when = new Date(iso);
       if (Number.isNaN(when.getTime())) return "";
-      const clock = when.toLocaleString(_langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      const parts = [`${this._t("drawer.updatedAt")} ${clock}`];
+      const clock = when.toLocaleString(langFor(this._hass), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const parts = [`${this._t("drawer.updatedAt")} ${clock} \xB7 ${relativeTime(iso)}`];
       if (row.meta.stale) parts.push(this._t("drawer.stale"));
       if (typeof row.meta.delta === "number") {
-        const sign = row.meta.delta > 0 ? "+" : "";
-        parts.push(`\u0394 ${sign}${row.meta.delta.toFixed(2)}`);
+        const delta = deltaWithSign(row.value, row.value - row.meta.delta);
+        if (delta !== null) parts.push(`\u0394 ${delta}`);
       }
       return parts.join(" \xB7 ");
     }
@@ -1430,11 +1977,21 @@
       if (!this._store.state.editMode) return;
       if (!window.confirm(this._t("confirm.delete"))) return;
       try {
-        await this._hass.callWS({ type: "abstractor/subentry/delete", subentry_id: entry.subentry_id });
+        const result = await this._hass.callWS({ type: "abstractor/subentry/delete", subentry_id: entry.subentry_id });
         await this._fetchSubentries(true);
+        const preserved = !!(result && result.history_preserved);
+        this._showMessage(this._t(preserved ? "delete.historyPreserved" : "delete.historyOrphaned"));
       } catch (err) {
         this._showError(`Delete failed: ${err && err.message ? err.message : err}`);
       }
+    }
+    _serviceResponse(result) {
+      if (result && result.response !== void 0) return result.response;
+      return result;
+    }
+    async _callService(service, data, returnResponse) {
+      const wantsResponse = returnResponse !== void 0 ? returnResponse : /export|summary/.test(service);
+      return this._hass.callService("abstractor", service, data || {}, void 0, false, wantsResponse);
     }
     _closeModal() {
       if (this._modalEl && this._modalEl.parentNode) {
@@ -1448,7 +2005,8 @@
       this._showError("");
       try {
         const result = await this._hass.callService("abstractor", "export_data", {}, void 0, false, true);
-        const snapshot = result && result.response && result.response.snapshot || result && result.snapshot;
+        const response = this._serviceResponse(result);
+        const snapshot = response && response.snapshot || result && result.snapshot;
         const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -1472,11 +2030,67 @@
         return;
       }
       try {
-        await this._hass.callService("abstractor", "import_data", { data: parsed });
+        const result = await this._callService("import_data", { data: parsed }, true);
+        const summary = importSummary(this._serviceResponse(result));
+        const text = summary.map((row) => `${this._t(row.labelKey)}: ${row.count}`).join(" \xB7 ");
         this._showError("");
+        this._showMessage(text || this._t("import.none"));
         this._fetchSubentries(true);
       } catch (err) {
         this._showError(`Import failed: ${err && err.message ? err.message : err}`);
+      }
+    }
+    async _handleExportCsv() {
+      this._showError("");
+      try {
+        const result = await this._callService("export_csv", {}, true);
+        const response = this._serviceResponse(result) || {};
+        const file = response.file || "";
+        const rows = response.rows === void 0 ? "?" : response.rows;
+        this._showMessage(`${this._t("service.exportCsv")}: ${rows} ${this._t("service.rows")} \xB7 ${this._t("service.file")}: ${file}`);
+      } catch (err) {
+        this._showError(`CSV export failed: ${err && err.message ? err.message : err}`);
+      }
+    }
+    _triggerImportCsv() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".csv,text/csv,text/plain";
+      input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+        if (file) this._handleImportCsv(file);
+      });
+      input.click();
+    }
+    async _handleImportCsv(file) {
+      this._showError("");
+      try {
+        const content = await file.text();
+        const result = await this._callService("import_csv", { content }, true);
+        const response = this._serviceResponse(result) || {};
+        const applied = Array.isArray(response.applied) ? response.applied.length : 0;
+        const skipped = Array.isArray(response.skipped) ? response.skipped.length : 0;
+        const errors = Array.isArray(response.errors) ? response.errors.length : 0;
+        this._showMessage(
+          `${this._t("service.importCsv")}: ${this._t("service.applied")}: ${applied} \xB7 ${this._t("service.skipped")}: ${skipped} \xB7 ${this._t("import.errors")}: ${errors}`
+        );
+      } catch (err) {
+        this._showError(`CSV import failed: ${err && err.message ? err.message : err}`);
+      }
+    }
+    async _handleSummary() {
+      this._showError("");
+      try {
+        const result = await this._callService("summary", {}, true);
+        const response = this._serviceResponse(result);
+        if (!response) {
+          this._showError(this._t("service.responseEmpty"));
+          return;
+        }
+        this._summary = response;
+        this._render();
+      } catch (err) {
+        this._showError(`Summary failed: ${err && err.message ? err.message : err}`);
       }
     }
   };

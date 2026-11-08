@@ -230,3 +230,122 @@ export function visibleHeaderActions(admin, editMode) {
   if (!editMode) return ['editToggle'];
   return ['editToggle', 'addSensor', 'export', 'import'];
 }
+
+// --- WS-4.3: pure value presentation ---------------------------------------
+// These helpers never touch the DOM so the panel and `node --test` share the
+// exact same formatting rules (unit/precision come from the server payload).
+
+/** Format a server row's value with its display unit/precision. */
+export function formatValue(row) {
+  const value = row && row.value;
+  if (value === null || value === undefined) return '—';
+  if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
+  const precision = row && typeof row.display_precision === 'number' ? row.display_precision : null;
+  const text = precision === null ? String(value) : value.toFixed(precision);
+  const unit = (row && row.display_unit) || (row && row.unit) || '';
+  return unit ? `${text} ${unit}` : text;
+}
+
+/** Signed delta text for two numeric samples; null when not comparable. */
+export function deltaWithSign(current, previous) {
+  if (typeof current !== 'number' || typeof previous !== 'number') return null;
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return null;
+  const delta = current - previous;
+  const rounded = Math.round(delta * 100) / 100;
+  if (rounded === 0) return '0';
+  return `${rounded > 0 ? '+' : ''}${rounded}`;
+}
+
+/** Relative age ("3m ago"); '' for a missing/unparseable timestamp. */
+export function relativeTime(updatedAt, now) {
+  if (!updatedAt) return '';
+  const when = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+  if (Number.isNaN(when)) return '';
+  const reference = now === undefined ? Date.now() : now;
+  const seconds = Math.max(0, Math.floor((reference - when) / 1000));
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * SVG polyline points for a numeric sample ring.
+ *
+ * Non-numeric samples (unavailable/unknown/pass-through states) are skipped;
+ * fewer than two numeric samples means "no line to draw" (null), matching the
+ * plan's state-strip rule instead of inventing a flat line.
+ */
+export function sparklinePath(samples, width, height) {
+  const w = width || 120;
+  const h = height || 26;
+  const numbers = (samples || []).filter((value) => typeof value === 'number' && Number.isFinite(value));
+  if (numbers.length < 2) return null;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of numbers) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  const span = (max - min) || 1;
+  const step = w / (numbers.length - 1);
+  return numbers
+    .map((value, index) => `${(index * step).toFixed(1)},${(h - 2 - ((value - min) / span) * (h - 4)).toFixed(1)}`)
+    .join(' ');
+}
+
+/** Flat import service response -> display rows (WS-6.4). */
+export function importSummary(result) {
+  const r = result || {};
+  const lists = [
+    ['import.recreated', r.recreated],
+    ['import.kept', r.kept],
+    ['import.skipped', r.skipped],
+    ['import.errors', r.errors],
+  ];
+  const rows = [];
+  for (const [labelKey, values] of lists) {
+    const list = Array.isArray(values) ? values : [];
+    rows.push({ labelKey, count: list.length, values: list });
+  }
+  return rows;
+}
+
+/** Stable summary-service view (no DOM, no i18n) for the Settings tab. */
+export function summaryCard(result) {
+  const r = result || {};
+  const sensors = Array.isArray(r.sensors) ? r.sensors : [];
+  return {
+    generated_at: r.generated_at || '',
+    window_days: r.window_days,
+    rows: sensors.map((sensor) => ({
+      logical_name: sensor.logical_name || '',
+      entity_id: sensor.entity_id || '',
+      device_type: sensor.device_type || '',
+      value: sensor.value,
+      unit: sensor.unit || '',
+      updated_at: sensor.updated_at || '',
+      min: sensor.min,
+      max: sensor.max,
+      avg: sensor.avg,
+      spike_rejections: sensor.spike_rejections,
+      fallbacks: sensor.fallbacks,
+      health: sensor.health || 'idle',
+    })),
+  };
+}
+
+/** Rejected-sample rows for the Health tab (WS-5.5). */
+export function sampleRows(rows, admin, editMode) {
+  return (rows || []).map((row) => ({
+    id: row.id,
+    at: row.at,
+    value: row.value === null || row.value === undefined ? '?' : row.value,
+    reason: row.reason,
+    voided: !!row.voided,
+    actionable: !!admin && !!editMode,
+  }));
+}
