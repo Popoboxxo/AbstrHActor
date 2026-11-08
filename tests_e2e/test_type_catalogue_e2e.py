@@ -94,6 +94,11 @@ def test_actuator_types_round_trip_through_create_and_filter(logged_in_page, has
             assert panel.locator(".device-card").count() >= 1
             panel.get_by_role("button", name="all", exact=True).click()
     finally:
+        page.goto(f"{hass_base_url}/abstractor")
+        page.wait_for_function(
+            "() => { const e = document.querySelector('home-assistant'); return !!(e && e.hass); }",
+            timeout=20000,
+        )
         page.evaluate(
             """
             (async (ids) => {

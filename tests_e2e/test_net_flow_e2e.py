@@ -69,7 +69,7 @@ def _add_sensor_subentry(page, hass_base_url: str, source_name: str) -> None:
     # order) instead of the one actually in this dialog — confirmed
     # against a live instance.
     source_dialog = page.get_by_role("dialog", name="Source entity")
-    page.get_by_label("Source entity", exact=True).click()
+    page.get_by_label("Source entity", exact=True).first.click()
     # ha-entity-picker filters as-you-type off real input events — .fill()
     # sets the value without dispatching them, so the dropdown never narrows.
     # press_sequentially (not raw keyboard.type) re-focuses its target
@@ -137,9 +137,11 @@ def test_net_flow_subtracts_discharge_from_charge(
     # button — ours is the most recently created, i.e. the last one.
     page.goto(f"{hass_base_url}/config/integrations/integration/abstractor")
     page.wait_for_load_state("networkidle")
-    page.get_by_role(
-        "button", name=re.compile("reconfigure abstract sensor", re.I)
-    ).last.click()
+    (
+        page.locator("ha-list-item-base.sub-entry")
+        .filter(has_text="Abstract power")
+        .last.get_by_role("button", name=re.compile("reconfigure abstract sensor", re.I))
+    ).click()
     page.wait_for_timeout(500)
     # Each picker's aria-label works regardless of translation state, but
     # WHICH text it holds depends on whether translations/en.json loaded —
@@ -149,7 +151,7 @@ def test_net_flow_subtracts_discharge_from_charge(
     # same-name matches hidden under the modal overlay elsewhere on the
     # page).
     net_subtract_label = re.compile("net_subtract_entity_id|Subtract entity", re.I)
-    page.get_by_label(net_subtract_label).click()
+    page.get_by_label(net_subtract_label).first.click()
     picker_dialog = page.get_by_role("dialog", name=net_subtract_label)
     search_field = picker_dialog.get_by_placeholder("Search", exact=True)
     search_field.wait_for(state="visible", timeout=5000)
