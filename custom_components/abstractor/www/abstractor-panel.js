@@ -1507,6 +1507,11 @@
       const actions = document.createElement("div");
       actions.className = "actions";
       actions.style.marginTop = "8px";
+      if (this._store.state.admin) {
+        actions.appendChild(
+          this._button("action.configure", () => this._navigate("/config/integrations/integration/abstractor"))
+        );
+      }
       if (this._store.state.editMode) {
         const exportBtn = this._button("action.export", () => this._handleExport());
         const importBtn = this._button("action.import", () => this._triggerImport());
