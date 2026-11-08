@@ -55,12 +55,12 @@ from .const import (
     DEFAULT_DEVICE_MODEL,
     DEFAULT_DEVICE_NAME,
     DEFAULT_NAMING_TEMPLATE,
+    DISPLAY_PRECISION_MAX,
+    DISPLAY_PRECISION_MIN,
     DOMAIN,
     POLL_INTERVAL_MAX,
     POLL_INTERVAL_MIN,
     POLL_INTERVAL_PRESETS,
-    DISPLAY_PRECISION_MAX,
-    DISPLAY_PRECISION_MIN,
     WARN_SAMPLE_IDS_MAX,
 )
 from .specs import SPEC_REGISTRY
@@ -96,9 +96,12 @@ def _subentry_schema_spec(
                 selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
-                            selector.SelectOptionDict(value=spec.type_key, label=spec.display_name)
+                            selector.SelectOptionDict(
+                                value=spec.type_key, label=spec.display_name
+                            )
                             for spec in SPEC_REGISTRY.enabled()
-                            if spec.platform in ("sensor", "binary_sensor", "switch", "light", "cover")
+                            if spec.platform
+                            in ("sensor", "binary_sensor", "switch", "light", "cover")
                         ],
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
@@ -191,7 +194,9 @@ def _subentry_schema_spec(
                 CONF_TARGET_DEVICE_ID,
                 False,
                 None,
-                selector.DeviceSelector(selector.DeviceSelectorConfig(integration=DOMAIN)),
+                selector.DeviceSelector(
+                    selector.DeviceSelectorConfig(integration=DOMAIN)
+                ),
             ),
             (CONF_CREATE_NEW_DEVICE, False, False, selector.BooleanSelector()),
         )
@@ -218,7 +223,9 @@ def build_subentry_form_schema(
     return vol.Schema(schema)
 
 
-def build_subentry_validator(device_type: str | None = None, *, allow_legacy_unique_id: bool = True) -> vol.Schema:
+def build_subentry_validator(
+    device_type: str | None = None, *, allow_legacy_unique_id: bool = True
+) -> vol.Schema:
     """Build the WS payload validator for one device type (no defaults).
 
     Every optional field additionally accepts ``None`` — the panel sends
@@ -245,7 +252,9 @@ def build_subentry_validator(device_type: str | None = None, *, allow_legacy_uni
         for spec in SPEC_REGISTRY.enabled()
         if spec.platform in ("sensor", "binary_sensor", "switch", "light", "cover")
     ]
-    allowed = list(dict.fromkeys([*enabled_types, *([device_type] if device_type else [])]))
+    allowed = list(
+        dict.fromkeys([*enabled_types, *([device_type] if device_type else [])])
+    )
     fields[vol.Optional(CONF_DEVICE_TYPE)] = vol.Any(None, vol.In(allowed))
     return vol.Schema(fields, extra=vol.PREVENT_EXTRA)
 
@@ -269,18 +278,28 @@ def build_options_form_schema(
         current_template = DEFAULT_NAMING_TEMPLATE
 
     schema: dict[object, object] = {
-        vol.Required(CONF_POLL_INTERVAL, default=interval_value): selector.SelectSelector(
+        vol.Required(
+            CONF_POLL_INTERVAL, default=interval_value
+        ): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[str(value) for value in POLL_INTERVAL_PRESETS] + ["custom"],
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         ),
-        vol.Optional(CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")): selector.TextSelector(),
-        vol.Optional(CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")): selector.TextSelector(
+        vol.Optional(
+            CONF_INFLUX_HOST, default=current.get(CONF_INFLUX_HOST, "")
+        ): selector.TextSelector(),
+        vol.Optional(
+            CONF_INFLUX_TOKEN, default=current.get(CONF_INFLUX_TOKEN, "")
+        ): selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
         ),
-        vol.Optional(CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")): (selector.TextSelector()),
-        vol.Optional(CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")): selector.TextSelector(),
+        vol.Optional(CONF_INFLUX_ORG, default=current.get(CONF_INFLUX_ORG, "")): (
+            selector.TextSelector()
+        ),
+        vol.Optional(
+            CONF_INFLUX_BUCKET, default=current.get(CONF_INFLUX_BUCKET, "")
+        ): selector.TextSelector(),
         vol.Optional(
             CONF_DEVICE_NAME,
             default=current.get(CONF_DEVICE_NAME, DEFAULT_DEVICE_NAME),
@@ -293,7 +312,9 @@ def build_options_form_schema(
             CONF_DEVICE_MODEL,
             default=current.get(CONF_DEVICE_MODEL, DEFAULT_DEVICE_MODEL),
         ): selector.TextSelector(),
-        vol.Optional(CONF_NAMING_TEMPLATE, default=current_template): selector.SelectSelector(
+        vol.Optional(
+            CONF_NAMING_TEMPLATE, default=current_template
+        ): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=template_options or [DEFAULT_NAMING_TEMPLATE],
                 mode=selector.SelectSelectorMode.DROPDOWN,
@@ -304,7 +325,9 @@ def build_options_form_schema(
         (CONF_DEBUG_SWITCH_ENTITY_ID, "input_boolean"),
         (CONF_NOTIFY_ENTITY_ID, "notify"),
     ):
-        entity_selector = selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
+        entity_selector = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=domain)
+        )
         kwargs: dict[str, object] = {}
         if current.get(key):
             kwargs["default"] = current[key]
@@ -335,7 +358,9 @@ def build_options_validator() -> vol.Schema:
             vol.Optional(CONF_NAMING_TEMPLATE): vol.Any(None, str),
             vol.Optional(CONF_DEBUG_SWITCH_ENTITY_ID): vol.Any(
                 None,
-                selector.EntitySelector(selector.EntitySelectorConfig(domain="input_boolean")),
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="input_boolean")
+                ),
             ),
             vol.Optional(CONF_NOTIFY_ENTITY_ID): vol.Any(
                 None,

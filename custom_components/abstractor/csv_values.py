@@ -17,8 +17,8 @@ The module stays free of HomeAssistant imports so it can be unit-tested
 without the HA runtime (mirroring ``filters.py`` and ``yaml_scan.py``).
 """
 
-from collections.abc import Mapping
-from typing import Any, Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 CSV_SEPARATOR: str = ";"
 CSV_HEADER_FIELDS: tuple[str, ...] = (
@@ -37,7 +37,9 @@ def _size_guard(text: str) -> None:
     """Fail loud when the payload exceeds the documented 2 MiB cap."""
     size = len(text.encode("utf-8"))
     if size > CSV_MAX_BYTES:
-        raise ValueError(f"CSV payload is {size} bytes, above the {CSV_MAX_BYTES} byte cap")
+        raise ValueError(
+            f"CSV payload is {size} bytes, above the {CSV_MAX_BYTES} byte cap"
+        )
 
 
 def serialize(rows: Iterable[Mapping[str, Any]]) -> str:
@@ -94,7 +96,9 @@ def parse(text: str) -> list[dict[str, Any]]:
     for number, line in enumerate(lines[1:], start=2):
         fields = line.split(CSV_SEPARATOR)
         if len(fields) != len(CSV_HEADER_FIELDS):
-            raise ValueError(f"line {number} has {len(fields)} fields, expected {len(CSV_HEADER_FIELDS)}")
+            raise ValueError(
+                f"line {number} has {len(fields)} fields, expected {len(CSV_HEADER_FIELDS)}"
+            )
         logical_name, entity_id, device_type, value_text, unit, updated_at = fields
         if value_text == "":
             value: Any = None
@@ -102,7 +106,9 @@ def parse(text: str) -> list[dict[str, Any]]:
             try:
                 value = float(value_text)
             except ValueError:
-                raise ValueError(f"line {number} has a non-numeric value field") from None
+                raise ValueError(
+                    f"line {number} has a non-numeric value field"
+                ) from None
         rows.append(
             {
                 "logical_name": logical_name,
