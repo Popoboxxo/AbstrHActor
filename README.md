@@ -92,7 +92,6 @@ The config flow offers exactly the types enabled in the spec registry.
 | `power` | `sensor` | `W` | `measurement` | fail soft to `0` |
 | `energy` | `sensor` | `kWh` | `total_increasing` | fail closed to `unavailable` |
 | `water` | `sensor` | `L` | `total_increasing` | fail closed to `unavailable` |
-| `riemann_energy` | `sensor` | `kWh` | `total_increasing` | integrates the source power over time; restored across restarts |
 | `door_contact` | `binary_sensor` | — | — | pass-through of the source state |
 | `motion` | `binary_sensor` | — | — | pass-through of the source state |
 | `smoke` | `binary_sensor` | — | — | pass-through of the source state |
@@ -100,21 +99,33 @@ The config flow offers exactly the types enabled in the spec registry.
 | `light_state` | `light` | — | — | proxy: reads the source, forwards `turn_on`/`turn_off` (on/off only) |
 | `cover_position` | `cover` | `%` | — | proxy: position + `open_cover`/`close_cover`/`set_cover_position` |
 
+`riemann_energy` is registered but **disabled** (`enabled=False`, decision D-1)
+until the dependency on the external `riemann_left` integration is re-reviewed.
+See [docs/SENSOR_TYPES.md](docs/SENSOR_TYPES.md) for the registry-derived table.
+
 ## Management panel
 
 The integration registers a sidebar panel named **Abstractor** (at `/abstractor`).
 
-- **Read-only base** — lists every abstract entity with its value and a health
-  badge (`ok` / `warn` / `bad` / `idle`) derived from the pipeline metadata
-  (spike rejections, fallbacks, unavailable samples, stale).
-- **Live updates** — the panel subscribes to `abstractor/subentries/subscribe`,
-  so values and health refresh automatically; a one-shot fetch is the fallback.
-- **Edit mode** (administrators only) — reveals an in-panel form to create or
-  edit an entity (device type, source entities, numeric pipeline), a **Rename**
-  action (logical name / `object_id`, optionally renaming the `entity_id`), and
-  **Delete**-with-confirm. Device-to-device *moves* remain in the native config
-  flow, which owns the device-mapping transaction.
-- **Migrate tab** — a read-only YAML scan preview (placeholder).
+- **Read-only base** — every user (not only admins) sees the abstract entities
+  and their health badge (`ok` / `warn` / `bad` / `idle`); internal identity
+  keys are redacted server-side for non-admins.
+- **Live updates** — the panel subscribes to `abstractor/subentries/subscribe`;
+  identical payloads are dropped by the store revision, so unrelated pings do
+  not repaint the shadow DOM.
+- **Devices tab** — value + unit, display precision, relative freshness,
+  delta, sparkline, and per-card **Details** with the ordered value pipeline
+  (`sources → aggregation → spike → invert → net-subtract → fallback → display`).
+- **Health tab** — bad/warn groups, threshold chips, and the rejected-sample
+  ring with **Void**/**Restore** (edit mode only; void asks for confirmation).
+- **Settings tab** — redacted, resolved options (no Influx host/token/org is
+  ever sent), plus **Export/Import JSON**, **Export/Import CSV** and
+  **Summary** actions in edit mode.
+- **Edit mode** (administrators only) — in-panel create/edit form, **Rename**
+  (logical name / `entity_name` / `object_id`), and **Delete**-with-confirm;
+  the delete confirmation reports whether recorder history was preserved.
+- **Migrate tab** — a real, read-only YAML scan preview with
+  `history_preservable` and blocker rows (no takeover/mutation).
 
 Write commands are authorized server-side solely by Home Assistant admin
 privileges (`websocket_api`).
@@ -123,14 +134,18 @@ privileges (`websocket_api`).
 
 | Command | Auth | Purpose |
 |---|---|---|
-| `abstractor/subentries` | admin | One-shot list of subentries with value + health |
-| `abstractor/subentries/subscribe` | admin | Push subentry updates on every coordinator refresh |
+| `abstractor/subentries` | open (redacted) | One-shot list of subentries with value + health |
+| `abstractor/subentries/subscribe` | open (redacted) | Push subentry updates on every coordinator refresh |
+| `abstractor/types` | open | Server-served type catalogue derived from `SPEC_REGISTRY` |
+| `abstractor/options/read` | open | Resolved options without credentials (booleans only) |
+| `abstractor/yaml_scan` | open | Read-only YAML migration preview |
+| `abstractor/history` | open | Paginated rejected-sample ring (`limit` capped, `offset`) |
 | `abstractor/subentry/create` | admin | Create a subentry (config-flow helpers, incl. mapping safety) |
 | `abstractor/subentry/update` | admin | Update a subentry |
-| `abstractor/subentry/delete` | admin | Delete a subentry |
+| `abstractor/subentry/delete` | admin | Delete a subentry; answers `entity_id`/`device_id`/`history_preserved` |
 | `abstractor/options/update` | admin | Update the root entry's options |
-| `abstractor/logical_rename` | admin | Set logical name / `object_id`, optionally rename the entity |
-| `abstractor/yaml_scan` | admin | Read-only YAML migration preview |
+| `abstractor/logical_rename` | admin | Set logical name / `entity_name` / `object_id`, optionally rename the entity |
+| `abstractor/sample_void` / `abstractor/sample_restore` | admin | Void/restore a rejected sample id |
 
 ## Quick start
 
@@ -152,8 +167,9 @@ all abstract entities.
 On the Abstractor integration page, choose **Add Abstract sensor** (or use the
 panel's Add action). The flow has two steps:
 
-1. **Device type** — one of the supported types (`power`, `riemann_energy`,
-   `door_contact`, `switch_state`, `cover_position`, …).
+1. **Device type** — one of the shipped types (`power`, `energy`, `water`,
+   `door_contact`, `motion`, `smoke`, `switch_state`, `light_state`,
+   `cover_position`).
 2. **Details** — the source entity/entities and, for numeric types, the pipeline
    options (aggregation, spike filter, inversion, fallbacks). Binary and
    actuator types never see the numeric-only fields.
@@ -182,6 +198,18 @@ utility meters keep working.
 | `net_subtract_entity_id` | — | Subtract another entity's value (net flow). |
 | `fallback_source_entity_id` | — | Secondary source used when the primary is unavailable. |
 | `fallback_condition_entity_id` / `fallback_condition_state` | — | Gate the fallback source on a condition entity's state. |
+
+### Presentation & health (all types)
+
+| Field | Default | Description |
+|---|---|---|
+| `display_unit` | spec unit | Presentation-only unit; the persisted value and Influx payload keep the spec unit. Equivalent spellings (`kWh`/`kwh`, `m³`/`m3`, `µmol/L`/`umol/L`) are accepted; a real mismatch is a flow error. |
+| `display_precision` | — | Presentation-only decimal places (0–4). |
+| `warn_above` / `warn_below` | — | Thresholds for the derived `ok`/`warn`/`bad` health chip. |
+| `warn_condition_entity_id` | — | Gate the thresholds while the entity is not `on`. |
+
+`updated_at`/`stale` and the delta are computed by the coordinator from the
+poll, never guessed by the panel.
 
 ### Naming & identity
 
@@ -214,14 +242,18 @@ Options apply on the automatic reload — no restart.
 
 ### Services
 
-| Service | Description |
-|---|---|
-| `abstractor.export_data` | Persist and log a complete snapshot of all mappings and values. |
-| `abstractor.import_data` | Validate and store a previously exported snapshot. Does **not** recreate entries. |
-| `abstractor.delete_sensor` | Delete a sensor subentry, its entity, and its device (by `subentry_id` or `legacy_unique_id`). |
+| Service | Response | Description |
+|---|---|---|
+| `abstractor.export_data` | snapshot | Persist and log a complete snapshot of all mappings and values. |
+| `abstractor.import_data` | `{recreated, kept, skipped, errors}` | Validate and store a snapshot, then recreate missing subentries. |
+| `abstractor.delete_sensor` | `{entity_id, device_id, history_preserved}` | Delete a sensor subentry, its entity, and its device (by `subentry_id` or `legacy_unique_id`). |
+| `abstractor.export_csv` | `{directory, file, bytes, rows}` | Write the current abstracted values as capped (2 MiB) `;`-separated CSV. |
+| `abstractor.import_csv` | `{applied, skipped, errors}` | Import values from a CSV file (`filename` xor `content`); matches by `entity_id`. |
+| `abstractor.summary` | `{generated_at, window_days, sensors[]}` | Per-sensor min/max/avg over the bounded coordinator window plus counters and health. |
 
 Exports use `format: abstractor.snapshot`, `version: 1`, and contain the portable
-data/options of every subentry plus the latest abstracted values.
+data/options of every subentry plus the latest abstracted values. CSV values
+read only from the coordinator (`data` + `meta`) — never from recorder internals.
 
 ## Frontend build (contributors)
 
