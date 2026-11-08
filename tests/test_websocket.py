@@ -3,13 +3,17 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from homeassistant.helpers import entity_registry as er
+
 from custom_components.abstractor import websocket
 
 
 def _hass(root_entry=None):
     return SimpleNamespace(
         data={"coordinator": None},
-        config_entries=SimpleNamespace(async_entries=lambda domain: [root_entry] if root_entry else []),
+        config_entries=SimpleNamespace(
+            async_entries=lambda domain: [root_entry] if root_entry else []
+        ),
     )
 
 
@@ -38,7 +42,9 @@ async def test_register_websocket_registers_commands_without_token() -> None:
 
 async def test_ws_get_subentries_empty_when_no_root() -> None:
     hass = _hass()
-    connection = SimpleNamespace(user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock())
+    connection = SimpleNamespace(
+        user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock()
+    )
     # __wrapped__ bypasses the async_response scheduler decorator, which needs a
     # real hass to create a background task.
     await websocket.ws_get_subentries.__wrapped__(hass, connection, {"id": 42})
@@ -76,12 +82,16 @@ async def test_ws_get_subentries_nonadmin_reads_redacted_rows() -> None:
 
 
 def _admin_connection():
-    return SimpleNamespace(user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock())
+    return SimpleNamespace(
+        user=SimpleNamespace(is_admin=True), send_result=Mock(), send_error=Mock()
+    )
 
 
 def _readonly_connection():
     """Ordinary user connection: read paths must work, writes must not."""
-    return SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
+    return SimpleNamespace(
+        user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock()
+    )
 
 
 def _root(subentries=None, entry_id="root-1", options=None):
@@ -95,8 +105,11 @@ def _root(subentries=None, entry_id="root-1", options=None):
 
 def _hass_cfg(root_entry, coordinator=None):
     entries = [root_entry] if root_entry is not None else []
+    data = {er.DATA_REGISTRY: Mock(async_get_entity_id=Mock(return_value=None))}
+    if coordinator is not None:
+        data["abstractor"] = {"coordinator": coordinator}
     return SimpleNamespace(
-        data=({"abstractor": {"coordinator": coordinator}} if coordinator is not None else {}),
+        data=data,
         config_entries=SimpleNamespace(
             async_entries=lambda domain: entries,
             async_add_subentry=Mock(),
@@ -169,18 +182,24 @@ def test_validate_device_mapping_is_read_only(monkeypatch) -> None:
     # No mapping intent -> nothing to validate, no registry access.
     assert websocket._validate_device_mapping(hass, {}) == {}
 
-    monkeypatch.setattr(websocket, "_device_group_id_for_device", lambda _hass, _dev: None)
+    monkeypatch.setattr(
+        websocket, "_device_group_id_for_device", lambda _hass, _dev: None
+    )
     assert websocket._validate_device_mapping(hass, {"target_device_id": "dev-1"}) == {
         "base": "device_mapping_conflict"
     }
 
-    monkeypatch.setattr(websocket, "_device_group_id_for_device", lambda _hass, _dev: "group-1")
+    monkeypatch.setattr(
+        websocket, "_device_group_id_for_device", lambda _hass, _dev: "group-1"
+    )
     assert websocket._validate_device_mapping(hass, {"target_device_id": "dev-1"}) == {}
 
 
 async def test_ws_subentry_create_requires_admin() -> None:
     hass = _hass_cfg(_root())
-    connection = SimpleNamespace(user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock())
+    connection = SimpleNamespace(
+        user=SimpleNamespace(is_admin=False), send_result=Mock(), send_error=Mock()
+    )
     await websocket.ws_subentry_create.__wrapped__(
         hass, connection, {"id": 1, "data": {"source_entity_id": "sensor.x"}}
     )
@@ -206,7 +225,9 @@ async def test_ws_subentry_create_rejects_unknown_type() -> None:
 async def test_ws_subentry_create_requires_source() -> None:
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_subentry_create.__wrapped__(hass, connection, {"id": 3, "data": {}})
+    await websocket.ws_subentry_create.__wrapped__(
+        hass, connection, {"id": 3, "data": {}}
+    )
     connection.send_error.assert_called_once()
     hass.config_entries.async_add_subentry.assert_not_called()
 
@@ -222,7 +243,9 @@ async def test_ws_subentry_create_happy_path(monkeypatch) -> None:
             "legacy_unique_id": "uid-1",
         },
     )
-    monkeypatch.setattr(websocket, "ConfigSubentry", lambda **kwargs: SimpleNamespace(**kwargs))
+    monkeypatch.setattr(
+        websocket, "ConfigSubentry", lambda **kwargs: SimpleNamespace(**kwargs)
+    )
     await websocket.ws_subentry_create.__wrapped__(
         hass, connection, {"id": 4, "data": {"source_entity_id": "sensor.x"}}
     )
@@ -235,15 +258,25 @@ async def test_ws_subentry_delete_happy_path() -> None:
     root = _root({"sub-1": SimpleNamespace(data={}, title="t")})
     hass = _hass_cfg(root)
     connection = _admin_connection()
-    await websocket.ws_subentry_delete.__wrapped__(hass, connection, {"id": 5, "subentry_id": "sub-1"})
+    await websocket.ws_subentry_delete.__wrapped__(
+        hass, connection, {"id": 5, "subentry_id": "sub-1"}
+    )
     hass.config_entries.async_remove_subentry.assert_called_once()
-    connection.send_result.assert_called_once_with(5, {"deleted": True})
+    payload = connection.send_result.call_args.args[1]
+    assert payload == {
+        "deleted": True,
+        "entity_id": None,
+        "device_id": "abstractor:sub-1",
+        "history_preserved": False,
+    }
 
 
 async def test_ws_subentry_update_not_found() -> None:
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_subentry_update.__wrapped__(hass, connection, {"id": 6, "subentry_id": "missing", "data": {}})
+    await websocket.ws_subentry_update.__wrapped__(
+        hass, connection, {"id": 6, "subentry_id": "missing", "data": {}}
+    )
     connection.send_error.assert_called_once()
     hass.config_entries.async_update_subentry.assert_not_called()
 
@@ -251,7 +284,9 @@ async def test_ws_subentry_update_not_found() -> None:
 async def test_ws_options_update_reloads_root_entry() -> None:
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 7, "options": {"poll_interval": 30}})
+    await websocket.ws_options_update.__wrapped__(
+        hass, connection, {"id": 7, "options": {"poll_interval": 30}}
+    )
     hass.config_entries.async_update_entry.assert_called_once()
     hass.async_create_task.assert_called_once()
     connection.send_result.assert_called_once_with(7, {"updated": True})
@@ -270,7 +305,9 @@ async def test_ws_get_types_matches_registry_catalogue() -> None:
         if spec.platform in ("sensor", "binary_sensor", "switch", "light", "cover")
     ]
     assert payload["device_types"] == [spec.type_key for spec in shipped]
-    assert payload["numeric_types"] == [spec.type_key for spec in shipped if spec.numeric]
+    assert payload["numeric_types"] == [
+        spec.type_key for spec in shipped if spec.numeric
+    ]
     assert "riemann_energy" not in payload["device_types"]
     assert payload["display_names"]["cover_position"] == "Cover position"
 
@@ -280,7 +317,9 @@ async def test_ws_logical_rename_sets_entity_name() -> None:
     root = _root(
         {
             "sub-1": SimpleNamespace(
-                data={"device_type": "power", "source_entity_id": "sensor.x"}, title="t", unique_id="u"
+                data={"device_type": "power", "source_entity_id": "sensor.x"},
+                title="t",
+                unique_id="u",
             )
         }
     )
@@ -300,7 +339,10 @@ async def test_ws_logical_rename_sets_entity_name() -> None:
     persisted = hass.config_entries.async_update_subentry.call_args.kwargs["data"]
     assert persisted["entity_name"] == "Power usage"
     assert persisted["logical_name"] == "Kitchen"
-    assert connection.send_result.call_args.args[1] == {"renamed": True, "group_size": 1}
+    assert connection.send_result.call_args.args[1] == {
+        "renamed": True,
+        "group_size": 1,
+    }
 
 
 async def test_ws_logical_rename_rejects_bad_slug() -> None:
@@ -342,17 +384,23 @@ async def test_ws_logical_rename_renames_entity_keeping_platform(monkeypatch) ->
     updated = []
     registry = SimpleNamespace(
         async_entries_for_config_entry=lambda reg, entry_id: [
-            SimpleNamespace(entity_id="binary_sensor.front_door", config_subentry_id="sub-1")
+            SimpleNamespace(
+                entity_id="binary_sensor.front_door", config_subentry_id="sub-1"
+            )
         ],
         async_get_entity_id=lambda platform, domain, unique_id: None,
-        async_update_entity=lambda entity_id, new_entity_id=None: updated.append((entity_id, new_entity_id)),
+        async_update_entity=lambda entity_id, new_entity_id=None: updated.append(
+            (entity_id, new_entity_id)
+        ),
     )
     monkeypatch.setattr(
         websocket,
         "er",
         SimpleNamespace(
             async_get=lambda _hass: registry,
-            async_entries_for_config_entry=lambda reg, entry_id: reg.async_entries_for_config_entry(reg, entry_id),
+            async_entries_for_config_entry=lambda reg, entry_id: (
+                reg.async_entries_for_config_entry(reg, entry_id)
+            ),
         ),
     )
 
@@ -441,7 +489,9 @@ async def test_ws_options_update_rejects_out_of_range_interval() -> None:
     """Bounds are enforced at the storage boundary, not after the reload."""
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 16, "options": {"poll_interval": 999999}})
+    await websocket.ws_options_update.__wrapped__(
+        hass, connection, {"id": 16, "options": {"poll_interval": 999999}}
+    )
     connection.send_error.assert_called_once()
     assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
     hass.config_entries.async_update_entry.assert_not_called()
@@ -451,7 +501,9 @@ async def test_ws_options_update_rejects_out_of_range_interval() -> None:
 async def test_ws_options_update_rejects_unknown_option_key() -> None:
     hass = _hass_cfg(_root())
     connection = _admin_connection()
-    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 17, "options": {"bogus_interval": 3}})
+    await websocket.ws_options_update.__wrapped__(
+        hass, connection, {"id": 17, "options": {"bogus_interval": 3}}
+    )
     connection.send_error.assert_called_once()
     assert connection.send_error.call_args.args[1] == websocket.WS_ERROR_SCHEMA
     hass.config_entries.async_update_entry.assert_not_called()
@@ -462,7 +514,9 @@ async def test_ws_options_update_merges_current_options() -> None:
     root = _root(options={"influx_bucket": "keep-me"})
     hass = _hass_cfg(root)
     connection = _admin_connection()
-    await websocket.ws_options_update.__wrapped__(hass, connection, {"id": 18, "options": {"poll_interval": 5}})
+    await websocket.ws_options_update.__wrapped__(
+        hass, connection, {"id": 18, "options": {"poll_interval": 5}}
+    )
     hass.config_entries.async_update_entry.assert_called_once()
     persisted = hass.config_entries.async_update_entry.call_args.kwargs["options"]
     assert persisted == {"influx_bucket": "keep-me", "poll_interval": 5}
@@ -501,10 +555,14 @@ def test_ws_command_table_matches_registrations() -> None:
         "ws_options_read",
         "ws_sample_history",
     }
-    assert {n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "subscribe"} == {"ws_subentries_subscribe"}
+    assert {
+        n for n, kind in websocket.WS_COMMAND_TABLE.items() if kind == "subscribe"
+    } == {"ws_subentries_subscribe"}
 
 
-async def test_ws_logical_rename_without_rename_entity_skips_registry(monkeypatch) -> None:
+async def test_ws_logical_rename_without_rename_entity_skips_registry(
+    monkeypatch,
+) -> None:
     root = _root({"sub-1": SimpleNamespace(data={}, title="t", unique_id="uid-1")})
     hass = _hass_cfg(root)
     connection = _admin_connection()
@@ -513,7 +571,9 @@ async def test_ws_logical_rename_without_rename_entity_skips_registry(monkeypatc
     monkeypatch.setattr(
         websocket,
         "er",
-        SimpleNamespace(async_get=lambda _hass: called.append("get") or SimpleNamespace()),
+        SimpleNamespace(
+            async_get=lambda _hass: called.append("get") or SimpleNamespace()
+        ),
     )
 
     await websocket.ws_logical_rename.__wrapped__(
@@ -560,29 +620,62 @@ async def test_ws_yaml_scan_reports_template_rows(tmp_path) -> None:
     assert not any(row["unique_id"] == "meter_x" for row in rows)
 
 
-async def test_ws_options_read_redacts_token_for_nonadmin() -> None:
-    """Settings read is open, but the exporter token stays admin-only."""
-    root = _root(options={"poll_interval": 30, "influx_token": "s3cr3t"})
+async def test_ws_options_read_never_leaks_secrets() -> None:
+    """WS-3.6: the options read contract is credential-free for every role."""
+    root = _root(
+        options={
+            "poll_interval": 30,
+            "influx_host": "http://influx.local:8086",
+            "influx_token": "s3cr3t",
+            "influx_org": "home",
+            "influx_bucket": "energy",
+            "naming_template": "tpl_a",
+            "debug_switch_entity_id": "input_boolean.debug",
+            "notify_entity_id": "notify.mobile",
+        }
+    )
     hass = _hass_cfg(root)
     connection = _readonly_connection()
     await websocket.ws_options_read.__wrapped__(hass, connection, {"id": 32})
-    assert connection.send_result.call_args.args[1] == {"options": {"poll_interval": 30}}
+    payload = connection.send_result.call_args.args[1]
+    assert payload["poll_interval"] == 30
+    assert payload["influx_enabled"] is True
+    assert payload["naming_template"] == "tpl_a"
+    assert payload["naming_template_names"] == ["default"]
+    assert payload["debug_gate_set"] is True
+    assert payload["notify_set"] is True
+    serialized = str(payload)
+    assert "s3cr3t" not in serialized
+    assert "influx.local" not in serialized
+    assert "energy" not in serialized
 
 
-async def test_ws_options_read_shows_token_to_admin() -> None:
-    root = _root(options={"poll_interval": 30, "influx_token": "s3cr3t"})
+async def test_ws_options_read_same_contract_for_admin() -> None:
+    """Admins get the same redacted shape; only the config flow shows secrets."""
+    root = _root(options={"poll_interval": 5, "influx_token": "s3cr3t"})
     hass = _hass_cfg(root)
     connection = _admin_connection()
     await websocket.ws_options_read.__wrapped__(hass, connection, {"id": 33})
-    assert connection.send_result.call_args.args[1] == {"options": {"poll_interval": 30, "influx_token": "s3cr3t"}}
+    payload = connection.send_result.call_args.args[1]
+    assert payload["poll_interval"] == 5
+    assert payload["influx_enabled"] is True
+    assert "s3cr3t" not in str(payload)
 
 
 async def test_ws_write_still_rejects_nonadmin_after_read_opening() -> None:
     """WS-3 opened the READ paths; the WRITE gates must not leak with them."""
-    root = _root({"sub-1": SimpleNamespace(data={"device_type": "power"}, title="t", unique_id="u")})
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={"device_type": "power"}, title="t", unique_id="u"
+            )
+        }
+    )
     hass = _hass_cfg(root)
     connection = _readonly_connection()
-    await websocket.ws_subentry_delete.__wrapped__(hass, connection, {"id": 34, "subentry_id": "sub-1"})
+    await websocket.ws_subentry_delete.__wrapped__(
+        hass, connection, {"id": 34, "subentry_id": "sub-1"}
+    )
     connection.send_error.assert_called_once()
     hass.config_entries.async_remove_subentry.assert_not_called()
 
@@ -598,8 +691,18 @@ def _fake_coordinator_with_ring():
         meta={},
         rejected_samples={
             "sub-1": [
-                {"id": "sub-1#1", "at": "2026-11-01T00:00:00+00:00", "value": "9.0", "reason": "spike_rejected"},
-                {"id": "sub-1#2", "at": "2026-11-01T00:00:05+00:00", "value": "3.0", "reason": "spike_rejected_below_last"},
+                {
+                    "id": "sub-1#1",
+                    "at": "2026-11-01T00:00:00+00:00",
+                    "value": "9.0",
+                    "reason": "spike_rejected",
+                },
+                {
+                    "id": "sub-1#2",
+                    "at": "2026-11-01T00:00:05+00:00",
+                    "value": "3.0",
+                    "reason": "spike_rejected_below_last",
+                },
             ]
         },
         void_sample_ids={"sub-1#1"},
@@ -607,7 +710,15 @@ def _fake_coordinator_with_ring():
 
 
 async def test_ws_sample_history_pages_newest_first() -> None:
-    root = _root({"sub-1": SimpleNamespace(data={"device_type": "power", "source_entity_id": "sensor.x"}, title="t", unique_id="u")})
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={"device_type": "power", "source_entity_id": "sensor.x"},
+                title="t",
+                unique_id="u",
+            )
+        }
+    )
     hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
     connection = _readonly_connection()
     await websocket.ws_sample_history.__wrapped__(
@@ -616,16 +727,30 @@ async def test_ws_sample_history_pages_newest_first() -> None:
     payload = connection.send_result.call_args.args[1]
     assert payload["total"] == 2
     assert payload["rows"] == [
-        {"id": "sub-1#1", "at": "2026-11-01T00:00:00+00:00", "value": "9.0", "reason": "spike_rejected", "voided": True}
+        {
+            "id": "sub-1#1",
+            "at": "2026-11-01T00:00:00+00:00",
+            "value": "9.0",
+            "reason": "spike_rejected",
+            "voided": True,
+        }
     ]
 
 
 async def test_ws_sample_read_open_to_nonadmin_and_history_visible() -> None:
     """Rejections are diagnostics — the history read is not admin-gated."""
-    root = _root({"sub-1": SimpleNamespace(data={"device_type": "power"}, title="t", unique_id="u")})
+    root = _root(
+        {
+            "sub-1": SimpleNamespace(
+                data={"device_type": "power"}, title="t", unique_id="u"
+            )
+        }
+    )
     hass = _hass_cfg(root, coordinator=_fake_coordinator_with_ring())
     connection = _readonly_connection()
-    await websocket.ws_sample_history.__wrapped__(hass, connection, {"id": 102, "subentry_id": "sub-1"})
+    await websocket.ws_sample_history.__wrapped__(
+        hass, connection, {"id": 102, "subentry_id": "sub-1"}
+    )
     connection.send_error.assert_not_called()
 
 
@@ -671,4 +796,7 @@ async def test_ws_sample_restore_clears_option_entry() -> None:
         hass, connection, {"id": 106, "subentry_id": "sub-1", "sample_id": "sub-1#1"}
     )
     updated_options = hass.config_entries.async_update_entry.call_args.kwargs["options"]
-    assert "void_sample_ids" not in updated_options or updated_options["void_sample_ids"] == []
+    assert (
+        "void_sample_ids" not in updated_options
+        or updated_options["void_sample_ids"] == []
+    )

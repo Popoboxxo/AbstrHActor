@@ -21,24 +21,32 @@ from custom_components.abstractor.config_flow import (
 )
 from custom_components.abstractor.const import (
     AGGREGATION_MODES,
+    CONF_DEBUG_SWITCH_ENTITY_ID,
     CONF_DEVICE_GROUP_ID,
     CONF_DEVICE_TYPE,
     CONF_DISPLAY_PRECISION,
     CONF_DISPLAY_UNIT,
     CONF_ENTITY_NAME,
+    CONF_INFLUX_BUCKET,
+    CONF_INFLUX_HOST,
+    CONF_INFLUX_ORG,
     CONF_INFLUX_TOKEN,
     CONF_LEGACY_UNIQUE_ID,
+    CONF_NAMING_TEMPLATE,
+    CONF_NOTIFY_ENTITY_ID,
+    CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_TARGET_DEVICE_ID,
     CONF_VOID_SAMPLE_IDS,
     CONF_WARN_ABOVE,
     CONF_WARN_BELOW,
-    REJECTED_RING_LIMIT,
-    WARN_SAMPLE_IDS_MAX,
+    DEFAULT_NAMING_TEMPLATE,
+    DEFAULT_POLL_INTERVAL,
     DOMAIN,
     ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
+    WARN_SAMPLE_IDS_MAX,
     WS_GET_SUBENTRIES,
     WS_OPTIONS_READ,
     WS_SAMPLE_HISTORY,
@@ -47,6 +55,7 @@ from custom_components.abstractor.const import (
     WS_SUBSCRIBE_SUBENTRIES,
     WS_YAML_SCAN,
 )
+from custom_components.abstractor.naming_template import async_template_ids
 from custom_components.abstractor.schema import (
     build_options_validator,
     build_subentry_validator,
@@ -121,12 +130,19 @@ READ_REDACTED_KEYS = ("legacy_unique_id", "device_group_id")
 def _redact_rows(rows: list[dict], admin: bool) -> list[dict]:
     if admin:
         return rows
-    return [{k: (None if k in READ_REDACTED_KEYS else v) for k, v in row.items()} for row in rows]
+    return [
+        {k: (None if k in READ_REDACTED_KEYS else v) for k, v in row.items()}
+        for row in rows
+    ]
 
 
 def _async_root_entry(hass: HomeAssistant):
     return next(
-        (entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.unique_id == ROOT_UNIQUE_ID),
+        (
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if entry.unique_id == ROOT_UNIQUE_ID
+        ),
         None,
     )
 
@@ -148,7 +164,9 @@ def _meta_payload(coordinator, subentry_id: str):
         "unavailable_samples": item.unavailable_samples,
         "source_states": item.source_states,
         "stale": item.stale,
-        "updated_at": item.updated_at.isoformat() if item.updated_at is not None else None,
+        "updated_at": item.updated_at.isoformat()
+        if item.updated_at is not None
+        else None,
         "delta": item.delta,
         "warn_hit": item.warn_hit,
     }
@@ -171,10 +189,7 @@ def _ring_rows_for_history(coordinator, subentry_id: str) -> list[dict]:
     ring = getattr(coordinator, "rejected_samples", None)
     entries = ring.get(subentry_id, []) if isinstance(ring, dict) else []
     voids = getattr(coordinator, "void_sample_ids", None) or set()
-    return [
-        {**entry, "voided": entry["id"] in voids}
-        for entry in reversed(entries)
-    ]
+    return [{**entry, "voided": entry["id"] in voids} for entry in reversed(entries)]
 
 
 def _build_subentries(hass):
@@ -194,16 +209,28 @@ def _build_subentries(hass):
             pipelines = getattr(coordinator, "pipelines", {}) or {}
             pipeline = pipelines.get(subentry_id)
             last_event = pipeline.last_event if pipeline is not None else None
-        health = "idle"
-        meta_item = getattr(coordinator, "meta", {}).get(subentry_id) if coordinator is not None else None
-        if coordinator is not None and not getattr(coordinator, "last_update_success", True):
-            health = "bad"
-        elif value is None:
-            health = "idle"
-        elif last_event or bool(getattr(meta_item, "warn_hit", False)):
-            health = "warn"
+        if coordinator is not None:
+            health_for = getattr(coordinator, "_health_for", None)
+            if health_for is not None:
+                health = health_for(subentry_id, value, last_event)
+            else:  # bare SimpleNamespace fakes in unit tests have no method
+                warn_hit = bool(
+                    getattr(
+                        getattr(coordinator, "meta", {}).get(subentry_id),
+                        "warn_hit",
+                        False,
+                    )
+                )
+                if not getattr(coordinator, "last_update_success", True):
+                    health = "bad"
+                elif value is None:
+                    health = "idle"
+                elif last_event or warn_hit:
+                    health = "warn"
+                else:
+                    health = "ok"
         else:
-            health = "ok"
+            health = "idle" if value is None else "ok"
         spec = SPEC_REGISTRY.try_get(data.get(CONF_DEVICE_TYPE, "power"))
         out.append(
             {
@@ -216,13 +243,14 @@ def _build_subentries(hass):
                 "display_precision": data.get(CONF_DISPLAY_PRECISION),
                 "logical_name": data.get("logical_name"),
                 "object_id": data.get("object_id"),
-                "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)],
+                "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS)
+                or [data.get(CONF_SOURCE_ENTITY_ID)],
                 "legacy_unique_id": data.get(CONF_LEGACY_UNIQUE_ID),
-        "device_group_id": data.get(CONF_DEVICE_GROUP_ID),
-        "warn_above": data.get(CONF_WARN_ABOVE),
-        "warn_below": data.get(CONF_WARN_BELOW),
-        "recent_rejections": _recent_rejections(coordinator, subentry_id),
-        "value": value,
+                "device_group_id": data.get(CONF_DEVICE_GROUP_ID),
+                "warn_above": data.get(CONF_WARN_ABOVE),
+                "warn_below": data.get(CONF_WARN_BELOW),
+                "recent_rejections": _recent_rejections(coordinator, subentry_id),
+                "value": value,
                 "last_event": last_event,
                 "health": health,
                 "meta": _meta_payload(coordinator, subentry_id),
@@ -240,7 +268,10 @@ async def ws_get_subentries(hass, connection, msg) -> None:
     ordinary users. Read paths are now open; identity keys are redacted
     server-side for non-admins (single source of truth, decision D-5).
     """
-    connection.send_result(msg["id"], {"subentries": _redact_rows(_build_subentries(hass), _is_admin(connection))})
+    connection.send_result(
+        msg["id"],
+        {"subentries": _redact_rows(_build_subentries(hass), _is_admin(connection))},
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_SUBSCRIBE_SUBENTRIES})
@@ -259,7 +290,9 @@ async def ws_subentries_subscribe(hass, connection, msg) -> None:
 
     @callback
     def _forward() -> None:
-        connection.send_event(msg["id"], {"subentries": _redact_rows(_build_subentries(hass), admin)})
+        connection.send_event(
+            msg["id"], {"subentries": _redact_rows(_build_subentries(hass), admin)}
+        )
 
     if coordinator is not None:
         connection.subscriptions[msg["id"]] = coordinator.async_add_listener(_forward)
@@ -272,7 +305,9 @@ async def ws_subentries_subscribe(hass, connection, msg) -> None:
     _forward()
 
 
-@websocket_api.websocket_command({vol.Required("type"): "abstractor/subentry/create", vol.Required("data"): dict})
+@websocket_api.websocket_command(
+    {vol.Required("type"): "abstractor/subentry/create", vol.Required("data"): dict}
+)
 @websocket_api.async_response
 async def ws_subentry_create(hass, connection, msg) -> None:
     if not _require_admin(connection, msg):
@@ -285,7 +320,9 @@ async def ws_subentry_create(hass, connection, msg) -> None:
     sources = data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)]
     sources = [s for s in sources if s]
     if not sources:
-        connection.send_error(msg["id"], "invalid", "At least one source entity is required")
+        connection.send_error(
+            msg["id"], "invalid", "At least one source entity is required"
+        )
         return
     requested_type = data.get(CONF_DEVICE_TYPE)
     if requested_type is not None:
@@ -293,9 +330,12 @@ async def ws_subentry_create(hass, connection, msg) -> None:
         if (
             spec is None
             or not spec.enabled
-            or spec.platform not in {"sensor", "binary_sensor", "switch", "light", "cover"}
+            or spec.platform
+            not in {"sensor", "binary_sensor", "switch", "light", "cover"}
         ):
-            connection.send_error(msg["id"], "invalid", f"Unsupported device_type: {requested_type}")
+            connection.send_error(
+                msg["id"], "invalid", f"Unsupported device_type: {requested_type}"
+            )
             return
     try:
         data = build_subentry_validator(requested_type)(data)
@@ -353,10 +393,14 @@ async def ws_subentry_update(hass, connection, msg) -> None:
     sources = [s for s in sources if s]
     if not sources:
         current = root_entry.subentries[msg["subentry_id"]].data
-        sources = current.get(CONF_SOURCE_ENTITY_IDS) or [current.get(CONF_SOURCE_ENTITY_ID)]
+        sources = current.get(CONF_SOURCE_ENTITY_IDS) or [
+            current.get(CONF_SOURCE_ENTITY_ID)
+        ]
         sources = [s for s in sources if s]
     if not sources:
-        connection.send_error(msg["id"], "invalid", "At least one source entity is required")
+        connection.send_error(
+            msg["id"], "invalid", "At least one source entity is required"
+        )
         return
     current = dict(root_entry.subentries[msg["subentry_id"]].data)
     target_type = data.get(CONF_DEVICE_TYPE) or current.get(CONF_DEVICE_TYPE, "power")
@@ -405,15 +449,37 @@ async def ws_subentry_delete(hass, connection, msg) -> None:
     if root_entry is None or msg["subentry_id"] not in root_entry.subentries:
         connection.send_error(msg["id"], "not_found", "Abstractor subentry not found")
         return
+    subentry = root_entry.subentries[msg["subentry_id"]]
+    pinned_unique_id = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or getattr(
+        subentry, "unique_id", None
+    )
+    entity_id = None
+    if pinned_unique_id:
+        entity_id = er.async_get(hass).async_get_entity_id(
+            "sensor", DOMAIN, pinned_unique_id
+        )
     try:
         hass.config_entries.async_remove_subentry(root_entry, msg["subentry_id"])
     except Exception as exc:  # noqa: BLE001
         connection.send_error(msg["id"], "internal_error", str(exc))
         return
-    connection.send_result(msg["id"], {"deleted": True})
+    # Same flat contract as the delete_sensor service (WS-6/E4) so the panel
+    # can surface the history outcome without a second call. ``history_preserved``
+    # is always False: removing the entity row orphans the recorder history.
+    connection.send_result(
+        msg["id"],
+        {
+            "deleted": True,
+            "entity_id": entity_id,
+            "device_id": f"{DOMAIN}:{msg['subentry_id']}",
+            "history_preserved": False,
+        },
+    )
 
 
-@websocket_api.websocket_command({vol.Required("type"): "abstractor/options/update", vol.Required("options"): dict})
+@websocket_api.websocket_command(
+    {vol.Required("type"): "abstractor/options/update", vol.Required("options"): dict}
+)
 @websocket_api.async_response
 async def ws_options_update(hass, connection, msg) -> None:
     if not _require_admin(connection, msg):
@@ -469,7 +535,8 @@ async def ws_logical_rename(hass, connection, msg) -> None:
     targets = [
         sid
         for sid, s in root_entry.subentries.items()
-        if (group_id and s.data.get(CONF_DEVICE_GROUP_ID) == group_id) or (sid == msg["subentry_id"])
+        if (group_id and s.data.get(CONF_DEVICE_GROUP_ID) == group_id)
+        or (sid == msg["subentry_id"])
     ]
     # If there is no group id, only the current subentry.
     if not group_id:
@@ -488,7 +555,9 @@ async def ws_logical_rename(hass, connection, msg) -> None:
                 merged[CONF_ENTITY_NAME] = entity_name
             else:
                 merged.pop(CONF_ENTITY_NAME, None)
-        hass.config_entries.async_update_subentry(root_entry, sid, data=merged, title=sub.title)
+        hass.config_entries.async_update_subentry(
+            root_entry, sid, data=merged, title=sub.title
+        )
     # Optional entity registry rename for THIS subentry's entity. The domain
     # is taken from the existing entity_id so a binary_sensor is renamed to
     # binary_sensor.* rather than being forced onto sensor.*, and the entity is
@@ -502,13 +571,17 @@ async def ws_logical_rename(hass, connection, msg) -> None:
                 break
         if entity_id is None and subentry.unique_id:
             for platform in ("sensor", "binary_sensor"):
-                entity_id = registry.async_get_entity_id(platform, DOMAIN, subentry.unique_id)
+                entity_id = registry.async_get_entity_id(
+                    platform, DOMAIN, subentry.unique_id
+                )
                 if entity_id:
                     break
         if entity_id is not None:
             domain = entity_id.split(".", 1)[0]
             try:
-                registry.async_update_entity(entity_id, new_entity_id=f"{domain}.{object_id}")
+                registry.async_update_entity(
+                    entity_id, new_entity_id=f"{domain}.{object_id}"
+                )
             except Exception as exc:  # noqa: BLE001
                 connection.send_error(msg["id"], "invalid", str(exc))
                 return
@@ -552,20 +625,42 @@ async def ws_get_types(hass, connection, msg) -> None:
 @websocket_api.websocket_command({vol.Required("type"): WS_OPTIONS_READ})
 @websocket_api.async_response
 async def ws_options_read(hass, connection, msg) -> None:
-    """Read the root entry's options (WS-3: open read with credential redaction).
+    """Read the root entry's resolved options (WS-3.6 / E9, credential-free).
 
-    The Settings tab must show the current poll interval etc. without an
-    admin round-trip (UF-04 family). Exporter credentials (``influx_token``)
-    are only visible to admins — a user may never read back their own secret.
+    The Settings tab needs the effective poll interval, exporter state and
+    naming-template catalogue without an admin round-trip. This contract is
+    deliberately redacted for **every** role: host/org/bucket/token never
+    leave the backend — the panel only learns whether the exporter is
+    configured, and debug/notify targets are exposed as set/unset booleans.
     """
     root_entry = _async_root_entry(hass)
     if root_entry is None:
         connection.send_error(msg["id"], "not_found", "Abstractor root entry not found")
         return
     options = dict(getattr(root_entry, "options", None) or {})
-    if not _is_admin(connection):
-        options.pop(CONF_INFLUX_TOKEN, None)
-    connection.send_result(msg["id"], {"options": options})
+    try:
+        template_names = await async_template_ids(hass)
+    except Exception:  # noqa: BLE001 - read path must not fail on a bad template dir
+        template_names = [DEFAULT_NAMING_TEMPLATE]
+    influx_keys = (
+        CONF_INFLUX_HOST,
+        CONF_INFLUX_TOKEN,
+        CONF_INFLUX_ORG,
+        CONF_INFLUX_BUCKET,
+    )
+    connection.send_result(
+        msg["id"],
+        {
+            "poll_interval": options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+            "influx_enabled": any(bool(options.get(key)) for key in influx_keys),
+            "naming_template": options.get(
+                CONF_NAMING_TEMPLATE, DEFAULT_NAMING_TEMPLATE
+            ),
+            "naming_template_names": template_names,
+            "debug_gate_set": bool(options.get(CONF_DEBUG_SWITCH_ENTITY_ID)),
+            "notify_set": bool(options.get(CONF_NOTIFY_ENTITY_ID)),
+        },
+    )
 
 
 def _build_type_catalogue() -> dict:
@@ -588,7 +683,9 @@ def _build_type_catalogue() -> dict:
         vol.Required("type"): WS_SAMPLE_HISTORY,
         vol.Required("subentry_id"): str,
         vol.Optional("offset", default=0): vol.All(vol.Coerce(int), vol.Range(min=0)),
-        vol.Optional("limit", default=10): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
+        vol.Optional("limit", default=10): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=100)
+        ),
     }
 )
 @websocket_api.async_response
@@ -604,7 +701,12 @@ async def ws_sample_history(hass, connection, msg) -> None:
     limit = max(1, min(int(msg.get("limit") or 10), 100))
     connection.send_result(
         msg["id"],
-        {"rows": rows[offset : offset + limit], "total": len(rows), "offset": offset, "limit": limit},
+        {
+            "rows": rows[offset : offset + limit],
+            "total": len(rows),
+            "offset": offset,
+            "limit": limit,
+        },
     )
 
 
@@ -629,18 +731,24 @@ async def ws_sample_void(hass, connection, msg) -> None:
     root_entry = _async_root_entry(hass)
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if root_entry is None or coordinator is None:
-        connection.send_error(msg["id"], "not_found", "Abstractor root/coordinator not found")
+        connection.send_error(
+            msg["id"], "not_found", "Abstractor root/coordinator not found"
+        )
         return
     ring = getattr(coordinator, "rejected_samples", {}).get(msg["subentry_id"], [])
     if not any(entry["id"] == msg["sample_id"] for entry in ring):
-        connection.send_error(msg["id"], "not_found", f"Sample {msg['sample_id']} not in ring")
+        connection.send_error(
+            msg["id"], "not_found", f"Sample {msg['sample_id']} not in ring"
+        )
         return
     voids = set(getattr(coordinator, "void_sample_ids", set()))
     voids.add(msg["sample_id"])
     options = dict(getattr(root_entry, "options", None) or {})
     merged = sorted(voids | {str(s) for s in options.get(CONF_VOID_SAMPLE_IDS, [])})
     if len(merged) > WARN_SAMPLE_IDS_MAX:
-        connection.send_error(msg["id"], "invalid", "void list full (restore entries first)")
+        connection.send_error(
+            msg["id"], "invalid", "void list full (restore entries first)"
+        )
         return
     options[CONF_VOID_SAMPLE_IDS] = merged
     coordinator.void_sample_ids = voids
@@ -663,20 +771,27 @@ async def ws_sample_restore(hass, connection, msg) -> None:
     root_entry = _async_root_entry(hass)
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if root_entry is None or coordinator is None:
-        connection.send_error(msg["id"], "not_found", "Abstractor root/coordinator not found")
+        connection.send_error(
+            msg["id"], "not_found", "Abstractor root/coordinator not found"
+        )
         return
     ring = getattr(coordinator, "rejected_samples", {}).get(msg["subentry_id"], [])
     if not any(entry["id"] == msg["sample_id"] for entry in ring):
-        connection.send_error(msg["id"], "not_found", f"Sample {msg['sample_id']} not in ring")
+        connection.send_error(
+            msg["id"], "not_found", f"Sample {msg['sample_id']} not in ring"
+        )
         return
     voids = set(getattr(coordinator, "void_sample_ids", set()))
     voids.discard(msg["sample_id"])
     options = dict(getattr(root_entry, "options", None) or {})
-    merged = sorted(voids | {
-        str(sample_id)
-        for sample_id in options.get(CONF_VOID_SAMPLE_IDS, [])
-        if sample_id != msg["sample_id"]
-    })
+    merged = sorted(
+        voids
+        | {
+            str(sample_id)
+            for sample_id in options.get(CONF_VOID_SAMPLE_IDS, [])
+            if sample_id != msg["sample_id"]
+        }
+    )
     options[CONF_VOID_SAMPLE_IDS] = merged
     coordinator.void_sample_ids = voids
     hass.config_entries.async_update_entry(root_entry, options=options)
