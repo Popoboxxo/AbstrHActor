@@ -85,11 +85,25 @@ def test_actuator_types_round_trip_through_create_and_filter(logged_in_page, has
         """
     )
     try:
+        # Subentry creation triggers a config-entry reload; wait until the
+        # read API actually reports all three types before asserting the UI.
+        page.wait_for_function(
+            """
+            async () => {
+              const h = document.querySelector("home-assistant").hass;
+              const rows = (await h.callWS({ type: "abstractor/subentries" })).subentries || [];
+              return ["door_contact", "switch_state", "cover_position"].every(
+                (type) => rows.some((row) => row.device_type === type),
+              );
+            }
+            """,
+            timeout=60000,
+        )
         page.goto(f"{hass_base_url}/abstractor")
         panel = page.locator("abstractor-panel")
         for label in ("door contact", "switch", "cover position"):
             chip = panel.get_by_role("button", name=label, exact=True)
-            chip.wait_for(state="visible", timeout=20000)
+            chip.wait_for(state="visible", timeout=60000)
             chip.click()
             assert panel.locator(".device-card").count() >= 1
             panel.get_by_role("button", name="all", exact=True).click()
