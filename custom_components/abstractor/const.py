@@ -121,3 +121,7 @@ SERVICE_EXPORT_CSV: Final = "export_csv"
 SERVICE_IMPORT_CSV: Final = "import_csv"
 SERVICE_SUMMARY: Final = "summary"
 CSV_VALUES_DIR_NAME: Final = "abstractor_values"
+
+VALUE_HISTORY_LIMIT: Final = 512
+SUMMARY_DEFAULT_WINDOW_DAYS: Final = 7
+SUMMARY_MAX_WINDOW_DAYS: Final = 7

@@ -27,6 +27,7 @@ def _coordinator_with_states(states: dict[str, str]) -> AbstractorDataUpdateCoor
     coordinator.rejected_samples = {}
     coordinator._ring_seq = {}
     coordinator.void_sample_ids = set()
+    coordinator.value_history = {}
     return coordinator
 
 
@@ -255,6 +256,7 @@ def _update_coordinator(
     coordinator.rejected_samples = {}
     coordinator._ring_seq = {}
     coordinator.void_sample_ids = set()
+    coordinator.value_history = {}
     coordinator._last_notified_events = {}
     coordinator.debug_switch_entity_id = None
     coordinator.notify_entity_id = None

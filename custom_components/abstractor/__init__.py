@@ -52,14 +52,17 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
     SUBENTRY_TYPE_SENSOR,
+    SUMMARY_DEFAULT_WINDOW_DAYS,
+    SUMMARY_MAX_WINDOW_DAYS,
 )
-from .coordinator import AbstractorDataUpdateCoordinator
+from .coordinator import AbstractorDataUpdateCoordinator, SubentryMeta
 from .csv_values import parse, serialize
 from .frontend import async_register_panel, async_unregister_panel
 from .influx_exporter import create_influx_exporter
 from .repository.device_registry import DeviceRegistry
 from .snapshot import build_snapshot, validate_snapshot
 from .specs import SPEC_REGISTRY
+from .summary_values import aggregate_window
 from .websocket import async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,10 +73,14 @@ _LOGGER = logging.getLogger(__name__)
 # the registry automatically.
 _PLATFORM_ORDER = ("sensor", "binary_sensor", "switch", "light", "cover")
 PLATFORMS: list[str] = [
-    platform for platform in _PLATFORM_ORDER if platform in {spec.platform for spec in SPEC_REGISTRY.enabled()}
+    platform
+    for platform in _PLATFORM_ORDER
+    if platform in {spec.platform for spec in SPEC_REGISTRY.enabled()}
 ]
 _STORAGE_DATA = "storage"
-IMPORT_SERVICE_SCHEMA = vol.Schema({vol.Required("data"): vol.All(dict, validate_snapshot)})
+IMPORT_SERVICE_SCHEMA = vol.Schema(
+    {vol.Required("data"): vol.All(dict, validate_snapshot)}
+)
 # WS-6 E5: exactly-one-source rule for import_csv — EITHER a file already in
 # the values export directory OR raw CSV content, never both (vol.Exclusive
 # group) and never neither (the handler rejects an empty call).
@@ -85,6 +92,13 @@ CSV_IMPORT_SCHEMA = vol.Schema(
     }
 )
 CSV_EXPORT_SCHEMA = vol.Schema({vol.Optional("basename"): cv_nonempty_text})
+SUMMARY_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Optional("window_days", default=SUMMARY_DEFAULT_WINDOW_DAYS): vol.All(
+            int, vol.Range(min=1, max=SUMMARY_MAX_WINDOW_DAYS)
+        )
+    }
+)
 # The sensor to delete is identified by EITHER its subentry_id (the key under
 # the root entry, also listed as `entry_id` per entry in export snapshots) OR
 # its `legacy_unique_id` (the entity's unique_id, visible in the entity
@@ -140,7 +154,9 @@ def _pre_migration_unique_id(data: Mapping[str, Any]) -> str:
         return str(explicit_legacy_id)
 
     device_type = data.get(CONF_DEVICE_TYPE, "")
-    identity_source_ids = data.get(CONF_SOURCE_ENTITY_IDS) or [data.get(CONF_SOURCE_ENTITY_ID)]
+    identity_source_ids = data.get(CONF_SOURCE_ENTITY_IDS) or [
+        data.get(CONF_SOURCE_ENTITY_ID)
+    ]
     identity_source_ids = [source for source in identity_source_ids if source]
     if len(identity_source_ids) == 1:
         return f"abstractor_{identity_source_ids[0]}_{device_type}"
@@ -198,7 +214,9 @@ def _async_adopt_registry_entries(
     # root. There is nothing to carry the disabled state on at that point, and
     # inventing a registry row from a guessed entity_id would be worse than
     # the rare mismatch.
-    detach_disabled_stamp = legacy_entry.disabled_by is not None and root_entry.disabled_by is None
+    detach_disabled_stamp = (
+        legacy_entry.disabled_by is not None and root_entry.disabled_by is None
+    )
 
     for device in devices:
         device_registry.async_update_device(
@@ -206,17 +224,29 @@ def _async_adopt_registry_entries(
             add_config_entry_id=root_entry.entry_id,
             add_config_subentry_id=subentry_id,
         )
-        if detach_disabled_stamp and device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY:
-            device_registry.async_update_device(device.id, disabled_by=dr.DeviceEntryDisabler.USER)
+        if (
+            detach_disabled_stamp
+            and device.disabled_by is dr.DeviceEntryDisabler.CONFIG_ENTRY
+        ):
+            device_registry.async_update_device(
+                device.id, disabled_by=dr.DeviceEntryDisabler.USER
+            )
 
-    for entity in er.async_entries_for_config_entry(entity_registry, legacy_entry.entry_id):
+    for entity in er.async_entries_for_config_entry(
+        entity_registry, legacy_entry.entry_id
+    ):
         entity_registry.async_update_entity(
             entity.entity_id,
             config_entry_id=root_entry.entry_id,
             config_subentry_id=subentry_id,
         )
-        if detach_disabled_stamp and entity.disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY:
-            entity_registry.async_update_entity(entity.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+        if (
+            detach_disabled_stamp
+            and entity.disabled_by is er.RegistryEntryDisabler.CONFIG_ENTRY
+        ):
+            entity_registry.async_update_entity(
+                entity.entity_id, disabled_by=er.RegistryEntryDisabler.USER
+            )
 
     if not is_promotion:
         # Nothing else to do: removing the legacy entry afterwards takes its
@@ -252,7 +282,9 @@ def _async_adopt_registry_entries(
 
 
 @callback
-def _async_attach_as_subentry(hass: HomeAssistant, root_entry: ConfigEntry, legacy_entry: ConfigEntry) -> None:
+def _async_attach_as_subentry(
+    hass: HomeAssistant, root_entry: ConfigEntry, legacy_entry: ConfigEntry
+) -> None:
     """Mirror one legacy entry into a subentry of the root entry.
 
     The subentry deliberately reuses the legacy entry's own `entry_id` as its
@@ -368,7 +400,9 @@ async def _async_reconcile_legacy_entries(hass: HomeAssistant) -> None:
     entity_ids and device identifiers are all preserved.
     """
     entries = hass.config_entries.async_entries(DOMAIN)
-    root_entry = next((entry for entry in entries if entry.unique_id == ROOT_UNIQUE_ID), None)
+    root_entry = next(
+        (entry for entry in entries if entry.unique_id == ROOT_UNIQUE_ID), None
+    )
     legacy_entries = [entry for entry in entries if entry.unique_id != ROOT_UNIQUE_ID]
     if not legacy_entries:
         return
@@ -414,7 +448,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if _STORAGE_DATA not in domain_data:
         domain_data[_STORAGE_DATA] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        domain_data["stored_snapshot"] = await domain_data[_STORAGE_DATA].async_load() or {}
+        domain_data["stored_snapshot"] = (
+            await domain_data[_STORAGE_DATA].async_load() or {}
+        )
 
     coordinator = domain_data.get("coordinator")
     is_new_coordinator = coordinator is None
@@ -425,16 +461,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "registry" not in domain_data:
         domain_data["registry"] = DeviceRegistry()
 
-    coordinator.set_update_interval(int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)))
+    coordinator.set_update_interval(
+        int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
+    )
     coordinator.influx_exporter = create_influx_exporter(hass, dict(entry.options))
     # Debug notification targets (B7): re-applied on every (re)load like the
     # poll interval and the exporter, so changing the root options takes
     # effect on the reload the options update listener already triggers.
     # Unset (or empty) options leave both None, which makes the coordinator's
     # debug notify path a silent no-op.
-    coordinator.debug_switch_entity_id = entry.options.get(CONF_DEBUG_SWITCH_ENTITY_ID) or None
+    coordinator.debug_switch_entity_id = (
+        entry.options.get(CONF_DEBUG_SWITCH_ENTITY_ID) or None
+    )
     coordinator.notify_entity_id = entry.options.get(CONF_NOTIFY_ENTITY_ID) or None
-    coordinator.void_sample_ids = {str(sample_id) for sample_id in (entry.options.get(CONF_VOID_SAMPLE_IDS) or ())}
+    coordinator.void_sample_ids = {
+        str(sample_id) for sample_id in (entry.options.get(CONF_VOID_SAMPLE_IDS) or ())
+    }
 
     # Polling is per sensor subentry, not per config entry: the root entry
     # itself carries no sensor configuration since device bundling landed.
@@ -475,7 +517,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # without reintroducing the entry binding.
         await coordinator.async_refresh()
         if not coordinator.last_update_success:
-            raise ConfigEntryNotReady("Initial data refresh failed") from coordinator.last_exception
+            raise ConfigEntryNotReady(
+                "Initial data refresh failed"
+            ) from coordinator.last_exception
     else:
         await coordinator.async_request_refresh()
 
@@ -516,6 +560,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             partial(import_csv_service, hass),
             schema=CSV_IMPORT_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SUMMARY,
+            partial(summary_service, hass),
+            schema=SUMMARY_SERVICE_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
         )
     await _save_snapshot(hass)
     await async_register_panel(hass)
@@ -569,6 +620,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.services.async_remove(DOMAIN, SERVICE_DELETE_SENSOR)
                 hass.services.async_remove(DOMAIN, SERVICE_EXPORT_CSV)
                 hass.services.async_remove(DOMAIN, SERVICE_IMPORT_CSV)
+                hass.services.async_remove(DOMAIN, SERVICE_SUMMARY)
                 await async_unregister_panel(hass)
 
     return unload_ok
@@ -723,7 +775,11 @@ async def import_data_service(hass: HomeAssistant, call: ServiceCall) -> dict[st
 def _async_root_entry(hass: HomeAssistant) -> ConfigEntry | None:
     """Return the singleton root config entry, if it exists."""
     return next(
-        (entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.unique_id == ROOT_UNIQUE_ID),
+        (
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if entry.unique_id == ROOT_UNIQUE_ID
+        ),
         None,
     )
 
@@ -750,7 +806,10 @@ def _async_recreate_subentries(
     so "already exists" means "the entity registry row with this unique id is
     already taken", never merely "some subentry with a similar name".
     """
-    existing_ids = {_pre_migration_unique_id(subentry.data) for subentry in root_entry.subentries.values()}
+    existing_ids = {
+        _pre_migration_unique_id(subentry.data)
+        for subentry in root_entry.subentries.values()
+    }
     created: list[str] = []
     kept: list[str] = []
     skipped: list[str] = []
@@ -761,7 +820,9 @@ def _async_recreate_subentries(
         # `options` mapping, while a pre-bundling export may have split a
         # hardware-swapped source across the two.
         merged = dict(item.get("data") or {}) | dict(item.get("options") or {})
-        sources = merged.get(CONF_SOURCE_ENTITY_IDS) or [merged.get(CONF_SOURCE_ENTITY_ID)]
+        sources = merged.get(CONF_SOURCE_ENTITY_IDS) or [
+            merged.get(CONF_SOURCE_ENTITY_ID)
+        ]
         sources = [source for source in sources if source]
         if not sources:
             _LOGGER.warning(
@@ -800,7 +861,9 @@ def _async_recreate_subentries(
     return {"recreated": created, "kept": kept, "skipped": skipped, "errors": errors}
 
 
-async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+async def delete_sensor_service(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
     """Delete one Abstract sensor subentry, its entity, and its device.
 
     The sensor is identified by `subentry_id` (the key under the root entry,
@@ -832,10 +895,14 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> dict[
     subentry_id = call.data.get("subentry_id")
     legacy_unique_id = call.data.get(CONF_LEGACY_UNIQUE_ID)
     if subentry_id is None and legacy_unique_id is None:
-        raise ServiceValidationError("Provide either 'subentry_id' or 'legacy_unique_id'")
+        raise ServiceValidationError(
+            "Provide either 'subentry_id' or 'legacy_unique_id'"
+        )
     root_entry = _async_root_entry(hass)
     if root_entry is None:
-        raise HomeAssistantError("Abstractor root config entry does not exist; nothing to delete")
+        raise HomeAssistantError(
+            "Abstractor root config entry does not exist; nothing to delete"
+        )
     if subentry_id is None:
         subentry_id = next(
             (
@@ -846,14 +913,20 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> dict[
             None,
         )
         if subentry_id is None:
-            raise ServiceValidationError(f"No Abstractor sensor with legacy_unique_id {legacy_unique_id!r} exists")
+            raise ServiceValidationError(
+                f"No Abstractor sensor with legacy_unique_id {legacy_unique_id!r} exists"
+            )
     if subentry_id not in root_entry.subentries:
-        raise ServiceValidationError(f"Abstractor subentry {subentry_id!r} does not exist")
+        raise ServiceValidationError(
+            f"Abstractor subentry {subentry_id!r} does not exist"
+        )
     subentry = root_entry.subentries[subentry_id]
     pinned_unique_id = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or subentry.unique_id
     entity_id = None
     if pinned_unique_id:
-        entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, pinned_unique_id)
+        entity_id = er.async_get(hass).async_get_entity_id(
+            "sensor", DOMAIN, pinned_unique_id
+        )
     hass.config_entries.async_remove_subentry(root_entry, subentry_id)
     return {
         "entity_id": entity_id,
@@ -862,7 +935,9 @@ async def delete_sensor_service(hass: HomeAssistant, call: ServiceCall) -> dict[
     }
 
 
-def _async_csv_rows(hass: HomeAssistant, root_entry: ConfigEntry) -> list[dict[str, Any]]:
+def _async_csv_rows(
+    hass: HomeAssistant, root_entry: ConfigEntry
+) -> list[dict[str, Any]]:
     """Build the CSV value rows from the live installation (single source).
 
     Values come only from the coordinator (`data` + `meta`) and units only
@@ -877,7 +952,11 @@ def _async_csv_rows(hass: HomeAssistant, root_entry: ConfigEntry) -> list[dict[s
         device_type = subentry.data.get(CONF_DEVICE_TYPE) or "power"
         spec = SPEC_REGISTRY.try_get(device_type)
         pinned = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or subentry.unique_id
-        entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, pinned) if pinned else None
+        entity_id = (
+            entity_registry.async_get_entity_id("sensor", DOMAIN, pinned)
+            if pinned
+            else None
+        )
         entry_meta = meta.get(subentry_id)
         rows.append(
             {
@@ -900,7 +979,9 @@ async def export_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
     """
     root_entry = _async_root_entry(hass)
     if root_entry is None:
-        raise HomeAssistantError("Abstractor root config entry does not exist; nothing to export")
+        raise HomeAssistantError(
+            "Abstractor root config entry does not exist; nothing to export"
+        )
     rows = _async_csv_rows(hass, root_entry)
     try:
         text = serialize(rows)
@@ -908,7 +989,11 @@ async def export_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
         raise ServiceValidationError(str(err)) from err
     raw_basename = call.data.get("basename") if call.data else None
     basename = (
-        "".join(ch for ch in (raw_basename or "abstractor-values") if ch.isalnum() or ch in "._-")
+        "".join(
+            ch
+            for ch in (raw_basename or "abstractor-values")
+            if ch.isalnum() or ch in "._-"
+        )
         or "abstractor-values"
     )
     filename = f"{basename}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.csv"
@@ -920,8 +1005,13 @@ async def export_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
         path.write_text(text, encoding="utf-8")
         return path
 
-    path = await to_thread(_write_csv)
-    return {"directory": str(directory), "file": filename, "bytes": len(text.encode("utf-8")), "rows": len(rows)}
+    await to_thread(_write_csv)
+    return {
+        "directory": str(directory),
+        "file": filename,
+        "bytes": len(text.encode("utf-8")),
+        "rows": len(rows),
+    }
 
 
 async def import_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
@@ -941,19 +1031,27 @@ async def import_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
     """
     root_entry = _async_root_entry(hass)
     if root_entry is None:
-        raise HomeAssistantError("Abstractor root config entry does not exist; nothing to import")
+        raise HomeAssistantError(
+            "Abstractor root config entry does not exist; nothing to import"
+        )
     if not call.data:
-        raise ServiceValidationError("Provide either 'filename' or 'content' for import_csv")
+        raise ServiceValidationError(
+            "Provide either 'filename' or 'content' for import_csv"
+        )
 
     directory = Path(str(hass.config.config_dir)).joinpath(CSV_VALUES_DIR_NAME)
     filename = call.data.get("filename")
     if filename is not None:
         if "/" in filename or "\\" in filename or filename.startswith("."):
-            raise ServiceValidationError("import_csv accepts only plain file names from the export directory")
+            raise ServiceValidationError(
+                "import_csv accepts only plain file names from the export directory"
+            )
         try:
             text = await to_thread((directory / filename).read_text, "utf-8")
         except OSError as err:
-            raise ServiceValidationError(f"export file {filename!r} is not readable: {err}") from err
+            raise ServiceValidationError(
+                f"export file {filename!r} is not readable: {err}"
+            ) from err
     else:
         text = str(call.data["content"])
 
@@ -964,7 +1062,9 @@ async def import_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
 
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if coordinator is None:
-        raise ServiceValidationError("no Abstractor coordinator present; values cannot be applied")
+        raise ServiceValidationError(
+            "no Abstractor coordinator present; values cannot be applied"
+        )
 
     entity_registry = er.async_get(hass)
     by_entity_id: dict[str, str] = {}
@@ -975,7 +1075,10 @@ async def import_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
             entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, pinned)
             if entity_id:
                 by_entity_id[entity_id] = subentry_id
-        logical_name = subentry.title or f"Abstract {subentry.data.get(CONF_DEVICE_TYPE) or 'power'}"
+        logical_name = (
+            subentry.title
+            or f"Abstract {subentry.data.get(CONF_DEVICE_TYPE) or 'power'}"
+        )
         by_logical_name.setdefault(logical_name, subentry_id)
 
     applied: list[str] = []
@@ -993,3 +1096,90 @@ async def import_csv_service(hass: HomeAssistant, call: ServiceCall) -> dict[str
         coordinator.data[subentry_id] = row["value"]
         applied.append(str(row["logical_name"]))
     return {"applied": applied, "skipped": skipped, "errors": errors}
+
+
+async def summary_service(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+    """Report per-sensor aggregates over the window (WS-6 · E8, ONLY response).
+
+    Field sources (documented so dashboards stay testable):
+
+    - ``logical_name``: subentry title (display identity, not registry data).
+    - ``entity_id``: entity registry lookup for the pinned unique id.
+    - ``device_type``/``unit``: subentry data + spec registry (never guessed).
+    - ``value``/``updated_at``: coordinator ``data`` + ``meta`` (poll truth).
+    - ``min``/``max``/``avg``: coordinator ``value_history`` windows filtered
+      by the window; aggregates describe exactly the retained samples and
+      never read recorder internals.
+    - ``spike_rejections``/``fallbacks``: coordinator ``meta`` counters.
+    - ``health``: the shared coordinator health mapping (WS payload and
+      summary can never drift apart).
+    """
+    root_entry = _async_root_entry(hass)
+    if root_entry is None:
+        raise HomeAssistantError(
+            "Abstractor root config entry does not exist; nothing to summarize"
+        )
+    window_days = (
+        int(call.data.get("window_days", SUMMARY_DEFAULT_WINDOW_DAYS))
+        if call.data
+        else SUMMARY_DEFAULT_WINDOW_DAYS
+    )
+    if not 1 <= window_days <= SUMMARY_MAX_WINDOW_DAYS:
+        raise ServiceValidationError(
+            f"window_days must be between 1 and {SUMMARY_MAX_WINDOW_DAYS}"
+        )
+
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    values = (coordinator.data or {}) if coordinator else {}
+    meta_map = (coordinator.meta or {}) if coordinator else {}
+    pipelines_map = (coordinator.pipelines or {}) if coordinator else {}
+    history_map = (coordinator.value_history or {}) if coordinator else {}
+    entity_registry = er.async_get(hass)
+    now = datetime.now(UTC)
+
+    sensors: list[dict[str, Any]] = []
+    for subentry_id, subentry in sorted(root_entry.subentries.items()):
+        device_type = subentry.data.get(CONF_DEVICE_TYPE) or "power"
+        spec = SPEC_REGISTRY.try_get(device_type)
+        pinned = subentry.data.get(CONF_LEGACY_UNIQUE_ID) or subentry.unique_id
+        entity_id = (
+            entity_registry.async_get_entity_id("sensor", DOMAIN, pinned)
+            if pinned
+            else None
+        )
+        entry_meta = meta_map.get(subentry_id, SubentryMeta())
+        pipeline = pipelines_map.get(subentry_id)
+        value = values.get(subentry_id)
+        aggregates = aggregate_window(
+            history_map.get(subentry_id, []), window_days * 86400, now
+        )
+        health = (
+            coordinator._health_for(
+                subentry_id, value, pipeline.last_event if pipeline else None
+            )
+            if coordinator
+            else ("idle" if value is None else "ok")
+        )
+        sensors.append(
+            {
+                "logical_name": subentry.title or f"Abstract {device_type}",
+                "entity_id": entity_id,
+                "device_type": device_type,
+                "value": value,
+                "unit": spec.unit if spec else None,
+                "updated_at": entry_meta.updated_at.isoformat()
+                if entry_meta.updated_at
+                else None,
+                "min": aggregates["min"],
+                "max": aggregates["max"],
+                "avg": aggregates["avg"],
+                "spike_rejections": entry_meta.spike_rejections,
+                "fallbacks": entry_meta.fallbacks,
+                "health": health,
+            }
+        )
+    return {
+        "generated_at": now.isoformat(),
+        "window_days": window_days,
+        "sensors": sensors,
+    }

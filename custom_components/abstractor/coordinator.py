@@ -1,4 +1,5 @@
 """DataUpdateCoordinator for Abstractor."""
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     REJECTED_RING_LIMIT,
+    VALUE_HISTORY_LIMIT,
 )
 from .filters import AbstractorFilterPipeline
 from .specs import SPEC_REGISTRY
@@ -118,6 +120,10 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         self.rejected_samples: dict[str, list[dict]] = {}
         self._ring_seq: dict[str, int] = {}
         self.void_sample_ids: set[str] = set()
+        # WS-6: bounded (ts, value) windows feeding the summary service — the
+        # newest VALUE_HISTORY_LIMIT accepted samples per subentry, the single
+        # source of min/max/avg aggregates (recorder internals are not read).
+        self.value_history: dict[str, list[tuple[datetime, Any]]] = {}
         # Debug notification targets, applied from the root entry's options on
         # every setup (see __init__.py). Both None = the debug notify path is
         # silently off; nothing here may fail when the referenced entities do
@@ -189,6 +195,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         self._last_notified_events.pop(subentry_id, None)
         self.rejected_samples.pop(subentry_id, None)
         self._ring_seq.pop(subentry_id, None)
+        self.value_history.pop(subentry_id, None)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via central polling."""
@@ -205,7 +212,11 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 continue
 
             raw_states = [
-                (state_obj.state if (state_obj := self.hass.states.get(source_id)) else None)
+                (
+                    state_obj.state
+                    if (state_obj := self.hass.states.get(source_id))
+                    else None
+                )
                 for source_id in source_ids
             ]
 
@@ -214,6 +225,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 primary = source_ids[0] if source_ids else None
                 raw_val = self._read_state(primary)
                 data[subentry_id] = raw_val
+                self._record_value_sample(subentry_id, raw_val)
                 await self._async_notify_debug(subentry_id, None)
                 previous = self.meta.get(subentry_id, SubentryMeta())
                 self.meta[subentry_id] = SubentryMeta(
@@ -221,8 +233,11 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     event_at=previous.event_at,
                     spike_rejections=previous.spike_rejections,
                     fallbacks=previous.fallbacks,
-                    unavailable_samples=previous.unavailable_samples + (1 if raw_val is None else 0),
-                    source_states={primary: raw_val} if primary and raw_val is not None else {},
+                    unavailable_samples=previous.unavailable_samples
+                    + (1 if raw_val is None else 0),
+                    source_states={primary: raw_val}
+                    if primary and raw_val is not None
+                    else {},
                     stale=raw_val is None,
                     updated_at=datetime.now(UTC),
                     previous_value=raw_val,
@@ -231,8 +246,12 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 continue
             if pipeline:
-                net_subtract_raw = self._read_state(config.get(CONF_NET_SUBTRACT_ENTITY_ID))
-                fallback_raw = self._read_state(config.get(CONF_FALLBACK_SOURCE_ENTITY_ID))
+                net_subtract_raw = self._read_state(
+                    config.get(CONF_NET_SUBTRACT_ENTITY_ID)
+                )
+                fallback_raw = self._read_state(
+                    config.get(CONF_FALLBACK_SOURCE_ENTITY_ID)
+                )
                 fallback_condition_met = self._fallback_condition_met(config)
                 val = pipeline.process_sources(
                     raw_states,
@@ -241,13 +260,16 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                     fallback_condition_met=fallback_condition_met,
                 )
                 data[subentry_id] = val
+                self._record_value_sample(subentry_id, val)
                 previous = self.meta.get(subentry_id, SubentryMeta())
                 spike_hits = previous.spike_rejections
                 fallback_hits = previous.fallbacks
                 unavailable_samples = previous.unavailable_samples
                 if (pipeline.last_event or "").lower().startswith("spike"):
                     spike_hits += 1
-                    self._record_rejected_sample(subentry_id, raw_states, pipeline.last_event)
+                    self._record_rejected_sample(
+                        subentry_id, raw_states, pipeline.last_event
+                    )
                 if (pipeline.last_event or "").lower().startswith("fallback"):
                     fallback_hits += 1
                 if val is None:
@@ -301,6 +323,36 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         while len(ring) > REJECTED_RING_LIMIT:
             ring.pop(0)
 
+    def _record_value_sample(self, subentry_id: str, value: Any) -> None:
+        """Append an accepted sample to the bounded per-subentry value window (WS-6).
+
+        Only non-None values enter the window. The window keeps the newest
+        ``VALUE_HISTORY_LIMIT`` samples; aggregates for the summary service
+        are computed over exactly what this window retained — the recorder's
+        internals are never read (documented source per field, E8).
+        """
+        if value is None:
+            return
+        history = self.value_history.setdefault(subentry_id, [])
+        history.append((datetime.now(UTC), value))
+        while len(history) > VALUE_HISTORY_LIMIT:
+            history.pop(0)
+
+    def _health_for(self, subentry_id: str, value: Any, last_event: str | None) -> str:
+        """Single health mapping shared by the WS payload and summary service.
+
+        ``bad`` when coordinator polling itself failed, ``idle`` while the
+        subentry has no value, ``warn`` when the last pipeline event or a
+        configured warn threshold hit applies, otherwise ``ok``.
+        """
+        if not self.last_update_success:
+            return "bad"
+        if value is None:
+            return "idle"
+        if last_event or self.meta.get(subentry_id, SubentryMeta()).warn_hit:
+            return "warn"
+        return "ok"
+
     def _warn_hit(self, config: dict[str, Any], value: float | str | None) -> bool:
         """Threshold decision for the WS-5 warn_above/warn_below options.
 
@@ -308,16 +360,18 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         gates the check like the debug switch: while that entity is not "on",
         thresholds never report.
         """
-        if value is None or isinstance(value, str) or isinstance(value, bool):
+        if value is None or isinstance(value, (str, bool)):
             return False
         above = config.get(CONF_WARN_ABOVE)
         below = config.get(CONF_WARN_BELOW)
-        hit = (above is not None and value > above) or (below is not None and value < below)
+        hit = (above is not None and value > above) or (
+            below is not None and value < below
+        )
         if not hit:
             return False
         condition = config.get(CONF_WARN_CONDITION_ENTITY_ID)
-        if condition and not self.hass.states.is_state(condition, "on"):
-            return False
+        if condition:
+            return self.hass.states.is_state(condition, "on")
         return True
 
     def _read_state(self, entity_id: str | None) -> str | None:

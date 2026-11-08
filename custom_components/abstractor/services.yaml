@@ -52,3 +52,15 @@ import_csv:
       required: false
       selector:
         text:
+summary:
+  name: Summarize Abstractor Sensors
+  description: Reports per-sensor value aggregates (min/max/avg over a bounded window), counters and health in a stable contract.
+  fields:
+    window_days:
+      name: Window (days)
+      description: Aggregation window in days (1-7).
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 7

@@ -39,7 +39,9 @@ def _hass(store: Mock) -> SimpleNamespace:
         title="Abstract power",
         unique_id=None,
     )
-    entry = SimpleNamespace(subentries={"subentry-1": subentry}, version=1, unique_id=ROOT_UNIQUE_ID)
+    entry = SimpleNamespace(
+        subentries={"subentry-1": subentry}, version=1, unique_id=ROOT_UNIQUE_ID
+    )
     coordinator = SimpleNamespace(data={"subentry-1": 4.0})
     return SimpleNamespace(
         data={DOMAIN: {"storage": store, "coordinator": coordinator}},
@@ -76,7 +78,9 @@ async def test_import_service_persists_valid_snapshot() -> None:
     assert hass.data[DOMAIN]["stored_snapshot"] == payload
 
 
-async def test_export_service_call_returns_snapshot_response(hass: HomeAssistant) -> None:
+async def test_export_service_call_returns_snapshot_response(
+    hass: HomeAssistant,
+) -> None:
     """The `export_data` service must hand the snapshot back to the caller
     via `return_response=True`, not just persist it to Store — a panel
     "Export" button has nothing to download otherwise (plan
@@ -102,7 +106,9 @@ async def test_export_service_call_returns_snapshot_response(hass: HomeAssistant
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    result = await hass.services.async_call(DOMAIN, SERVICE_EXPORT_DATA, {}, blocking=True, return_response=True)
+    result = await hass.services.async_call(
+        DOMAIN, SERVICE_EXPORT_DATA, {}, blocking=True, return_response=True
+    )
 
     assert result is not None, (
         "export_data must be registered with supports_response=SupportsResponse.ONLY "
@@ -136,7 +142,9 @@ def _snapshot_entry(entry_id: str, data: dict, title: str = "Abstract power") ->
 
 async def _setup_root(hass: HomeAssistant):
     """Register + set up a singleton root entry and return it."""
-    root_entry = MockConfigEntry(domain=DOMAIN, unique_id=ROOT_UNIQUE_ID, data={}, options={})
+    root_entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=ROOT_UNIQUE_ID, data={}, options={}
+    )
     root_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(root_entry.entry_id)
     await hass.async_block_till_done()
@@ -164,7 +172,9 @@ async def test_import_recreates_missing_subentries(hass: HomeAssistant) -> None:
         "values": {},
     }
 
-    await hass.services.async_call(DOMAIN, "import_data", {"data": payload}, blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "import_data", {"data": payload}, blocking=True
+    )
     await hass.async_block_till_done()
 
     restored = root_entry.subentries.get("subentry-restored")
@@ -221,7 +231,9 @@ async def test_import_skips_existing_and_missing_source_entries(
         "values": {},
     }
 
-    await hass.services.async_call(DOMAIN, "import_data", {"data": payload}, blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "import_data", {"data": payload}, blocking=True
+    )
     await hass.async_block_till_done()
 
     assert len(root_entry.subentries) == 1
@@ -328,7 +340,9 @@ async def test_delete_sensor_unknown_ids_fail(hass: HomeAssistant) -> None:
     root_entry = await _setup_root(hass)
 
     with pytest.raises(ServiceValidationError):
-        await hass.services.async_call(DOMAIN, SERVICE_DELETE_SENSOR, {"subentry_id": "nope"}, blocking=True)
+        await hass.services.async_call(
+            DOMAIN, SERVICE_DELETE_SENSOR, {"subentry_id": "nope"}, blocking=True
+        )
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
             DOMAIN,
@@ -382,7 +396,9 @@ async def test_import_response_contract(hass: HomeAssistant) -> None:
     }
     assert len(response["errors"]) <= 20
     for text in response["errors"]:
-        assert "sensor." not in text, "privacy rule: no raw sensor values in error texts"
+        assert "sensor." not in text, (
+            "privacy rule: no raw sensor values in error texts"
+        )
 
 
 async def test_delete_response_contract(hass: HomeAssistant) -> None:
@@ -417,6 +433,77 @@ async def test_delete_response_contract(hass: HomeAssistant) -> None:
         "history_preserved": False,
     }
     assert subentry.subentry_id not in root_entry.subentries
+
+
+async def test_summary_contract_stable(hass: HomeAssistant) -> None:
+    """[E8] summary: flat top-level contract, per-sensor fields sourced from
+    coordinator data/meta/value_history (no recorder internals)."""
+    root_entry = await _setup_root(hass)
+    subentry = ConfigSubentry(
+        data={
+            CONF_DEVICE_TYPE: "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.grid_power",
+            CONF_LEGACY_UNIQUE_ID: "abstractor_sum_1",
+        },
+        subentry_type=SUBENTRY_TYPE_SENSOR,
+        title="Abstract power",
+        unique_id=None,
+    )
+    hass.config_entries.async_add_subentry(root_entry, subentry)
+    await hass.async_block_till_done()
+    coordinator = hass.data[DOMAIN]["coordinator"]
+    subentry_id = next(iter(root_entry.subentries))
+    from datetime import UTC, datetime
+
+    coordinator.data[subentry_id] = 42.5
+    coordinator.value_history[subentry_id] = [
+        (datetime.now(UTC), 42.5),
+        (datetime.now(UTC), 10.0),
+        (datetime.now(UTC), 100.0),
+    ]
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "summary",
+        {"window_days": 7},
+        blocking=True,
+        return_response=True,
+    )
+
+    assert set(response) == {"generated_at", "window_days", "sensors"}
+    assert response["window_days"] == 7
+    assert len(response["sensors"]) == 1
+    sensor_row = response["sensors"][0]
+    assert set(sensor_row) == {
+        "logical_name",
+        "entity_id",
+        "device_type",
+        "value",
+        "unit",
+        "updated_at",
+        "min",
+        "max",
+        "avg",
+        "spike_rejections",
+        "fallbacks",
+        "health",
+    }
+    assert sensor_row["logical_name"] == "Abstract power"
+    assert sensor_row["device_type"] == "power"
+    assert sensor_row["value"] == 42.5
+    assert sensor_row["min"] == 10.0
+    assert sensor_row["max"] == 100.0
+    assert sensor_row["avg"] == pytest.approx(50.833333, abs=1e-4)
+    assert sensor_row["health"] in {"idle", "ok", "warn", "bad"}
+    assert sensor_row["unit"] == "kWh" or sensor_row["unit"] == "W"
+    with pytest.raises(vol.MultipleInvalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "summary",
+            {"window_days": 99},
+            blocking=True,
+            return_response=True,
+        )
 
 
 async def test_csv_xor_rejected(hass: HomeAssistant) -> None:
