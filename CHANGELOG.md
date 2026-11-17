@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] — 2026-11-17
+
+### Added
+
+- Per-sensor update mode: each Abstract sensor can now choose between
+  **event** updates (immediate forwarding when a source state changes) and
+  **polling** updates with its own interval in seconds (1–3600, default 30).
+  This removes the fixed global poll delay — previously up to 30 s — for
+  notification-style sources.
+- The update mode and its polling interval are configurable in the native
+  config flow and in the AbstrHActor panel. The active mode is visible on
+  sensor cards and in the detail drawer.
+
+### Changed
+
+- The shared coordinator no longer runs a global polling timer; every sensor
+  owns its own state-change subscription or timer. Legacy sensors without an
+  update mode keep polling and use the root option as their fallback interval.
+- The user-facing name is now **AbstrHActor** (manifest, HACS, config flow,
+  panel, translations). Internal identifiers — domain, directory, class names
+  and unique IDs — remain `abstractor`.
+
+### Fixed
+
+- Attribute-only state-changed events no longer trigger redundant sensor
+  refreshes.
+
 ## [1.4.0] — 2026-11-08
 
 ### Added
