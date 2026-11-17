@@ -8,7 +8,10 @@
 // Write commands are authorized server-side solely by HA admin privileges.
 import {
   AGGREGATION_MODES,
+  DEFAULT_SUBENTRY_POLL_INTERVAL,
+  DEFAULT_UPDATE_MODE,
   DEVICE_TYPES,
+  UPDATE_MODES,
   buildPayload,
   buildRenamePayload,
   deltaWithSign,
@@ -436,6 +439,15 @@ class AbstractorPanel extends HTMLElement {
       fieldLine('drawer.updatedAt', this._updatedText(detail));
       fieldLine('form.objectId', detail.object_id);
       fieldLine('form.sources', Array.isArray(detail.source_entity_ids) ? detail.source_entity_ids.filter(Boolean).join(', ') : '');
+      const updateLabel = detail.update_mode === 'polling'
+        ? this._t('form.updateMode.polling')
+        : this._t('form.updateMode.event');
+      fieldLine(
+        'form.updateMode',
+        detail.update_mode === 'polling'
+          ? `${updateLabel} · ${detail.poll_interval}s`
+          : updateLabel,
+      );
       const stages = pipelineStages(detail);
       const h3 = document.createElement('h3');
       h3.textContent = this._t('drawer.stages');
@@ -644,10 +656,14 @@ class AbstractorPanel extends HTMLElement {
     const details = document.createElement('p');
     details.className = 'hint';
     const sources = Array.isArray(e.source_entity_ids) ? e.source_entity_ids.filter(Boolean).join(', ') : '';
+    const updateMode = e.update_mode === 'polling'
+      ? `${this._t('form.updateMode.polling')}: ${e.poll_interval ?? 30}s`
+      : this._t('form.updateMode.event');
     details.textContent = [
       e.object_id ? `${this._t('field.entity')}: ${e.object_id}` : '',
       e.legacy_unique_id ? `${this._t('field.uniqueId')}: ${e.legacy_unique_id}` : '',
       sources ? `${this._t('field.source')}: ${sources}` : '',
+      `${this._t('form.updateMode')}: ${updateMode}`,
     ].filter(Boolean).join(' · ');
     card.appendChild(details);
 
@@ -1203,6 +1219,8 @@ class AbstractorPanel extends HTMLElement {
     return {
       device_type: refs.device_type.value,
       sources: this._pickerValue(refs.sources, true),
+      update_mode: refs.update_mode.value,
+      poll_interval: refs.poll_interval.value,
       aggregation: refs.aggregation.value,
       spike_filter: refs.spike_filter.checked,
       invert: refs.invert.checked,
@@ -1250,6 +1268,34 @@ class AbstractorPanel extends HTMLElement {
 
     refs.sources = this._entityPicker(fields.sources, true, 'form.sources');
     form.appendChild(this._field('form.sources', refs.sources));
+
+    // Update strategy applies to every sensor type. Event mode reacts to
+    // source state changes immediately; polling uses this sensor's own timer.
+    refs.update_mode = document.createElement('select');
+    UPDATE_MODES.forEach((mode) => {
+      const opt = document.createElement('option');
+      opt.value = mode;
+      opt.textContent = this._t(`form.updateMode.${mode}`);
+      refs.update_mode.appendChild(opt);
+    });
+    refs.update_mode.value = UPDATE_MODES.indexOf(fields.update_mode) !== -1
+      ? fields.update_mode
+      : DEFAULT_UPDATE_MODE;
+    form.appendChild(this._field('form.updateMode', refs.update_mode));
+
+    refs.poll_interval = this._textInput(
+      fields.poll_interval || DEFAULT_SUBENTRY_POLL_INTERVAL, 'number'
+    );
+    refs.poll_interval.min = '1';
+    refs.poll_interval.max = '3600';
+    refs.poll_interval.step = '1';
+    const intervalField = this._field('form.pollInterval', refs.poll_interval);
+    form.appendChild(intervalField);
+    const syncInterval = () => {
+      intervalField.style.display = refs.update_mode.value === 'polling' ? '' : 'none';
+    };
+    refs.update_mode.addEventListener('change', syncInterval);
+    syncInterval();
 
     const numeric = document.createElement('div');
     refs.aggregation = document.createElement('select');

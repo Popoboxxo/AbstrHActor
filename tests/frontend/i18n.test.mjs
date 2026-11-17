@@ -25,6 +25,6 @@ test('German labels keep their umlauts', () => {
 test('unknown language and unknown key fall back to English', () => {
   assert.equal(langFor({ language: 'fr' }), 'en');
   assert.equal(langFor({ language: 'de-DE' }), 'de');
-  assert.equal(translate({ language: 'fr' }, 'title'), 'Abstractor');
+  assert.equal(translate({ language: 'fr' }, 'title'), 'AbstrHActor');
   assert.equal(translate({ language: 'en' }, 'does.not.exist'), 'does.not.exist');
 });

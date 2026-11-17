@@ -48,6 +48,9 @@
   var DEVICE_TYPES = CATALOGUE.device_types;
   var NUMERIC_TYPES = CATALOGUE.numeric_types;
   var AGGREGATION_MODES = CATALOGUE.aggregation_modes;
+  var UPDATE_MODES = ["event", "polling"];
+  var DEFAULT_UPDATE_MODE = "event";
+  var DEFAULT_SUBENTRY_POLL_INTERVAL = 30;
   function isNumericType(deviceType) {
     return NUMERIC_TYPES.indexOf(deviceType) !== -1;
   }
@@ -65,6 +68,15 @@
     const conditionState = f.fallback_condition_state;
     if (conditionState && !f.fallback_condition_entity_id) {
       errors.fallback_condition_entity_id = "a condition entity is required when a condition state is set";
+    }
+    if (f.update_mode !== void 0 && UPDATE_MODES.indexOf(f.update_mode) === -1) {
+      errors.update_mode = "must be event or polling";
+    }
+    if (f.update_mode === "polling") {
+      const interval = Number(f.poll_interval);
+      if (!Number.isInteger(interval) || interval < 1 || interval > 3600) {
+        errors.poll_interval = "must be a whole number of seconds between 1 and 3600";
+      }
     }
     return errors;
   }
@@ -95,7 +107,14 @@
   function buildPayload(fields) {
     const f = fields || {};
     const sources = (f.sources || []).map((s) => String(s || "").trim()).filter(Boolean);
-    const data = { device_type: f.device_type };
+    const data = {
+      device_type: f.device_type,
+      update_mode: UPDATE_MODES.indexOf(f.update_mode) !== -1 ? f.update_mode : DEFAULT_UPDATE_MODE
+    };
+    if (data.update_mode === "polling") {
+      const interval = Number(f.poll_interval);
+      data.poll_interval = Number.isInteger(interval) && interval >= 1 && interval <= 3600 ? interval : DEFAULT_SUBENTRY_POLL_INTERVAL;
+    }
     if (sources.length > 1) {
       data.source_entity_ids = sources;
     } else if (sources.length === 1) {
@@ -134,6 +153,8 @@
     return {
       device_type: s.device_type || "power",
       sources,
+      update_mode: s.update_mode || DEFAULT_UPDATE_MODE,
+      poll_interval: s.poll_interval || DEFAULT_SUBENTRY_POLL_INTERVAL,
       aggregation: s.aggregation || "sum",
       spike_filter: !!s.spike_filter,
       invert: !!s.invert,
@@ -286,6 +307,10 @@
       "form.logicalName": "Logical name",
       "form.objectId": "Entity object id",
       "form.entityName": "Entity name (override)",
+      "form.updateMode": "Update mode",
+      "form.updateMode.event": "Event (immediate)",
+      "form.updateMode.polling": "Polling",
+      "form.pollInterval": "Poll interval (seconds)",
       "form.aggregation": "Aggregation",
       "form.spikeFilter": "Enable spike filter",
       "form.invert": "Invert value",
@@ -302,7 +327,7 @@
       "rename.previewEntityId": "New entity id:",
       "status.sensors": "sensors",
       "status.loading": "Loading...",
-      "title": "Abstractor",
+      "title": "AbstrHActor",
       "subtitle.readOnly": "read-only base",
       "subtitle.editMode": "EDIT MODE",
       "filter.all": "all",
@@ -316,10 +341,10 @@
       "filter.light_state": "light",
       "filter.cover_position": "cover position",
       "filter.problems": "problems",
-      "empty.loading": "Loading Abstractor sensors...",
-      "empty.none": "No matching Abstractor sensors.",
+      "empty.loading": "Loading AbstrHActor sensors...",
+      "empty.none": "No matching AbstrHActor sensors.",
       "admin.required": "Administrator access required",
-      "common.sensor": "Abstractor sensor",
+      "common.sensor": "AbstrHActor sensor",
       "field.entity": "entity",
       "field.uniqueId": "unique_id",
       "field.source": "source",
@@ -427,6 +452,10 @@
       "form.logicalName": "Logischer Name",
       "form.objectId": "Entity-Object-Id",
       "form.entityName": "Entity-Name (\xDCberschreibung)",
+      "form.updateMode": "Update-Modus",
+      "form.updateMode.event": "Event (sofort)",
+      "form.updateMode.polling": "Polling",
+      "form.pollInterval": "Abfrageintervall (Sekunden)",
       "form.aggregation": "Aggregation",
       "form.spikeFilter": "Spike-Filter aktivieren",
       "form.invert": "Wert invertieren",
@@ -443,7 +472,7 @@
       "rename.previewEntityId": "Neue Entity-Id:",
       "status.sensors": "Sensoren",
       "status.loading": "L\xE4dt...",
-      "title": "Abstractor",
+      "title": "AbstrHActor",
       "subtitle.readOnly": "schreibgesch\xFCtzte Basis",
       "subtitle.editMode": "EDIT-MODUS",
       "filter.all": "alle",
@@ -457,10 +486,10 @@
       "filter.light_state": "Licht",
       "filter.cover_position": "Rollladenposition",
       "filter.problems": "Probleme",
-      "empty.loading": "Abstractor-Sensoren werden geladen...",
-      "empty.none": "Keine passenden Abstractor-Sensoren.",
+      "empty.loading": "AbstrHActor-Sensoren werden geladen...",
+      "empty.none": "Keine passenden AbstrHActor-Sensoren.",
       "admin.required": "Administratorzugriff erforderlich",
-      "common.sensor": "Abstractor-Sensor",
+      "common.sensor": "AbstrHActor-Sensor",
       "field.entity": "Entity",
       "field.uniqueId": "Unique-Id",
       "field.source": "Quelle",
@@ -552,7 +581,7 @@
   }
   try {
     if (typeof window !== "undefined") {
-      window.AbstractorI18n = { languages: I18N, translate, defaultLanguage: "en" };
+      window.AbstrHActorI18n = { languages: I18N, translate, defaultLanguage: "en" };
     }
   } catch (e) {
   }
@@ -1020,6 +1049,11 @@
           fieldLine("drawer.updatedAt", this._updatedText(detail));
           fieldLine("form.objectId", detail.object_id);
           fieldLine("form.sources", Array.isArray(detail.source_entity_ids) ? detail.source_entity_ids.filter(Boolean).join(", ") : "");
+          const updateLabel = detail.update_mode === "polling" ? this._t("form.updateMode.polling") : this._t("form.updateMode.event");
+          fieldLine(
+            "form.updateMode",
+            detail.update_mode === "polling" ? `${updateLabel} \xB7 ${detail.poll_interval}s` : updateLabel
+          );
           const stages = pipelineStages(detail);
           const h3 = document.createElement("h3");
           h3.textContent = this._t("drawer.stages");
@@ -1232,10 +1266,12 @@
       const details = document.createElement("p");
       details.className = "hint";
       const sources = Array.isArray(e.source_entity_ids) ? e.source_entity_ids.filter(Boolean).join(", ") : "";
+      const updateMode = e.update_mode === "polling" ? `${this._t("form.updateMode.polling")}: ${e.poll_interval ?? 30}s` : this._t("form.updateMode.event");
       details.textContent = [
         e.object_id ? `${this._t("field.entity")}: ${e.object_id}` : "",
         e.legacy_unique_id ? `${this._t("field.uniqueId")}: ${e.legacy_unique_id}` : "",
-        sources ? `${this._t("field.source")}: ${sources}` : ""
+        sources ? `${this._t("field.source")}: ${sources}` : "",
+        `${this._t("form.updateMode")}: ${updateMode}`
       ].filter(Boolean).join(" \xB7 ");
       card.appendChild(details);
       const detailsButton = document.createElement("button");
@@ -1737,6 +1773,8 @@
       return {
         device_type: refs.device_type.value,
         sources: this._pickerValue(refs.sources, true),
+        update_mode: refs.update_mode.value,
+        poll_interval: refs.poll_interval.value,
         aggregation: refs.aggregation.value,
         spike_filter: refs.spike_filter.checked,
         invert: refs.invert.checked,
@@ -1777,6 +1815,29 @@
       form.appendChild(this._field("form.deviceType", refs.device_type));
       refs.sources = this._entityPicker(fields.sources, true, "form.sources");
       form.appendChild(this._field("form.sources", refs.sources));
+      refs.update_mode = document.createElement("select");
+      UPDATE_MODES.forEach((mode) => {
+        const opt = document.createElement("option");
+        opt.value = mode;
+        opt.textContent = this._t(`form.updateMode.${mode}`);
+        refs.update_mode.appendChild(opt);
+      });
+      refs.update_mode.value = UPDATE_MODES.indexOf(fields.update_mode) !== -1 ? fields.update_mode : DEFAULT_UPDATE_MODE;
+      form.appendChild(this._field("form.updateMode", refs.update_mode));
+      refs.poll_interval = this._textInput(
+        fields.poll_interval || DEFAULT_SUBENTRY_POLL_INTERVAL,
+        "number"
+      );
+      refs.poll_interval.min = "1";
+      refs.poll_interval.max = "3600";
+      refs.poll_interval.step = "1";
+      const intervalField = this._field("form.pollInterval", refs.poll_interval);
+      form.appendChild(intervalField);
+      const syncInterval = () => {
+        intervalField.style.display = refs.update_mode.value === "polling" ? "" : "none";
+      };
+      refs.update_mode.addEventListener("change", syncInterval);
+      syncInterval();
       const numeric = document.createElement("div");
       refs.aggregation = document.createElement("select");
       AGGREGATION_MODES.forEach((mode) => {

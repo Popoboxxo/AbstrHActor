@@ -38,14 +38,17 @@ from custom_components.abstractor.const import (
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_TARGET_DEVICE_ID,
+    CONF_UPDATE_MODE,
     CONF_VOID_SAMPLE_IDS,
     CONF_WARN_ABOVE,
     CONF_WARN_BELOW,
     DEFAULT_NAMING_TEMPLATE,
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_SUBENTRY_POLL_INTERVAL,
     DOMAIN,
     ROOT_UNIQUE_ID,
     SUBENTRY_TYPE_SENSOR,
+    UPDATE_MODE_POLLING,
     WARN_SAMPLE_IDS_MAX,
     WS_GET_SUBENTRIES,
     WS_OPTIONS_READ,
@@ -245,6 +248,10 @@ def _build_subentries(hass):
                 "object_id": data.get("object_id"),
                 "source_entity_ids": data.get(CONF_SOURCE_ENTITY_IDS)
                 or [data.get(CONF_SOURCE_ENTITY_ID)],
+                "update_mode": data.get(CONF_UPDATE_MODE, UPDATE_MODE_POLLING),
+                "poll_interval": data.get(
+                    CONF_POLL_INTERVAL, DEFAULT_SUBENTRY_POLL_INTERVAL
+                ),
                 "legacy_unique_id": data.get(CONF_LEGACY_UNIQUE_ID),
                 "device_group_id": data.get(CONF_DEVICE_GROUP_ID),
                 "warn_above": data.get(CONF_WARN_ABOVE),

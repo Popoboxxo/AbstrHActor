@@ -27,8 +27,6 @@ accumulate.
 """
 from __future__ import annotations
 
-from datetime import timedelta
-
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -219,19 +217,20 @@ async def test_setup_leaves_exporter_none_without_credentials(
 async def test_setup_applies_poll_interval_from_options(
     hass: HomeAssistant,
 ) -> None:
-    """[REQ-CORE-007] coordinator.update_interval reflects the option, not the
-    hardcoded default."""
+    """The root option is the fallback interval for legacy sensors; current
+    sensors carry their own per-sensor mode and interval."""
     await _setup_root_with_options(hass, {CONF_POLL_INTERVAL: 7})
 
     coordinator = hass.data[DOMAIN]["coordinator"]
-    assert coordinator.update_interval == timedelta(seconds=7)
+    assert coordinator.legacy_poll_interval == 7
+    assert coordinator.update_interval is None
 
 
 async def test_options_change_reload_rebuilds_exporter_and_interval(
     hass: HomeAssistant,
 ) -> None:
-    """[REQ-CORE-007] An options change (reload) rebuilds the exporter from
-    the new options and re-applies the poll interval."""
+    """An options change (reload) rebuilds the exporter from the new options
+    and re-applies the legacy fallback poll interval."""
     root_entry = await _setup_root_with_options(hass, _INFLUX_OPTIONS)
     coordinator = hass.data[DOMAIN]["coordinator"]
     first_exporter = coordinator.influx_exporter
@@ -251,7 +250,7 @@ async def test_options_change_reload_rebuilds_exporter_and_interval(
     assert coordinator.influx_exporter is not first_exporter
     assert isinstance(coordinator.influx_exporter, InfluxExporter)
     assert coordinator.influx_exporter._host == "http://influx2.local:8086"
-    assert coordinator.update_interval == timedelta(seconds=15)
+    assert coordinator.legacy_poll_interval == 15
 
 
 async def test_options_change_without_credentials_clears_exporter(

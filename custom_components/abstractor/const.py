@@ -10,7 +10,9 @@ CONFIG_ENTRY_VERSION: Final = 1
 # Both the config flow and the legacy-entry reconciliation key on this exact
 # value, so it must not be spelled out as a literal in either of them.
 ROOT_UNIQUE_ID: Final = "abstractor_root"
-ROOT_ENTRY_TITLE: Final = "Abstractor"
+# End-user-facing integration name. Internal identifiers (domain, directory,
+# class names, unique ids) deliberately keep the "abstractor" spelling.
+ROOT_ENTRY_TITLE: Final = "AbstrHActor"
 CONF_DEVICE_TYPE: Final = "device_type"
 CONF_SOURCE_ENTITY_ID: Final = "source_entity_id"
 CONF_SOURCE_ENTITY_IDS: Final = "source_entity_ids"
@@ -47,6 +49,15 @@ CONF_DEVICE_GROUP_ID: Final = "device_group_id"
 CONF_TARGET_DEVICE_ID: Final = "target_device_id"
 CONF_CREATE_NEW_DEVICE: Final = "create_new_device"
 CONF_POLL_INTERVAL: Final = "poll_interval"
+# Per-sensor update strategy: "event" reacts to source state changes, "polling"
+# re-reads the sources on a per-sensor timer. Legacy subentries (no key) behave
+# as "polling" with the root entry's CONF_POLL_INTERVAL as fallback.
+CONF_UPDATE_MODE: Final = "update_mode"
+UPDATE_MODE_EVENT: Final = "event"
+UPDATE_MODE_POLLING: Final = "polling"
+UPDATE_MODES: Final = [UPDATE_MODE_EVENT, UPDATE_MODE_POLLING]
+DEFAULT_UPDATE_MODE: Final = UPDATE_MODE_EVENT
+DEFAULT_SUBENTRY_POLL_INTERVAL: Final = 30
 CONF_INFLUX_HOST: Final = "influx_host"
 CONF_INFLUX_TOKEN: Final = "influx_token"
 CONF_INFLUX_ORG: Final = "influx_org"

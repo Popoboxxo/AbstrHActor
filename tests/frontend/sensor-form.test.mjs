@@ -44,6 +44,36 @@ test('validateSensorForm couples condition state to a condition entity', () => {
   assert.ok(errors.fallback_condition_entity_id);
 });
 
+test('update mode: event payload has no poll interval, polling carries it', () => {
+  const event = buildPayload({
+    device_type: 'power', sources: ['sensor.a'], update_mode: 'event', poll_interval: 5,
+  });
+  assert.equal(event.update_mode, 'event');
+  assert.equal('poll_interval' in event, false);
+
+  const polling = buildPayload({
+    device_type: 'power', sources: ['sensor.a'], update_mode: 'polling', poll_interval: 7,
+  });
+  assert.equal(polling.update_mode, 'polling');
+  assert.equal(polling.poll_interval, 7);
+
+  const invalid = buildPayload({
+    device_type: 'power', sources: ['sensor.a'], update_mode: 'polling', poll_interval: 99999,
+  });
+  assert.equal(invalid.poll_interval, 30);
+});
+
+test('update mode: validation rejects bad values and out-of-range intervals', () => {
+  const base = { device_type: 'power', sources: ['sensor.a'] };
+  assert.equal(hasErrors(validateSensorForm({ ...base, update_mode: 'event' })), false);
+  assert.ok(validateSensorForm({ ...base, update_mode: 'bogus' }).update_mode);
+  assert.ok(validateSensorForm({ ...base, update_mode: 'polling', poll_interval: 0 }).poll_interval);
+  assert.equal(
+    hasErrors(validateSensorForm({ ...base, update_mode: 'polling', poll_interval: 30 })),
+    false,
+  );
+});
+
 test('validateRenameForm requires a logical name and a slug object_id', () => {
   assert.ok(validateRenameForm({}).logical_name);
   assert.ok(validateRenameForm({ logical_name: 'N', object_id: 'Bad Slug' }).object_id);

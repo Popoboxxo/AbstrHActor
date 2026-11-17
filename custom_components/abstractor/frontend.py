@@ -44,7 +44,7 @@ async def _do_register_panel(hass: HomeAssistant, src: Path) -> bool:
         frontend.async_register_built_in_panel(
             hass,
             component_name="custom",
-            sidebar_title="Abstractor",
+            sidebar_title="AbstrHActor",
             sidebar_icon="mdi:layers-outline",
             frontend_url_path=_PANEL_URL_PATH,
             config={

@@ -8,8 +8,14 @@ from custom_components.abstractor.const import (
     CONF_FALLBACK_CONDITION_ENTITY_ID,
     CONF_FALLBACK_CONDITION_STATE,
     CONF_FALLBACK_SOURCE_ENTITY_ID,
+    CONF_POLL_INTERVAL,
     CONF_SOURCE_ENTITY_ID,
-    DEFAULT_POLL_INTERVAL,
+    CONF_SOURCE_ENTITY_IDS,
+    CONF_UPDATE_MODE,
+    POLL_INTERVAL_MAX,
+    POLL_INTERVAL_MIN,
+    UPDATE_MODE_EVENT,
+    UPDATE_MODE_POLLING,
 )
 from custom_components.abstractor.coordinator import AbstractorDataUpdateCoordinator
 
@@ -201,36 +207,98 @@ async def test_add_and_remove_subentry() -> None:
     assert "subentry-1" not in coordinator.pipelines
 
 
-def test_set_update_interval_updates_interval_and_reschedules() -> None:
-    """[REQ-CORE-007] set_update_interval swaps the interval and cancels +
-    re-schedules the periodic timer through the coordinator's own seams."""
-    coordinator = AbstractorDataUpdateCoordinator(Mock())
-    assert coordinator.update_interval == timedelta(seconds=DEFAULT_POLL_INTERVAL)
-
-    coordinator._unsub_refresh = Mock()
-    coordinator._schedule_refresh = Mock()
-
-    coordinator.set_update_interval(7)
-
-    assert coordinator.update_interval == timedelta(seconds=7)
-    coordinator._unsub_refresh.assert_called_once()
-    coordinator._schedule_refresh.assert_called_once()
-    assert coordinator.config_entry is None
-
-
-def test_set_update_interval_falls_back_without_scheduled_timer() -> None:
-    """A freshly constructed coordinator has no timer yet (_unsub_refresh is
-    None), so the private-seam path cannot run — the fallback requests an
-    immediate refresh instead of silently keeping the old interval."""
+def test_event_mode_subscribes_to_source_state_changes(monkeypatch) -> None:
+    """An event-mode sensor gets a state-change listener on its sources and
+    no polling timer; removing it unsubscribes the listener again."""
+    registered: list[list[str]] = []
+    unsubscribe = Mock()
+    monkeypatch.setattr(
+        "custom_components.abstractor.coordinator.async_track_state_change_event",
+        lambda hass, entity_ids, action: registered.append(entity_ids) or unsubscribe,
+    )
+    timer = Mock()
+    monkeypatch.setattr(
+        "custom_components.abstractor.coordinator.async_track_time_interval",
+        lambda *args: timer,
+    )
     coordinator = AbstractorDataUpdateCoordinator(Mock())
 
-    coordinator.set_update_interval(7)
+    coordinator.add_subentry(
+        "s1",
+        {
+            CONF_SOURCE_ENTITY_IDS: ["sensor.a", "sensor.b"],
+            CONF_UPDATE_MODE: UPDATE_MODE_EVENT,
+        },
+    )
 
-    assert coordinator.update_interval == timedelta(seconds=7)
-    coordinator.hass.async_create_task.assert_called_once()
-    coroutine = coordinator.hass.async_create_task.call_args.args[0]
-    coroutine.close()  # never awaited — only assert the fallback was invoked
-    assert coordinator.config_entry is None
+    assert registered == [["sensor.a", "sensor.b"]]
+    timer.assert_not_called()
+    coordinator.remove_subentry("s1")
+    unsubscribe.assert_called_once()
+
+
+def test_polling_mode_uses_the_per_sensor_interval(monkeypatch) -> None:
+    """Polling mode installs its own timer with the sensor's interval in
+    seconds (bounded), not the coordinator's old global interval."""
+    intervals: list[timedelta] = []
+    unsubscribe = Mock()
+    monkeypatch.setattr(
+        "custom_components.abstractor.coordinator.async_track_time_interval",
+        lambda hass, action, interval: intervals.append(interval) or unsubscribe,
+    )
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+
+    coordinator.add_subentry(
+        "s1",
+        {
+            CONF_SOURCE_ENTITY_ID: "sensor.a",
+            CONF_UPDATE_MODE: UPDATE_MODE_POLLING,
+            CONF_POLL_INTERVAL: 7,
+        },
+    )
+    coordinator.add_subentry(
+        "s2",
+        {
+            CONF_SOURCE_ENTITY_ID: "sensor.b",
+            CONF_UPDATE_MODE: UPDATE_MODE_POLLING,
+            CONF_POLL_INTERVAL: 99999,
+        },
+    )
+
+    assert intervals == [
+        timedelta(seconds=7),
+        timedelta(seconds=POLL_INTERVAL_MAX),
+    ]
+    assert coordinator._interval_for({CONF_POLL_INTERVAL: 0}) == POLL_INTERVAL_MIN
+    assert coordinator.update_interval is None
+
+
+async def test_targeted_refresh_pushes_only_the_triggered_sensor() -> None:
+    """A source change updates just that subentry's cached value but still
+    notifies listeners so entities and the panel see it immediately."""
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.hass.states.get = lambda entity_id: (
+        SimpleNamespace(state="12.5") if entity_id == "sensor.x" else None
+    )
+    coordinator.add_subentry(
+        "s1",
+        {
+            "device_type": "power",
+            CONF_SOURCE_ENTITY_ID: "sensor.x",
+            CONF_UPDATE_MODE: UPDATE_MODE_EVENT,
+        },
+    )
+    pipeline = Mock()
+    pipeline.process_sources = Mock(return_value=12.5)
+    pipeline.last_event = None
+    coordinator.pipelines["s1"] = pipeline
+    listener = Mock()
+    coordinator.async_add_listener(listener)
+
+    await coordinator.async_refresh_subentry("s1")
+
+    assert coordinator.data["s1"] == 12.5
+    listener.assert_called_once()
 
 
 def _update_coordinator(

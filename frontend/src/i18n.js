@@ -37,6 +37,10 @@ export const I18N = {
     'form.logicalName': 'Logical name',
     'form.objectId': 'Entity object id',
     'form.entityName': 'Entity name (override)',
+    'form.updateMode': 'Update mode',
+    'form.updateMode.event': 'Event (immediate)',
+    'form.updateMode.polling': 'Polling',
+    'form.pollInterval': 'Poll interval (seconds)',
     'form.aggregation': 'Aggregation',
     'form.spikeFilter': 'Enable spike filter',
     'form.invert': 'Invert value',
@@ -53,7 +57,7 @@ export const I18N = {
     'rename.previewEntityId': 'New entity id:',
     'status.sensors': 'sensors',
     'status.loading': 'Loading...',
-    'title': 'Abstractor',
+    'title': 'AbstrHActor',
     'subtitle.readOnly': 'read-only base',
     'subtitle.editMode': 'EDIT MODE',
     'filter.all': 'all',
@@ -67,10 +71,10 @@ export const I18N = {
     'filter.light_state': 'light',
     'filter.cover_position': 'cover position',
     'filter.problems': 'problems',
-    'empty.loading': 'Loading Abstractor sensors...',
-    'empty.none': 'No matching Abstractor sensors.',
+    'empty.loading': 'Loading AbstrHActor sensors...',
+    'empty.none': 'No matching AbstrHActor sensors.',
     'admin.required': 'Administrator access required',
-    'common.sensor': 'Abstractor sensor',
+    'common.sensor': 'AbstrHActor sensor',
     'field.entity': 'entity',
     'field.uniqueId': 'unique_id',
     'field.source': 'source',
@@ -178,6 +182,10 @@ export const I18N = {
     'form.logicalName': 'Logischer Name',
     'form.objectId': 'Entity-Object-Id',
     'form.entityName': 'Entity-Name (Überschreibung)',
+    'form.updateMode': 'Update-Modus',
+    'form.updateMode.event': 'Event (sofort)',
+    'form.updateMode.polling': 'Polling',
+    'form.pollInterval': 'Abfrageintervall (Sekunden)',
     'form.aggregation': 'Aggregation',
     'form.spikeFilter': 'Spike-Filter aktivieren',
     'form.invert': 'Wert invertieren',
@@ -194,7 +202,7 @@ export const I18N = {
     'rename.previewEntityId': 'Neue Entity-Id:',
     'status.sensors': 'Sensoren',
     'status.loading': 'Lädt...',
-    'title': 'Abstractor',
+    'title': 'AbstrHActor',
     'subtitle.readOnly': 'schreibgeschützte Basis',
     'subtitle.editMode': 'EDIT-MODUS',
     'filter.all': 'alle',
@@ -208,10 +216,10 @@ export const I18N = {
     'filter.light_state': 'Licht',
     'filter.cover_position': 'Rollladenposition',
     'filter.problems': 'Probleme',
-    'empty.loading': 'Abstractor-Sensoren werden geladen...',
-    'empty.none': 'Keine passenden Abstractor-Sensoren.',
+    'empty.loading': 'AbstrHActor-Sensoren werden geladen...',
+    'empty.none': 'Keine passenden AbstrHActor-Sensoren.',
     'admin.required': 'Administratorzugriff erforderlich',
-    'common.sensor': 'Abstractor-Sensor',
+    'common.sensor': 'AbstrHActor-Sensor',
     'field.entity': 'Entity',
     'field.uniqueId': 'Unique-Id',
     'field.source': 'Quelle',
@@ -306,7 +314,7 @@ export function translate(hass, key) {
 
 try {
   if (typeof window !== 'undefined') {
-    window.AbstractorI18n = { languages: I18N, translate, defaultLanguage: 'en' };
+    window.AbstrHActorI18n = { languages: I18N, translate, defaultLanguage: 'en' };
   }
 } catch (e) {
   // Non-browser harness: the bridge is a progressive enhancement only.

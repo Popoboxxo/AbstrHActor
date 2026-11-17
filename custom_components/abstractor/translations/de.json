@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Abstractor einrichten",
-        "description": "Erstellt den Abstractor-Root-Eintrag. Füge anschließend einzelne abstrakte Sensoren über die Geräte-Seite der Integration hinzu."
+        "title": "AbstrHActor einrichten",
+        "description": "Erstellt den AbstrHActor-Root-Eintrag. Füge anschließend einzelne abstrakte Sensoren über die Geräte-Seite der Integration hinzu."
       }
     },
     "error": {
@@ -13,10 +13,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Abstractor-Optionen",
-        "description": "Abfrageintervall, InfluxDB-Export und Gerätedarstellung konfigurieren.",
+        "title": "AbstrHActor-Optionen",
+        "description": "Fallback-Abfrageintervall, InfluxDB-Export und Gerätedarstellung konfigurieren.",
         "data": {
-          "poll_interval": "Abfrageintervall",
+          "poll_interval": "Fallback-Abfrageintervall (Legacy-Sensoren)",
           "influx_host": "InfluxDB-Host",
           "influx_token": "InfluxDB-Token",
           "influx_org": "InfluxDB-Organisation",
@@ -29,7 +29,7 @@
           "notify_entity_id": "Debug-Benachrichtigungs-Entität"
         },
         "data_description": {
-          "poll_interval": "Wähle eine Voreinstellung oder 'custom' für ein begrenztes Intervall.",
+          "poll_interval": "Nur für Sensoren ohne eigenen Update-Modus. Neue Sensoren konfigurieren Event- oder Polling-Updates individuell.",
           "influx_host": "Basis-URL der InfluxDB. Der Export ist nur mit Token aktiv.",
           "influx_token": "InfluxDB-API-Token. Wird in UI und Diagnose maskiert.",
           "influx_org": "InfluxDB-Organisation.",
@@ -65,7 +65,7 @@
       },
       "entry_type": "Abstrakter Sensor",
       "error": {
-        "device_mapping_conflict": "Dieses Gerät gehört zu einem anderen Abstractor-Sensor. Das Bündeln ist blockiert, da Home Assistant diesen Sensor und seinen Recorder-Verlauf löschen könnte. Wähle ein Gerät dieses Sensors oder erstelle ein separates Gerät."
+        "device_mapping_conflict": "Dieses Gerät gehört zu einem anderen AbstrHActor-Sensor. Das Bündeln ist blockiert, da Home Assistant diesen Sensor und seinen Recorder-Verlauf löschen könnte. Wähle ein Gerät dieses Sensors oder erstelle ein separates Gerät."
       },
       "step": {
         "user": {
@@ -84,6 +84,8 @@
           "data": {
             "source_entity_id": "Quell-Entität",
             "source_entity_ids": "Quell-Entitäten",
+            "update_mode": "Update-Modus",
+            "poll_interval": "Abfrageintervall (Sekunden)",
             "legacy_unique_id": "Legacy-unique_id (optional)",
             "aggregation": "Aggregationsmodus",
             "spike_filter": "Spike-Filter aktivieren",
@@ -108,6 +110,8 @@
           "data_description": {
             "source_entity_id": "Einzelner Hardware-Sensor, der abstrahiert wird.",
             "source_entity_ids": "Wähle eine oder mehrere Entitäten zum Summieren. Nutze dies anstelle des Einzelquellen-Feldes für Aggregation.",
+            "update_mode": "Event leitet Quelländerungen sofort weiter; Polling liest die Quellen nach diesem eigenen Intervall erneut.",
+            "poll_interval": "Sekunden zwischen Abfragen im Polling-Modus (1-3600, Standard 30). Im Event-Modus ignoriert.",
             "legacy_unique_id": "Übernimmt eine bestimmte unique_id (z. B. aus einem migrierten YAML-Template-Sensor). Leer lassen, um automatisch eine zu erzeugen — so oder so ändert sich die Identität dieses Sensors nie wieder, auch wenn du später seine Quell-Hardware tauschst.",
             "aggregation": "Wie mehrere Quellen zu einem Wert kombiniert werden: sum (Standard) addiert alle Quellen, max/min nehmen die höchste/niedrigste Quelle, first_available nimmt die erste liefernde Quelle.",
             "spike_filter": "Verwirft Einbrüche unter den letzten gültigen Wert (empfohlen für Energie- und Wasserzähler).",
@@ -118,7 +122,7 @@
             "fallback_source_entity_id": "Alternative Hardware-Quelle, die genutzt wird, wenn die primäre nicht verfügbar ist und die Bedingung unten erfüllt ist.",
             "fallback_condition_entity_id": "Optionale Entität, deren Status den Fallback steuert. Leer lassen, um den Fallback immer zuzulassen.",
             "fallback_condition_state": "Status, den die Bedingungsentität für den Fallback erfüllen muss.",
-            "target_device_id": "Fügt diesen Sensor einem vorhandenen Abstractor-Gerät hinzu.",
+            "target_device_id": "Fügt diesen Sensor einem vorhandenen AbstrHActor-Gerät hinzu.",
             "create_new_device": "Löst diesen Sensor von seinem aktuellen Gerät und erstellt ein separates Gerät.",
             "logical_name": "Überschreibt den Gerätenamen für die Gerätegruppe dieses Sensors. Leer lassen, um das konfigurierte Gerätenamen-Template zu nutzen.",
             "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
@@ -137,6 +141,8 @@
             "device_type": "Gerätetyp",
             "source_entity_id": "Quell-Entität",
             "source_entity_ids": "Quell-Entitäten",
+            "update_mode": "Update-Modus",
+            "poll_interval": "Abfrageintervall (Sekunden)",
             "legacy_unique_id": "Legacy-unique_id (optional)",
             "aggregation": "Aggregationsmodus",
             "spike_filter": "Spike-Filter aktivieren",
@@ -162,6 +168,8 @@
             "device_type": "Abstraktionsschicht für Leistung, Energie oder Wasser.",
             "source_entity_id": "Einzelner Hardware-Sensor, der abstrahiert wird.",
             "source_entity_ids": "Wähle eine oder mehrere Entitäten zum Summieren. Nutze dies anstelle des Einzelquellen-Feldes für Aggregation.",
+            "update_mode": "Event leitet Quelländerungen sofort weiter; Polling liest die Quellen nach diesem eigenen Intervall erneut.",
+            "poll_interval": "Sekunden zwischen Abfragen im Polling-Modus (1-3600, Standard 30). Im Event-Modus ignoriert.",
             "legacy_unique_id": "Übernimmt die unique_id eines migrierten YAML-Template-Sensors, damit der Recorder-Verlauf weiterzählt. Einmal gesetzt, wird sie zur Identität dieses Sensors und hier nicht mehr angezeigt, da eine Änderung die Entität und ihren Verlauf verwaisen ließe.",
             "aggregation": "Wie mehrere Quellen zu einem Wert kombiniert werden: sum (Standard) addiert alle Quellen, max/min nehmen die höchste/niedrigste Quelle, first_available nimmt die erste liefernde Quelle.",
             "spike_filter": "Verwirft Einbrüche unter den letzten gültigen Wert (empfohlen für Energie- und Wasserzähler).",
@@ -172,7 +180,7 @@
             "fallback_source_entity_id": "Alternative Hardware-Quelle, die genutzt wird, wenn die primäre nicht verfügbar ist und die Bedingung unten erfüllt ist.",
             "fallback_condition_entity_id": "Optionale Entität, deren Status den Fallback steuert. Leer lassen, um den Fallback immer zuzulassen.",
             "fallback_condition_state": "Status, den die Bedingungsentität für den Fallback erfüllen muss.",
-            "target_device_id": "Fügt diesen Sensor einem vorhandenen Abstractor-Gerät hinzu.",
+            "target_device_id": "Fügt diesen Sensor einem vorhandenen AbstrHActor-Gerät hinzu.",
             "create_new_device": "Löst diesen Sensor von seinem aktuellen Gerät und erstellt ein separates Gerät.",
             "logical_name": "Überschreibt den Gerätenamen für die Gerätegruppe dieses Sensors. Leer lassen, um das konfigurierte Gerätenamen-Template zu nutzen.",
             "entity_name": "Überschreibt den Anzeigenamen dieser Entität. Leer lassen, um die lokalisierte Standardbezeichnung zu nutzen.",
@@ -231,11 +239,11 @@
   },
   "services": {
     "export_data": {
-      "name": "Abstractor-Daten exportieren",
+      "name": "AbstrHActor-Daten exportieren",
       "description": "Persistiert und protokolliert einen vollständigen Snapshot aller abstrakten Sensor-Zuordnungen und -Werte."
     },
     "import_data": {
-      "name": "Abstractor-Daten importieren",
+      "name": "AbstrHActor-Daten importieren",
       "description": "Validiert und speichert einen zuvor exportierten Snapshot. In der Installation fehlende Sensor-Subentries werden neu erstellt; bestehende Sensoren werden nie verändert oder dupliziert.",
       "fields": {
         "data": {

@@ -1,10 +1,10 @@
 {
-  "title": "Abstractor",
+  "title": "AbstrHActor",
   "config": {
     "step": {
       "user": {
-        "title": "Set Up Abstractor",
-        "description": "Creates the Abstractor root entry. Add individual Abstract sensors afterwards from the integration's device page."
+        "title": "Set Up AbstrHActor",
+        "description": "Creates the AbstrHActor root entry. Add individual Abstract sensors afterwards from the integration's device page."
       }
     },
     "error": {
@@ -14,10 +14,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Abstractor options",
-        "description": "Configure polling, InfluxDB export, and device presentation.",
+        "title": "AbstrHActor options",
+        "description": "Configure the fallback polling interval, InfluxDB export, and device presentation.",
         "data": {
-          "poll_interval": "Polling interval",
+          "poll_interval": "Fallback polling interval (legacy sensors)",
           "influx_host": "InfluxDB host",
           "influx_token": "InfluxDB token",
           "influx_org": "InfluxDB organization",
@@ -30,7 +30,7 @@
           "notify_entity_id": "Debug notify entity"
         },
         "data_description": {
-          "poll_interval": "Choose a preset or select custom for a bounded interval.",
+          "poll_interval": "Used only by sensors without their own update mode. New sensors configure event or polling updates individually.",
           "influx_host": "InfluxDB base URL. Export is enabled only with a token.",
           "influx_token": "InfluxDB API token. It is masked in the UI and diagnostics.",
           "influx_org": "InfluxDB organization.",
@@ -66,7 +66,7 @@
       },
       "entry_type": "Abstract sensor",
       "error": {
-        "device_mapping_conflict": "This device is owned by another Abstractor sensor. Bundling is blocked because Home Assistant could delete that sensor and its recorder history. Choose a device owned by this sensor or create a separate device."
+        "device_mapping_conflict": "This device is owned by another AbstrHActor sensor. Bundling is blocked because Home Assistant could delete that sensor and its recorder history. Choose a device owned by this sensor or create a separate device."
       },
       "step": {
         "user": {
@@ -85,6 +85,8 @@
           "data": {
             "source_entity_id": "Source entity",
             "source_entity_ids": "Source entities",
+            "update_mode": "Update mode",
+            "poll_interval": "Polling interval (seconds)",
             "legacy_unique_id": "Legacy unique ID (optional)",
             "aggregation": "Aggregation mode",
             "spike_filter": "Enable spike filter",
@@ -109,6 +111,8 @@
           "data_description": {
             "source_entity_id": "Single hardware sensor to abstract.",
             "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
+            "update_mode": "Event updates forward source changes immediately; polling re-reads the sources on this sensor's own timer.",
+            "poll_interval": "Seconds between polls when update mode is polling (1-3600, default 30). Ignored in event mode.",
             "legacy_unique_id": "Manually reuse a specific unique_id (e.g. from a migrated YAML template sensor). Leave blank to have one generated automatically — either way, this sensor's identity will never change again, even if you later swap its source hardware.",
             "aggregation": "How multiple sources are combined into one value: sum (default) adds all sources, max/min take the highest/lowest source, first_available takes the first source that delivers a value.",
             "spike_filter": "Reject drops below the last valid value (recommended for energy and water counters).",
@@ -119,7 +123,7 @@
             "fallback_source_entity_id": "Alternate hardware source used when the primary is unavailable and the condition below is met.",
             "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
             "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
-            "target_device_id": "Add this sensor to an existing Abstractor device.",
+            "target_device_id": "Add this sensor to an existing AbstrHActor device.",
             "create_new_device": "Detach this sensor from its current device and create a separate device.",
             "logical_name": "Overrides the device name for this sensor's device group. Leave empty to use the configured device name template.",
             "entity_name": "Overrides this entity's friendly name. Leave empty to use the localized default.",
@@ -138,6 +142,8 @@
             "device_type": "Device Type",
             "source_entity_id": "Source entity",
             "source_entity_ids": "Source entities",
+            "update_mode": "Update mode",
+            "poll_interval": "Polling interval (seconds)",
             "legacy_unique_id": "Legacy unique ID (optional)",
             "aggregation": "Aggregation mode",
             "spike_filter": "Enable spike filter",
@@ -163,6 +169,8 @@
             "device_type": "Power, energy, or water abstraction layer.",
             "source_entity_id": "Single hardware sensor to abstract.",
             "source_entity_ids": "Select one or more entities to sum. Use this instead of the single-source field for aggregation.",
+            "update_mode": "Event updates forward source changes immediately; polling re-reads the sources on this sensor's own timer.",
+            "poll_interval": "Seconds between polls when update mode is polling (1-3600, default 30). Ignored in event mode.",
             "legacy_unique_id": "Reuse the unique_id of a migrated YAML template sensor so recorder history keeps counting. Once set it becomes this sensor's identity and is no longer shown here, because changing it would orphan the entity and its history.",
             "aggregation": "How multiple sources are combined into one value: sum (default) adds all sources, max/min take the highest/lowest source, first_available takes the first source that delivers a value.",
             "spike_filter": "Reject drops below the last valid value (recommended for energy and water counters).",
@@ -173,7 +181,7 @@
             "fallback_source_entity_id": "Alternate hardware source used when the primary is unavailable and the condition below is met.",
             "fallback_condition_entity_id": "Optional entity whose state gates the fallback. Leave empty to always allow the fallback.",
             "fallback_condition_state": "State the condition entity must match for the fallback to activate.",
-            "target_device_id": "Add this sensor to an existing Abstractor device.",
+            "target_device_id": "Add this sensor to an existing AbstrHActor device.",
             "create_new_device": "Detach this sensor from its current device and create a separate device.",
             "logical_name": "Overrides the device name for this sensor's device group. Leave empty to use the configured device name template.",
             "entity_name": "Overrides this entity's friendly name. Leave empty to use the localized default.",
@@ -232,11 +240,11 @@
   },
   "services": {
     "export_data": {
-      "name": "Export Abstractor Data",
+      "name": "Export AbstrHActor Data",
       "description": "Persist and log a complete snapshot of all abstract sensor mappings and values."
     },
     "import_data": {
-      "name": "Import Abstractor Data",
+      "name": "Import AbstrHActor Data",
       "description": "Validate and store a previously exported snapshot. Sensor subentries missing from the installation are recreated; existing sensors are never modified or duplicated.",
       "fields": {
         "data": {

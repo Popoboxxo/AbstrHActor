@@ -47,6 +47,7 @@ from .const import (
     CONF_SOURCE_ENTITY_IDS,
     CONF_SPIKE_FILTER,
     CONF_TARGET_DEVICE_ID,
+    CONF_UPDATE_MODE,
     CONF_VOID_SAMPLE_IDS,
     CONF_WARN_ABOVE,
     CONF_WARN_BELOW,
@@ -55,12 +56,15 @@ from .const import (
     DEFAULT_DEVICE_MODEL,
     DEFAULT_DEVICE_NAME,
     DEFAULT_NAMING_TEMPLATE,
+    DEFAULT_SUBENTRY_POLL_INTERVAL,
+    DEFAULT_UPDATE_MODE,
     DISPLAY_PRECISION_MAX,
     DISPLAY_PRECISION_MIN,
     DOMAIN,
     POLL_INTERVAL_MAX,
     POLL_INTERVAL_MIN,
     POLL_INTERVAL_PRESETS,
+    UPDATE_MODES,
     WARN_SAMPLE_IDS_MAX,
 )
 from .specs import SPEC_REGISTRY
@@ -116,6 +120,37 @@ def _subentry_schema_spec(
                 False,
                 None,
                 selector.EntitySelector(selector.EntitySelectorConfig(multiple=True)),
+            ),
+        )
+    )
+    # Update strategy applies to every sensor type, numeric and pass-through:
+    # event mode subscribes to source state changes, polling mode re-reads on
+    # the sensor's own timer (seconds). Kept out of the numeric-only block so
+    # a notification-style pass-through sensor can also update immediately.
+    entries.extend(
+        (
+            (
+                CONF_UPDATE_MODE,
+                False,
+                DEFAULT_UPDATE_MODE,
+                selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=UPDATE_MODES,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            ),
+            (
+                CONF_POLL_INTERVAL,
+                False,
+                DEFAULT_SUBENTRY_POLL_INTERVAL,
+                selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=POLL_INTERVAL_MIN,
+                        max=POLL_INTERVAL_MAX,
+                        step=1,
+                    )
+                ),
             ),
         )
     )

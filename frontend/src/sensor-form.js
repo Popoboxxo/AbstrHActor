@@ -69,6 +69,11 @@ export function getCatalogue() {
 export const DEVICE_TYPES = CATALOGUE.device_types;
 export const NUMERIC_TYPES = CATALOGUE.numeric_types;
 export const AGGREGATION_MODES = CATALOGUE.aggregation_modes;
+// Per-sensor update strategy. Event mode forwards source state changes
+// immediately; polling mode re-reads on the sensor's own seconds timer.
+export const UPDATE_MODES = ['event', 'polling'];
+export const DEFAULT_UPDATE_MODE = 'event';
+export const DEFAULT_SUBENTRY_POLL_INTERVAL = 30;
 
 export function isNumericType(deviceType) {
   return NUMERIC_TYPES.indexOf(deviceType) !== -1;
@@ -99,6 +104,18 @@ export function validateSensorForm(fields) {
   const conditionState = f.fallback_condition_state;
   if (conditionState && !f.fallback_condition_entity_id) {
     errors.fallback_condition_entity_id = 'a condition entity is required when a condition state is set';
+  }
+
+  // A missing update_mode means a legacy caller: the backend defaults it to
+  // polling, so do not reject it here — only reject an explicitly bad value.
+  if (f.update_mode !== undefined && UPDATE_MODES.indexOf(f.update_mode) === -1) {
+    errors.update_mode = 'must be event or polling';
+  }
+  if (f.update_mode === 'polling') {
+    const interval = Number(f.poll_interval);
+    if (!Number.isInteger(interval) || interval < 1 || interval > 3600) {
+      errors.poll_interval = 'must be a whole number of seconds between 1 and 3600';
+    }
   }
 
   return errors;
@@ -147,7 +164,18 @@ export function buildPayload(fields) {
   const f = fields || {};
   const sources = (f.sources || []).map((s) => String(s || '').trim()).filter(Boolean);
 
-  const data = { device_type: f.device_type };
+  const data = {
+    device_type: f.device_type,
+    update_mode: UPDATE_MODES.indexOf(f.update_mode) !== -1
+      ? f.update_mode
+      : DEFAULT_UPDATE_MODE,
+  };
+  if (data.update_mode === 'polling') {
+    const interval = Number(f.poll_interval);
+    data.poll_interval = Number.isInteger(interval) && interval >= 1 && interval <= 3600
+      ? interval
+      : DEFAULT_SUBENTRY_POLL_INTERVAL;
+  }
 
   if (sources.length > 1) {
     data.source_entity_ids = sources;
@@ -198,6 +226,8 @@ export function subentryToFields(subentry) {
   return {
     device_type: s.device_type || 'power',
     sources,
+    update_mode: s.update_mode || DEFAULT_UPDATE_MODE,
+    poll_interval: s.poll_interval || DEFAULT_SUBENTRY_POLL_INTERVAL,
     aggregation: s.aggregation || 'sum',
     spike_filter: !!s.spike_filter,
     invert: !!s.invert,

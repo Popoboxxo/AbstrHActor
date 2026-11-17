@@ -461,8 +461,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "registry" not in domain_data:
         domain_data["registry"] = DeviceRegistry()
 
-    coordinator.set_update_interval(
-        int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
+    # Root option is the fallback for legacy sensors that have no per-sensor
+    # update_mode. Sensors created/edited through the current flows carry
+    # their own mode and (for polling) their own interval in seconds.
+    coordinator.legacy_poll_interval = int(
+        entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     )
     coordinator.influx_exporter = create_influx_exporter(hass, dict(entry.options))
     # Debug notification targets (B7): re-applied on every (re)load like the
