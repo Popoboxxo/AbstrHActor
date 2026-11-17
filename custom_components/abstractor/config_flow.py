@@ -37,8 +37,11 @@ from .const import (
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_TARGET_DEVICE_ID,
+    CONF_UPDATE_MODE,
     CONFIG_ENTRY_VERSION,
     DEFAULT_OPTIONS,
+    DEFAULT_SUBENTRY_POLL_INTERVAL,
+    DEFAULT_UPDATE_MODE,
     DOMAIN,
     POLL_INTERVAL_MAX,
     POLL_INTERVAL_MIN,
@@ -171,10 +174,18 @@ def _registry_capabilities(hass: HomeAssistant) -> RegistryCapabilities:
 
     return RegistryCapabilities(
         owv_model=owv_model,
-        add_config_entry_id=_kwarg_or_none("add_config_entry_id", "new_config_entry_id"),
-        add_config_subentry_id=_kwarg_or_none("add_config_subentry_id", "new_config_subentry_id"),
-        remove_config_entry_id=_kwarg_or_none("remove_config_entry_id", "new_config_entry_id"),
-        remove_config_subentry_id=_kwarg_or_none("remove_config_subentry_id", "new_config_subentry_id"),
+        add_config_entry_id=_kwarg_or_none(
+            "add_config_entry_id", "new_config_entry_id"
+        ),
+        add_config_subentry_id=_kwarg_or_none(
+            "add_config_subentry_id", "new_config_subentry_id"
+        ),
+        remove_config_entry_id=_kwarg_or_none(
+            "remove_config_entry_id", "new_config_entry_id"
+        ),
+        remove_config_subentry_id=_kwarg_or_none(
+            "remove_config_subentry_id", "new_config_subentry_id"
+        ),
         new_config_entry_id=_kwarg_or_none("new_config_entry_id"),
         new_config_subentry_id=_kwarg_or_none("new_config_subentry_id"),
         entity_update_has_device_id="device_id" in update_entity_params,
@@ -260,7 +271,9 @@ def _normalize_subentry_data(
     # regardless of what the submission contains — the schema decides what
     # a user can see, this decides what the data can lose. Setting one for
     # the first time stays possible; that is a deliberate, typed-in action.
-    pinned_legacy_unique_id = current_data.get(CONF_LEGACY_UNIQUE_ID) if current_data else None
+    pinned_legacy_unique_id = (
+        current_data.get(CONF_LEGACY_UNIQUE_ID) if current_data else None
+    )
     legacy_unique_id = pinned_legacy_unique_id or data.get(CONF_LEGACY_UNIQUE_ID)
     if legacy_unique_id:
         data[CONF_LEGACY_UNIQUE_ID] = legacy_unique_id
@@ -323,6 +336,12 @@ def _build_new_subentry_data(
     data = dict(user_input)
     if not data.get(CONF_LEGACY_UNIQUE_ID):
         data[CONF_LEGACY_UNIQUE_ID] = f"abstractor_{uuid.uuid4().hex}"
+    # One source of truth for the default of a genuinely NEW sensor: inject it
+    # here so every creation path (flow, websocket, snapshot restore) persists
+    # the same mode. Subentries stored by older versions have no key and keep
+    # their legacy polling fallback in the coordinator.
+    data.setdefault(CONF_UPDATE_MODE, DEFAULT_UPDATE_MODE)
+    data.setdefault(CONF_POLL_INTERVAL, DEFAULT_SUBENTRY_POLL_INTERVAL)
     return _normalize_subentry_data(hass, data, sources)
 
 
@@ -337,7 +356,9 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Return the options flow for the singleton root entry."""
         return AbstractorOptionsFlow()
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Create the singleton root entry; no sensor data is collected here."""
         await self.async_set_unique_id(ROOT_UNIQUE_ID)
         self._abort_if_unique_id_configured()
@@ -349,7 +370,9 @@ class AbstractorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @classmethod
     @callback
-    def async_get_supported_subentry_types(cls, config_entry: ConfigEntry) -> dict[str, type[ConfigSubentryFlow]]:
+    def async_get_supported_subentry_types(
+        cls, config_entry: ConfigEntry
+    ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return subentries supported by this integration."""
         return {SUBENTRY_TYPE_SENSOR: AbstractorSensorSubentryFlowHandler}
 
@@ -361,20 +384,30 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
         """Initialize the options flow."""
         self._pending_options: dict[str, Any] = {}
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Show and persist the main options form."""
         current = dict(DEFAULT_OPTIONS) | dict(self.config_entry.options)
         current_interval = int(current[CONF_POLL_INTERVAL])
-        interval_value = str(current_interval) if current_interval in POLL_INTERVAL_PRESETS else "custom"
+        interval_value = (
+            str(current_interval)
+            if current_interval in POLL_INTERVAL_PRESETS
+            else "custom"
+        )
         template_options = await async_template_ids(self.hass)
 
         if user_input is not None:
             submitted = dict(user_input)
             influx_host = submitted.get(CONF_INFLUX_HOST, "")
-            if influx_host and not influx_host.lower().startswith(("http://", "https://")):
+            if influx_host and not influx_host.lower().startswith(
+                ("http://", "https://")
+            ):
                 return self.async_show_form(
                     step_id="init",
-                    data_schema=self._init_schema(current, interval_value, template_options),
+                    data_schema=self._init_schema(
+                        current, interval_value, template_options
+                    ),
                     errors={"base": "invalid_influx_host"},
                 )
             interval_value = submitted[CONF_POLL_INTERVAL]
@@ -386,7 +419,9 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
                 }
                 return await self.async_step_poll_interval()
             submitted[CONF_POLL_INTERVAL] = int(interval_value)
-            return self.async_create_entry(title="", data=dict(DEFAULT_OPTIONS) | submitted)
+            return self.async_create_entry(
+                title="", data=dict(DEFAULT_OPTIONS) | submitted
+            )
 
         return self.async_show_form(
             step_id="init",
@@ -409,19 +444,29 @@ class AbstractorOptionsFlow(config_entries.OptionsFlow):
         """
         return build_options_form_schema(current, interval_value, template_options)
 
-    async def async_step_poll_interval(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+    async def async_step_poll_interval(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Collect a bounded custom polling interval."""
         if user_input is not None:
             options = dict(self._pending_options)
             options[CONF_POLL_INTERVAL] = int(user_input[CONF_POLL_INTERVAL])
-            return self.async_create_entry(title="", data=dict(DEFAULT_OPTIONS) | options)
+            return self.async_create_entry(
+                title="", data=dict(DEFAULT_OPTIONS) | options
+            )
 
-        current_interval = int(self._pending_options.get(CONF_POLL_INTERVAL, DEFAULT_OPTIONS[CONF_POLL_INTERVAL]))
+        current_interval = int(
+            self._pending_options.get(
+                CONF_POLL_INTERVAL, DEFAULT_OPTIONS[CONF_POLL_INTERVAL]
+            )
+        )
         return self.async_show_form(
             step_id="poll_interval",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_POLL_INTERVAL, default=current_interval): selector.NumberSelector(
+                    vol.Required(
+                        CONF_POLL_INTERVAL, default=current_interval
+                    ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
                             min=POLL_INTERVAL_MIN,
                             max=POLL_INTERVAL_MAX,
@@ -442,7 +487,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
     # which keeps the type selectable in its single form).
     _device_type: str | None = None
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
         """Choose the Abstract sensor type; the type-specific fields follow.
 
         Split from the details step so a non-numeric (binary) type never sees
@@ -467,7 +514,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             ),
         )
 
-    async def async_step_details(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+    async def async_step_details(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
         """Collect the source(s) and, for numeric types, the value pipeline."""
         if self._device_type is None:
             # No type chosen yet (e.g. a restored flow missing its first step
@@ -477,7 +526,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             submission = {**user_input, CONF_DEVICE_TYPE: self._device_type}
-            sources = submission.get(CONF_SOURCE_ENTITY_IDS) or [submission.get(CONF_SOURCE_ENTITY_ID)]
+            sources = submission.get(CONF_SOURCE_ENTITY_IDS) or [
+                submission.get(CONF_SOURCE_ENTITY_ID)
+            ]
             sources = [source for source in sources if source]
             if not sources:
                 errors["base"] = "source_required"
@@ -497,7 +548,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     )
                 data = _build_new_subentry_data(self.hass, submission, sources)
                 device_type = data[CONF_DEVICE_TYPE]
-                return self.async_create_entry(title=f"Abstract {device_type}", data=data)
+                return self.async_create_entry(
+                    title=f"Abstract {device_type}", data=data
+                )
 
         return self.async_show_form(
             step_id="details",
@@ -519,13 +572,17 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
             return self._get_entry()
         return self._get_reconfigure_entry()  # type: ignore[attr-defined]
 
-    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
         """Edit an existing Abstract sensor's settings, or move it to another device."""
         errors: dict[str, str] = {}
         current = self._get_reconfigure_subentry()
 
         if user_input is not None:
-            sources = user_input.get(CONF_SOURCE_ENTITY_IDS) or [user_input.get(CONF_SOURCE_ENTITY_ID)]
+            sources = user_input.get(CONF_SOURCE_ENTITY_IDS) or [
+                user_input.get(CONF_SOURCE_ENTITY_ID)
+            ]
             sources = [source for source in sources if source]
             if not sources:
                 errors["base"] = "source_required"
@@ -535,17 +592,23 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 # ordered registry transaction for a real move/detach BEFORE
                 # persisting subentry data. On conflict/unsupported runtime the
                 # form is re-shown with a fail-loud error and zero mutation.
-                errors = await self._validate_device_mapping(user_input, current_data=current.data)
+                errors = await self._validate_device_mapping(
+                    user_input, current_data=current.data
+                )
                 if errors:
                     suggested_values = dict(current.data)
-                    suggested_values[CONF_TARGET_DEVICE_ID] = self._current_device_id(current)
+                    suggested_values[CONF_TARGET_DEVICE_ID] = self._current_device_id(
+                        current
+                    )
                     return self.async_show_form(
                         step_id="reconfigure",
                         data_schema=self.add_suggested_values_to_schema(
                             self._schema_for(
                                 current.data.get(CONF_DEVICE_TYPE, "power"),
                                 reconfigure=True,
-                                legacy_unique_id_pinned=bool(current.data.get(CONF_LEGACY_UNIQUE_ID)),
+                                legacy_unique_id_pinned=bool(
+                                    current.data.get(CONF_LEGACY_UNIQUE_ID)
+                                ),
                             ),
                             suggested_values,
                         ),
@@ -578,7 +641,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 self._schema_for(
                     current.data.get(CONF_DEVICE_TYPE, "power"),
                     reconfigure=True,
-                    legacy_unique_id_pinned=bool(current.data.get(CONF_LEGACY_UNIQUE_ID)),
+                    legacy_unique_id_pinned=bool(
+                        current.data.get(CONF_LEGACY_UNIQUE_ID)
+                    ),
                 ),
                 suggested_values,
             ),
@@ -653,7 +718,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
 
         # A target device was submitted.
         device_registry = dr.async_get(self.hass)
-        target_device = device_registry.async_get(target_device_id) if target_device_id else None
+        target_device = (
+            device_registry.async_get(target_device_id) if target_device_id else None
+        )
         if target_device is None:
             _LOGGER.error(
                 "Abstractor device mapping rejected: selected device %s does not resolve in the registry",
@@ -756,7 +823,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 # remains. This sensor's own row has already moved off.
                 remaining = [
                     entry
-                    for entry in er.async_entries_for_device(entity_registry, old_device_id)
+                    for entry in er.async_entries_for_device(
+                        entity_registry, old_device_id
+                    )
                     if entry.entity_id != entity_id
                 ]
                 if remaining:
@@ -802,7 +871,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
         subentry_id = self._current_subentry_id
 
         # Which subentries already own the target device for this root entry.
-        owner_subentries: set[str | None] = set(target_device.config_entries_subentries.get(root_entry.entry_id, ()))
+        owner_subentries: set[str | None] = set(
+            target_device.config_entries_subentries.get(root_entry.entry_id, ())
+        )
 
         is_same_owner = subentry_id is not None and subentry_id in owner_subentries
         # Cross-subentry when the target already belongs to some subentry that
@@ -834,7 +905,11 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
 
         # Same-owner / no-op: entity already on the target and target already
         # owned by this subentry — nothing to change in the registries.
-        if is_same_owner and entity_id is not None and old_device_id == target_device.id:
+        if (
+            is_same_owner
+            and entity_id is not None
+            and old_device_id == target_device.id
+        ):
             return True
 
         try:
@@ -843,7 +918,9 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     # Union-compatible runtime only (guarded above): explicit,
                     # ordered move. 1) add this root/subentry link to the
                     # target, 2) move the entity row, 3) drop the old link.
-                    self._add_owner_link(target_device, root_entry, subentry_id, capabilities)
+                    self._add_owner_link(
+                        target_device, root_entry, subentry_id, capabilities
+                    )
                 elif not is_same_owner:
                     # Target is currently unowned by any subentry (or owned by
                     # a different config entry entirely): claim it for this
@@ -851,10 +928,14 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                     # subentry id yet and no add-link to make here — the new
                     # sensor claims the unowned target via its device identifier
                     # once it is created.
-                    self._add_owner_link(target_device, root_entry, subentry_id, capabilities)
+                    self._add_owner_link(
+                        target_device, root_entry, subentry_id, capabilities
+                    )
 
             if entity_id is not None:
-                entity_registry.async_update_entity(entity_id, device_id=target_device.id)
+                entity_registry.async_update_entity(
+                    entity_id, device_id=target_device.id
+                )
 
             if old_device_id is not None and old_device_id != target_device.id:
                 self._drop_old_link(
@@ -895,7 +976,10 @@ class AbstractorSensorSubentryFlowHandler(ConfigSubentryFlow):
                 **{add_subentry_id: subentry_id},  # type: ignore[arg-type]
             )
         else:
-            if capabilities.new_config_entry_id is None or capabilities.new_config_subentry_id is None:
+            if (
+                capabilities.new_config_entry_id is None
+                or capabilities.new_config_subentry_id is None
+            ):
                 raise RuntimeError("Registry lacks new_config_* kwargs")
             device_registry.async_update_device(
                 device.id,

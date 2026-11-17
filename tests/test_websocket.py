@@ -281,14 +281,16 @@ async def test_ws_subentry_update_not_found() -> None:
     hass.config_entries.async_update_subentry.assert_not_called()
 
 
-async def test_ws_options_update_reloads_root_entry() -> None:
+async def test_ws_options_update_relies_on_the_update_listener() -> None:
+    # The root entry's update listener already reloads on async_update_entry;
+    # an explicit second reload would tear down the shared coordinator twice.
     hass = _hass_cfg(_root())
     connection = _admin_connection()
     await websocket.ws_options_update.__wrapped__(
         hass, connection, {"id": 7, "options": {"poll_interval": 30}}
     )
     hass.config_entries.async_update_entry.assert_called_once()
-    hass.async_create_task.assert_called_once()
+    hass.async_create_task.assert_not_called()
     connection.send_result.assert_called_once_with(7, {"updated": True})
 
 

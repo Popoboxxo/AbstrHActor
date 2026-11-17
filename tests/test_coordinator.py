@@ -12,6 +12,7 @@ from custom_components.abstractor.const import (
     CONF_SOURCE_ENTITY_ID,
     CONF_SOURCE_ENTITY_IDS,
     CONF_UPDATE_MODE,
+    DEFAULT_SUBENTRY_POLL_INTERVAL,
     POLL_INTERVAL_MAX,
     POLL_INTERVAL_MIN,
     UPDATE_MODE_EVENT,
@@ -24,9 +25,11 @@ def _coordinator_with_states(states: dict[str, str]) -> AbstractorDataUpdateCoor
     coordinator = object.__new__(AbstractorDataUpdateCoordinator)
     coordinator.hass = SimpleNamespace(
         states=SimpleNamespace(
-            get=lambda entity_id: SimpleNamespace(state=states[entity_id])
-            if entity_id in states
-            else None,
+            get=lambda entity_id: (
+                SimpleNamespace(state=states[entity_id])
+                if entity_id in states
+                else None
+            ),
             is_state=lambda entity_id, expected: states.get(entity_id) == expected,
         )
     )
@@ -196,7 +199,9 @@ async def test_debug_event_none_resets_dedup_for_subentry() -> None:
 async def test_add_and_remove_subentry() -> None:
     """Coordinator tracks pipelines by subentry_id, not entry_id."""
     coordinator = AbstractorDataUpdateCoordinator(Mock())
-    coordinator.add_subentry("subentry-1", {"device_type": "power", "source_entity_id": "sensor.x"})
+    coordinator.add_subentry(
+        "subentry-1", {"device_type": "power", "source_entity_id": "sensor.x"}
+    )
 
     assert "subentry-1" in coordinator.subentry_data
     assert "subentry-1" in coordinator.pipelines
@@ -482,3 +487,154 @@ async def test_warn_condition_entity_off_suppresses_hit() -> None:
     )
     await coordinator._async_update_data()
     assert coordinator.meta["subentry-1"].warn_hit is False
+
+
+def test_attribute_only_event_does_not_queue_refresh(monkeypatch) -> None:
+    """[H2/v1.5.1] Only real state changes trigger an update; attribute-only
+    events (and the very first event with no old_state) must not.
+    """
+    actions: list = []
+    monkeypatch.setattr(
+        "custom_components.abstractor.coordinator.async_track_state_change_event",
+        lambda hass, ids, action: actions.append(action) or Mock(),
+    )
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.add_subentry(
+        "s1",
+        {CONF_SOURCE_ENTITY_ID: "sensor.a", CONF_UPDATE_MODE: UPDATE_MODE_EVENT},
+    )
+    coordinator._queue_refresh = Mock()
+
+    def event(old: str | None, new: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            data={
+                "old_state": SimpleNamespace(state=old) if old is not None else None,
+                "new_state": SimpleNamespace(state=new),
+            }
+        )
+
+    actions[0](event("12.5", "12.5"))  # attribute-only
+    coordinator._queue_refresh.assert_not_called()
+    actions[0](event("12.5", "13.0"))  # real change
+    actions[0](event(None, "14.0"))  # new entity
+    assert coordinator._queue_refresh.call_count == 2
+
+
+async def test_trigger_burst_coalesces_and_rearms() -> None:
+    """[H2/v1.5.1] A burst schedules one task; a trigger arriving while that
+    task is in flight is remembered and schedules exactly one follow-up.
+    """
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    tasks: list = []
+    coordinator.hass.async_create_task = lambda coro: tasks.append(coro)
+
+    coordinator._queue_refresh("s1")
+    coordinator._queue_refresh("s1")  # duplicate: remember a follow-up
+    assert len(tasks) == 1
+    assert coordinator._retrigger_refreshes == {"s1"}
+
+    await tasks[0]
+    assert len(tasks) == 2  # follow-up was scheduled after completion
+    # The follow-up is pending again while its task has not run yet.
+    assert "s1" in coordinator._pending_refreshes
+
+    await tasks[1]
+    assert "s1" not in coordinator._pending_refreshes
+    assert not coordinator._retrigger_refreshes
+
+
+async def test_targeted_refresh_error_is_booked() -> None:
+    """[M3/v1.5.1] A failing targeted update sets coordinator error state
+    instead of escaping as an unhandled fire-and-forget task.
+    """
+
+    async def boom(*_args, **_kwargs) -> None:
+        raise RuntimeError("boom")
+
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.async_refresh_subentry = boom  # type: ignore[method-assign]
+    coordinator.async_set_update_error = Mock()
+
+    await coordinator._async_refresh_queued("s1")
+
+    coordinator.async_set_update_error.assert_called_once()
+
+
+def test_legacy_mode_uses_polling_with_root_interval() -> None:
+    """[T3/v1.5.1] A subentry without update_mode stays a legacy polling
+    sensor; an invalid interval falls back to the built-in default.
+    """
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.legacy_poll_interval = 17
+    config = {CONF_SOURCE_ENTITY_ID: "sensor.a"}
+
+    assert coordinator._update_mode_for(config) == UPDATE_MODE_POLLING
+    assert coordinator._interval_for(config) == 17
+    assert (
+        coordinator._interval_for({CONF_POLL_INTERVAL: "abc"})
+        == DEFAULT_SUBENTRY_POLL_INTERVAL
+    )
+
+
+async def test_targeted_refresh_isolates_other_sensors() -> None:
+    """[T4/v1.5.1] Refreshing one sensor leaves all other cached values and
+    the listener count untouched; unknown ids are a silent no-op.
+    """
+    states = {"sensor.a": "2.0", "sensor.b": "3.0"}
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.hass.states.get = lambda entity_id: (
+        SimpleNamespace(state=states[entity_id]) if entity_id in states else None
+    )
+    for subentry_id, source in (("s1", "sensor.a"), ("s2", "sensor.b")):
+        coordinator.add_subentry(
+            subentry_id,
+            {
+                CONF_SOURCE_ENTITY_ID: source,
+                CONF_UPDATE_MODE: UPDATE_MODE_EVENT,
+            },
+        )
+    pipeline = Mock()
+    pipeline.process_sources = Mock(
+        side_effect=lambda raw, **_kwargs: (
+            float(raw[0]) if raw and raw[0] is not None else None
+        )
+    )
+    pipeline.last_event = None
+    coordinator.pipelines = {"s1": pipeline, "s2": pipeline}
+    await coordinator.async_full_refresh()
+
+    listener = Mock()
+    coordinator.async_add_listener(listener)
+    states["sensor.a"] = "7.0"
+    await coordinator.async_refresh_subentry("s1")
+    await coordinator.async_refresh_subentry("ghost")
+
+    assert coordinator.data["s1"] == 7.0
+    assert coordinator.data["s2"] == 3.0
+    listener.assert_called_once()
+
+
+async def test_full_refresh_publishes_all_values_once() -> None:
+    """[H1/v1.5.1] The full refresh publishes under the same lock as targeted
+    updates and notifies listeners exactly once.
+    """
+    coordinator = AbstractorDataUpdateCoordinator(Mock())
+    coordinator.hass.states.get = lambda entity_id: (
+        SimpleNamespace(state="4.5") if entity_id == "sensor.a" else None
+    )
+    coordinator.add_subentry(
+        "s1",
+        {CONF_SOURCE_ENTITY_ID: "sensor.a", CONF_UPDATE_MODE: UPDATE_MODE_EVENT},
+    )
+    pipeline = Mock()
+    pipeline.process_sources = Mock(return_value=4.5)
+    pipeline.last_event = None
+    coordinator.pipelines["s1"] = pipeline
+    listener = Mock()
+    coordinator.async_add_listener(listener)
+
+    await coordinator.async_full_refresh()
+
+    assert coordinator.data["s1"] == 4.5
+    assert coordinator.last_update_success is True
+    listener.assert_called_once()

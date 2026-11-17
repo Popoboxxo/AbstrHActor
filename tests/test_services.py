@@ -184,7 +184,14 @@ async def test_import_recreates_missing_subentries(hass: HomeAssistant) -> None:
     # The stored snapshot reflects the installation again after the reload
     # (the restored subentry contributes its polled value to `values`), so
     # only the entries are compared against the imported payload.
-    assert hass.data[DOMAIN]["stored_snapshot"]["entries"] == payload["entries"]
+    stored_entries = hass.data[DOMAIN]["stored_snapshot"]["entries"]
+    assert len(stored_entries) == len(payload["entries"])
+    for stored, imported in zip(stored_entries, payload["entries"]):
+        assert stored["entry_id"] == imported["entry_id"]
+        # New sensors carry the per-sensor update-mode defaults; the imported
+        # snapshot data must be preserved exactly, extra keys are expected.
+        for key, value in imported["data"].items():
+            assert stored["data"][key] == value
     state = hass.states.get("sensor.abstract_power_power")
     assert state is not None, "restored sensor entity must come up via the reload"
 
@@ -358,7 +365,7 @@ async def test_delete_sensor_unknown_ids_fail(hass: HomeAssistant) -> None:
 async def test_import_response_contract(hass: HomeAssistant) -> None:
     """[E4] import_data answers with the flat contract (WS-6): recreated/kept/
     skipped/errors, capped and free of raw sensor values."""
-    root_entry = await _setup_root(hass)
+    await _setup_root(hass)
     payload = {
         "format": "abstractor.snapshot",
         "version": 1,

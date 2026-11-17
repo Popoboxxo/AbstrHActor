@@ -503,8 +503,10 @@ async def ws_options_update(hass, connection, msg) -> None:
         return
     current_options = dict(getattr(root_entry, "options", None) or {})
     merged_options = {**current_options, **validated}
+    # async_update_entry fires the root entry's update listener, which already
+    # schedules the reload — a second explicit reload would tear down and
+    # rebuild the shared coordinator twice (and race with itself).
     hass.config_entries.async_update_entry(root_entry, options=merged_options)
-    hass.async_create_task(hass.config_entries.async_reload(root_entry.entry_id))
     connection.send_result(msg["id"], {"updated": True})
 
 

@@ -131,6 +131,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
         self.legacy_poll_interval = DEFAULT_POLL_INTERVAL
         self._trigger_unsubs: dict[str, Callable[[], None]] = {}
         self._pending_refreshes: set[str] = set()
+        self._retrigger_refreshes: set[str] = set()
         self._update_lock = asyncio.Lock()
         self.subentry_data: dict[str, dict] = {}
         self.pipelines: dict[str, AbstractorFilterPipeline] = {}
@@ -191,11 +192,20 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
 
     @callback
     def _queue_refresh(self, subentry_id: str) -> None:
-        """Coalesce bursts of triggers for the same sensor into one refresh."""
+        """Coalesce bursts of triggers, but never lose one during a refresh.
+
+        A trigger arriving while a refresh for the same sensor is in flight is
+        remembered in ``_retrigger_refreshes`` and scheduled once the current
+        refresh finishes (H2: lost update).
+        """
         pending = getattr(self, "_pending_refreshes", None)
         if pending is None:
             pending = self._pending_refreshes = set()
         if subentry_id in pending:
+            retrigger = getattr(self, "_retrigger_refreshes", None)
+            if retrigger is None:
+                retrigger = self._retrigger_refreshes = set()
+            retrigger.add(subentry_id)
             return
         pending.add(subentry_id)
         self.hass.async_create_task(self._async_refresh_queued(subentry_id))
@@ -203,8 +213,17 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_refresh_queued(self, subentry_id: str) -> None:
         try:
             await self.async_refresh_subentry(subentry_id)
+        except Exception as err:
+            # Mirror the coordinator's own failure bookkeeping: without this,
+            # health stays "ok" and HA only sees an unhandled task exception.
+            self.async_set_update_error(err)
+            _LOGGER.exception("Update of subentry %s failed", subentry_id)
         finally:
             getattr(self, "_pending_refreshes", set()).discard(subentry_id)
+            retrigger = getattr(self, "_retrigger_refreshes", None)
+            if retrigger is not None and subentry_id in retrigger:
+                retrigger.discard(subentry_id)
+                self._queue_refresh(subentry_id)
 
     def _reset_trigger(self, subentry_id: str) -> None:
         """Unsubscribe this sensor's previous trigger, if any."""
@@ -259,6 +278,27 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
             )
             return
         self._trigger_unsubs[subentry_id] = unsubscribe
+
+    async def async_full_refresh(self) -> None:
+        """Compute every sensor and publish exactly once under the same lock.
+
+        ``DataUpdateCoordinator._async_refresh`` publishes the value returned
+        by ``_async_update_data`` *after* that method has released its lock.
+        Using it here would let a targeted refresh publish in between and get
+        overwritten by an older full snapshot (H1). Doing compute + publish in
+        one critical section keeps both paths serialized.
+        """
+        try:
+            async with self._get_lock():
+                data: dict[str, float | str | None] = {}
+                for subentry_id, config in list(self.subentry_data.items()):
+                    value = await self._compute_subentry(subentry_id, config)
+                    if value is not _NO_SOURCE:
+                        data[subentry_id] = value
+                self.async_set_updated_data(data)
+        except Exception as err:
+            self.async_set_update_error(err)
+            _LOGGER.exception("Full refresh failed")
 
     async def async_refresh_subentry(self, subentry_id: str) -> None:
         """Recompute one sensor and push it to its entities and the panel.
@@ -372,7 +412,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
             # Pass-through spec (binary sensor / switch / cover): forward the
             # raw source state string unchanged.
             primary = source_ids[0]
-            raw_val = self._read_state(primary)
+            raw_val = raw_states[0]
             self._record_value_sample(subentry_id, raw_val)
             await self._async_notify_debug(subentry_id, None)
             previous = self.meta.get(subentry_id, SubentryMeta())
@@ -383,9 +423,7 @@ class AbstractorDataUpdateCoordinator(DataUpdateCoordinator):
                 fallbacks=previous.fallbacks,
                 unavailable_samples=previous.unavailable_samples
                 + (1 if raw_val is None else 0),
-                source_states={primary: raw_val}
-                if raw_val is not None
-                else {},
+                source_states={primary: raw_val} if raw_val is not None else {},
                 stale=raw_val is None,
                 updated_at=datetime.now(UTC),
                 previous_value=raw_val,

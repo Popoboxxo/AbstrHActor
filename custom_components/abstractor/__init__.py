@@ -518,13 +518,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Doing what that helper would have done keeps the original
         # semantics (one blocking refresh, setup fails if it didn't work)
         # without reintroducing the entry binding.
-        await coordinator.async_refresh()
+        await coordinator.async_full_refresh()
         if not coordinator.last_update_success:
             raise ConfigEntryNotReady(
                 "Initial data refresh failed"
             ) from coordinator.last_exception
     else:
-        await coordinator.async_request_refresh()
+        await coordinator.async_full_refresh()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
