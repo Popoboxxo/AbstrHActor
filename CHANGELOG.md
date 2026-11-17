@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] — 2026-11-17
+
+### Fixed
+
+- Serialized full and targeted refreshes: a source event arriving during a
+  concurrent full refresh could previously be overwritten by an older
+  snapshot, leaving a stale value (audit H1).
+- State changes arriving while a refresh is in flight are now re-armed and
+  processed afterwards instead of being silently dropped (audit H2).
+- Failures in a targeted refresh now update the coordinator's error state
+  instead of escaping as an unhandled background task.
+- Options updates no longer trigger two parallel reloads of the root entry.
+- New sensors now persist the `update_mode` default through every creation
+  path (config flow, websocket, snapshot restore).
+- Pass-through sensors no longer read their primary source twice per update.
+
+### Added
+
+- Regression tests for attribute-only event suppression, burst coalescing and
+  re-arming, legacy mode/interval fallback, error bookkeeping and per-sensor
+  refresh isolation.
+
 ## [1.5.0] — 2026-11-17
 
 ### Added
